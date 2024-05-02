@@ -11,7 +11,7 @@ import math
 import numpy as np
 import os
 
-from utils import SmoothArray
+from utils import SmoothArray, SliceArray, CustomAffs, CustomLSDs
 
 
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +20,7 @@ setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 torch.backends.cudnn.benchmark = True
 
 
-def pipeline(
+def train(
         setup_dir,
         max_iterations,
         samples,
@@ -75,7 +75,9 @@ def pipeline(
     voxel_size = gp.Coordinate(net_config['voxel_size']) 
     input_size = gp.Coordinate((1,*input_shape)) * voxel_size
     output_size = gp.Coordinate((1,*output_shape)) * voxel_size
-    context = (input_size - output_size) // 2
+    context = (input_size - output_size) * 2
+
+    print(input_size, output_size)
 
     request = gp.BatchRequest()
     request.add(raw, input_size)
@@ -102,17 +104,17 @@ def pipeline(
             },
         )
         + gp.Normalize(raw)
-        + gp.Pad(raw, None)
-        + gp.Pad(labels, context)
-        + gp.Pad(unlabelled, context)
+        + gp.Pad(raw, context, mode="reflect")
+        + gp.Pad(labels, context, mode="reflect")
+        + gp.Pad(unlabelled, context, mode="reflect")
         + gp.RandomLocation(mask=unlabelled, min_masked=0.01)
         for sample in samples
     )
     
     pipeline = source + gp.RandomProvider()
-    pipeline += gp.Squeeze([raw, labels, unlabelled])
+    #pipeline += gp.Squeeze([raw, labels, unlabelled],axis=0)
 
-    pipeline += gp.SimpleAugment()
+    pipeline += gp.SimpleAugment(transpose_only=[1,2])
 
     pipeline += gp.DeformAugment(
         control_point_spacing=(voxel_size[0], voxel_size[0]),
@@ -134,7 +136,7 @@ def pipeline(
 
     pipeline += SmoothArray(raw)
 
-    pipeline += AddLocalShapeDescriptor(
+    pipeline += CustomLSDs(
             labels,
             gt_lsds,
             unlabelled=unlabelled,
@@ -143,20 +145,25 @@ def pipeline(
             downsample=2,
     )
 
-    pipeline += gp.AddAffinities(
-        affinity_neighborhood=[[-1, 0], [0, -1]],
+    pipeline += CustomAffs(
+        affinity_neighborhood=[[-1, 0, 0], [0, -1, 0], [0, 0, -1]],
         labels=labels,
         affinities=gt_affs,
         unlabelled=unlabelled,
         affinities_mask=gt_affs_mask,
         dtype=np.float32,
     )
-    
+    # remove z-affinities, z-dimensions
+    #pipeline += SliceArray(gt_affs, np.s_[1:,0,:])
+    #pipeline += SliceArray(gt_affs_mask, np.s_[1:,0,:])
+    #pipeline += SliceArray(gt_lsds, np.s_[:,0])
+    #pipeline += SliceArray(lsds_weights, np.s_[:,0])
+
     pipeline += gp.BalanceLabels(gt_affs, affs_weights, mask=gt_affs_mask)
 
     pipeline += gp.IntensityScaleShift(raw, 2, -1)
 
-    pipeline += gp.Unsqueeze([raw])
+    #pipeline += gp.Unsqueeze([raw])
     pipeline += gp.Stack(batch_size)
 
     pipeline += gp.PreCache(num_workers=20,cache_size=50)
@@ -203,7 +210,7 @@ def pipeline(
     pipeline += gp.PrintProfilingStats(every=100)
 
     with gp.build(pipeline):
-        for i in range(iterations):
+        for i in range(max_iterations):
             pipeline.request_batch(request)
 
 
@@ -215,8 +222,9 @@ if __name__ == "__main__":
 
     config = yaml_config["train"]["2d_model"]
 
-    assert setup_dir == config["setup_dir"], \
+    assert config["setup_dir"] in setup_dir, \
         "model directories do not match"
+    config["setup_dir"] = setup_dir
 
     assert len(config["samples"]) == len(config["raw_datasets"]) == \
         len(config["labels_datasets"]) == len(config["mask_datasets"]), \

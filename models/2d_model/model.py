@@ -9,23 +9,26 @@ setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 with open(os.path.join(setup_dir, "config.json")) as f:
     net_config = json.load(f)
 
-model_parameters = {
-    'in_channels': net_config['in_channels'],
-    'output_shapes': net_config['output_shapes'],
-    'num_fmaps': net_config['num_fmaps'],
-    'fmap_inc_factor': net_config['fmap_inc_factor'],
-    'downsample_factors': eval(repr(net_config['downsample_factors']).replace('[', '(').replace(']', ')')),
-    'kernel_size_down': eval(repr(net_config['kernel_size_down']).replace('[', '(').replace(']', ')')),
-    'kernel_size_up': eval(repr(net_config['kernel_size_up']).replace('[', '(').replace(']', ')')),
-}
+in_channels = net_config['in_channels']
+output_shapes = net_config['output_shapes']
+num_fmaps = net_config['num_fmaps']
+fmap_inc_factor = net_config['fmap_inc_factor']
+downsample_factors = eval(repr(net_config['downsample_factors']).replace('[', '(').replace(']', ')'))
+kernel_size_down = eval(repr(net_config['kernel_size_down']).replace('[', '(').replace(']', ')'))
+kernel_size_up = eval(repr(net_config['kernel_size_up']).replace('[', '(').replace(']', ')'))
+
 
 class MtlsdModel(torch.nn.Module):
 
     def __init__(
             self,
-            **model_parameters,
             stack_infer=False,
-            constant_upsample=True,
+            num_fmaps=num_fmaps,
+            fmap_inc_factor=fmap_inc_factor,
+            downsample_factors=downsample_factors,
+            kernel_size_down=kernel_size_down,
+            kernel_size_up=kernel_size_up,
+            output_shapes=output_shapes,
         ):
 
         super().__init__()
@@ -39,17 +42,21 @@ class MtlsdModel(torch.nn.Module):
                 downsample_factors=downsample_factors,
                 kernel_size_down=kernel_size_down,
                 kernel_size_up=kernel_size_up,
-                constant_upsample=constant_upsample)
+                constant_upsample=True,
+                padding="valid")
 
         self.lsd_head = ConvPass(num_fmaps, output_shapes[0], [[1, 1]], activation='Sigmoid')
         self.aff_head = ConvPass(num_fmaps, output_shapes[1], [[1, 1]], activation='Sigmoid')
 
     def forward(self, input):
 
+        print(input.shape)
         z = self.unet(input)
 
         lsds = self.lsd_head(z)
         affs = self.aff_head(z)
+        
+        print(lsds.shape,affs.shape)
 
         if self.stack_infer: # add Z dimension during prediction
             lsds = torch.unsqueeze(lsds,-3)
