@@ -1,0 +1,188 @@
+import yaml
+import os
+import json
+import logging
+import math
+import numpy as np
+import random
+import torch
+import zarr
+import gunpowder as gp
+
+from model import AffsUNet, WeightedMSELoss
+from utils import CreateLabels, CustomAffs, CustomLSDs, SmoothArray, IntensityAugment
+
+setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
+
+logging.basicConfig(level=logging.INFO)
+
+torch.backends.cudnn.benchmark = True
+
+def init_weights(m):
+    if isinstance(m, (torch.nn.Conv3d,torch.nn.ConvTranspose3d)):
+        torch.nn.init.kaiming_normal_(m.weight,nonlinearity='relu')
+
+
+def train(
+        setup_dir,
+        max_iterations,
+        save_every
+):
+    batch_size = 1 
+    model = AffsUNet()
+    model.apply(init_weights)
+    model.train()
+    loss = WeightedMSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.5e-4)
+
+    labels = gp.ArrayKey("SYNTHETIC_LABELS")
+    input_affs = gp.ArrayKey("INPUT_2D_AFFS")
+    input_lsds = gp.ArrayKey("INPUT_2D_LSDS")
+    gt_affs = gp.ArrayKey("GT_AFFS")
+    pred_affs = gp.ArrayKey("PRED_AFFS")
+    affs_weights = gp.ArrayKey("AFFS_WEIGHTS")
+    
+    with open(os.path.join(setup_dir, "config.json")) as f:
+        logging.info(
+            "Reading setup config from %s" % os.path.join(setup_dir, "config.json")
+        )
+        net_config = json.load(f)
+
+    neighborhood = net_config["neighborhood"]
+    shape_increase = [0,0,0] #net_config["shape_increase"]
+    input_shape = [x + y for x,y in zip(shape_increase,net_config["input_shape"])]
+    
+    if 'output_shape' not in net_config:
+        output_shape = model.forward(
+                input_affs=torch.empty(size=[1,2]+input_shape),
+                input_lsds=torch.empty(size=[1,6]+input_shape),
+            )[0].shape[1:]
+        net_config['output_shape'] = list(output_shape)
+        with open(os.path.join(setup_dir,"config.json"),"w") as f:
+            json.dump(net_config,f,indent=4)
+    else: 
+        output_shape = [x + y for x,y in zip(shape_increase,net_config["output_shape"])]
+    print(output_shape)
+
+    voxel_size = gp.Coordinate(net_config['voxel_size']) 
+    input_size = gp.Coordinate(input_shape) * voxel_size
+    output_size = gp.Coordinate(output_shape) * voxel_size
+    
+    request = gp.BatchRequest()
+    request.add(labels, input_size)
+    request.add(input_affs, input_size)
+    request.add(input_lsds, input_size)
+    request.add(gt_affs, output_size)
+    request.add(pred_affs, output_size)
+    request.add(affs_weights, output_size)
+
+    # construct pipeline
+    pipeline = CreateLabels(
+            labels,
+            shape=input_shape,
+            voxel_size=voxel_size)
+            
+    pipeline += gp.Pad(labels,None,mode="reflect")
+
+    pipeline += gp.SimpleAugment(transpose_only=[1, 2])
+
+    pipeline += gp.ElasticAugment(
+        control_point_spacing=[1, 50, 50],
+        jitter_sigma=[0, 5, 5],
+        scale_interval=(0.8,1.2),
+        rotation_interval=(0, math.pi / 2),
+        prob_slip=0.05,
+        prob_shift=0.05,
+        max_misalign=10,
+        subsample=4,
+        spatial_dims=3,
+    )
+
+    # do this on non eroded labels - that is what predicted affs will look like
+    pipeline += CustomAffs(
+        affinity_neighborhood=neighborhood,
+        labels=labels,
+        affinities=input_affs,
+        dtype=np.float32,
+    )
+    
+    pipeline += CustomLSDs(
+        labels, input_lsds, sigma=120, downsample=2
+    )
+
+    # add random noise
+    pipeline += gp.NoiseAugment(input_affs)
+    pipeline += gp.NoiseAugment(input_lsds)
+    
+    # intensity
+    pipeline += IntensityAugment(input_affs, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
+    pipeline += IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
+
+    # smooth the batch by different sigmas to simulate noisy predictions
+    pipeline += SmoothArray(input_affs, (0.5,1.5))
+    pipeline += SmoothArray(input_lsds, (0.5,1.5))
+    
+    # now we erode - we want the gt affs to have a pixel boundary
+    pipeline += gp.GrowBoundary(labels, steps=1, only_xy=True)
+
+    pipeline += gp.AddAffinities(
+        affinity_neighborhood=neighborhood,
+        labels=labels,
+        affinities=gt_affs,
+        dtype=np.float32,
+    )
+
+    pipeline += gp.BalanceLabels(gt_affs, affs_weights)
+
+    pipeline += gp.Stack(batch_size)
+
+    pipeline += gp.PreCache(num_workers=32, cache_size=64)
+
+    pipeline += gp.torch.Train(
+        model,
+        loss,
+        optimizer,
+        inputs={
+            "input_lsds": input_lsds,
+            "input_affs": input_affs,
+        },
+        loss_inputs={0: pred_affs, 1: gt_affs, 2: affs_weights},
+        outputs={0: pred_affs},
+        save_every=1000,
+        log_dir=os.path.join(setup_dir,'log'),
+        checkpoint_basename=os.path.join(setup_dir,'model'),
+    )
+
+    pipeline += gp.Squeeze([input_affs,input_lsds,gt_affs,pred_affs,affs_weights])
+    
+    pipeline += gp.Snapshot(
+        dataset_names={
+            labels: "labels",
+            input_affs: "input_affs",
+            input_lsds: "input_lsds",
+            gt_affs: "gt_affs",
+            pred_affs: "pred_affs",
+            affs_weights: "affs_weights",
+        },
+        output_filename="batch_{iteration}.zarr",
+        output_dir=os.path.join(setup_dir,'snapshots'),
+        every=1000,
+    )
+
+    with gp.build(pipeline):
+        for i in range(iterations):
+            pipeline.request_batch(request)
+
+
+if __name__ == "__main__":
+
+    config_file = sys.argv[1]
+    with open(config_file, 'r') as f:
+        yaml_config = yaml.safe_load(f)
+
+    config = yaml_config["train"]["2d_to_3d_model"]
+
+    assert setup_dir == config["setup_dir"], \
+        "model directories do not match"
+    
+    train(**config)
