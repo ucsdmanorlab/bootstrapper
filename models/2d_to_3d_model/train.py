@@ -1,3 +1,4 @@
+import sys
 import yaml
 import os
 import json
@@ -26,7 +27,9 @@ def init_weights(m):
 def train(
         setup_dir,
         max_iterations,
-        save_every
+        out_dir,
+        save_checkpoints_every,
+        save_snapshots_every,
 ):
     batch_size = 1 
     model = AffsUNet()
@@ -87,7 +90,7 @@ def train(
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
 
     pipeline += gp.ElasticAugment(
-        control_point_spacing=[1, 50, 50],
+        control_point_spacing=[voxel_size[1], voxel_size[0], voxel_size[0]],
         jitter_sigma=[0, 5, 5],
         scale_interval=(0.8,1.2),
         rotation_interval=(0, math.pi / 2),
@@ -113,7 +116,11 @@ def train(
     # add random noise
     pipeline += gp.NoiseAugment(input_affs)
     pipeline += gp.NoiseAugment(input_lsds)
-    
+   
+    # add defects
+    pipeline += gp.DefectAugment(input_affs, axis=1)
+    pipeline += gp.DefectAugment(input_lsds, axis=1)
+
     # intensity
     pipeline += IntensityAugment(input_affs, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
     pipeline += IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
@@ -170,7 +177,7 @@ def train(
     )
 
     with gp.build(pipeline):
-        for i in range(iterations):
+        for i in range(max_iterations):
             pipeline.request_batch(request)
 
 
@@ -182,7 +189,9 @@ if __name__ == "__main__":
 
     config = yaml_config["train"]["2d_to_3d_model"]
 
-    assert setup_dir == config["setup_dir"], \
+    assert config["setup_dir"] in setup_dir, \
         "model directories do not match"
+    config["setup_dir"] = setup_dir
+    config["out_dir"] = setup_dir
     
     train(**config)

@@ -32,7 +32,7 @@ class CreateLabels(gp.BatchProvider):
         self.ndims = len(spec.voxel_size)
 
         if self.anisotropy_range is None:
-            self.anisotropy_range = (1,10)
+            self.anisotropy_range = (4,10)
 
         offset = gp.Coordinate((0,) * self.ndims)
         spec.roi = gp.Roi(offset, gp.Coordinate(self.shape) * spec.voxel_size)

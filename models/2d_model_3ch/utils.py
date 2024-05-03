@@ -140,7 +140,7 @@ class CustomAffs(BatchFilter):
             "Upstream does not provide %s needed by " "AddAffinities" % self.labels
         )
 
-        voxel_size = self.spec[self.labels].voxel_size
+        voxel_size = Coordinate(self.spec[self.labels].voxel_size)
 
         dims = self.affinity_neighborhood.shape[1] 
         self.padding_neg = (
@@ -275,6 +275,56 @@ class CustomLSDs(AddLocalShapeDescriptor):
         )
 
 
+#    def setup(self):
+#
+#        spec = self.spec[self.segmentation].copy()
+#        spec.dtype = np.float32
+#
+#        self.voxel_size = spec.voxel_size
+#        self.provides(self.descriptor, spec)
+#
+#        if self.lsds_mask:
+#            self.provides(self.lsds_mask, spec.copy())
+#
+#        if self.mode == "gaussian":
+#            self.context = (0,) + tuple(s * 3 for s in self.sigma[1:])
+#        elif self.mode == "sphere":
+#            self.context = (0,) + tuple(self.sigma[1:])
+#        else:
+#            raise RuntimeError("Unkown mode %s" % mode)
+#
+#    def prepare(self, request):
+#        deps = BatchRequest()
+#        if self.descriptor in request:
+#
+#            dims = len(request[self.descriptor].roi.get_shape())
+#
+#            if dims == 2:
+#                self.context = self.context[-2:]
+#
+#            # increase segmentation ROI to fit Gaussian
+#            context_roi = request[self.descriptor].roi.grow(self.context, self.context)
+#
+#            # ensure context roi is multiple of voxel size
+#            context_roi = context_roi.snap_to_grid(self.voxel_size, mode="shrink")
+#
+#            grown_roi = request[self.segmentation].roi.union(context_roi)
+#
+#            deps[self.segmentation] = request[self.descriptor].copy()
+#            #deps[self.segmentation].roi = grown_roi
+#            deps[self.segmentation].roi = context_roi
+#
+#        else:
+#            self.skip = True
+#
+#        if self.unlabelled:
+#            deps[self.unlabelled] = deps[self.segmentation].copy()
+#
+#        if self.labels_mask:
+#            deps[self.labels_mask] = deps[self.segmentation].copy()
+#
+#        return deps
+#
     def process(self, batch, request):
 
         labels = batch[self.segmentation].data

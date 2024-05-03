@@ -75,7 +75,7 @@ def train(
 
     # prepare request
     voxel_size = gp.Coordinate(net_config['voxel_size']) 
-    input_size = gp.Coordinate((1,*input_shape)) * voxel_size
+    input_size = gp.Coordinate((3,*input_shape)) * voxel_size
     output_size = gp.Coordinate((1,*output_shape)) * voxel_size
     context = (input_size - output_size) // 2
 
@@ -106,9 +106,9 @@ def train(
             },
         )
         + gp.Normalize(raw)
-        + gp.Pad(raw, None, mode="reflect")
-        + gp.Pad(labels, context, mode="reflect")
-        + gp.Pad(unlabelled, context, mode="reflect")
+        + gp.Pad(raw, None)
+        + gp.Pad(labels, context)
+        + gp.Pad(unlabelled, context)
         + gp.RandomLocation(mask=unlabelled, min_masked=0.05)
         for sample in samples
     )
@@ -128,11 +128,10 @@ def train(
    
     pipeline += gp.DefectAugment(
             raw,
-            prob_missing=0.0,
     )
 
     pipeline += gp.IntensityAugment(
-        raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1
+        raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1, z_section_wise=True
     )
 
     pipeline += SmoothArray(raw)
@@ -218,7 +217,7 @@ if __name__ == "__main__":
     with open(config_file, 'r') as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["train"]["2d_model"]
+    config = yaml_config["train"]["2d_model_3ch"]
 
     assert config["setup_dir"] in setup_dir, \
         "model directories do not match"

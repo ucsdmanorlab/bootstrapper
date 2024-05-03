@@ -11,6 +11,14 @@ train:
     out_dir: "example_run"
     save_checkpoints_every: 5000
     save_snapshots_every: 1000
+
+  2d_to_3d_model:
+    setup_dir: "models/2d_to_3d_model"
+    max_iterations: 30000
+    out_dir: "models/2d_to_3d_model"
+    save_checkpoints_every: 5000
+    save_snapshots_every: 1000
+
   
   3d_model:
     setup_dir: "models/3d_model"
