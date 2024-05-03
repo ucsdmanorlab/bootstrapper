@@ -50,13 +50,11 @@ class MtlsdModel(torch.nn.Module):
 
     def forward(self, input):
 
-        print(input.shape)
         z = self.unet(input)
 
         lsds = self.lsd_head(z)
         affs = self.aff_head(z)
         
-        print(lsds.shape,affs.shape)
 
         if self.stack_infer: # add Z dimension during prediction
             lsds = torch.unsqueeze(lsds,-3)

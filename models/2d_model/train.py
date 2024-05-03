@@ -11,7 +11,7 @@ import math
 import numpy as np
 import os
 
-from utils import SmoothArray, SliceArray, CustomAffs, CustomLSDs
+from utils import SmoothArray, CustomAffs, CustomLSDs
 
 
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +27,9 @@ def train(
         raw_datasets,
         labels_datasets,
         mask_datasets,
-        save_every,
+        out_dir,
+        save_checkpoints_every,
+        save_snapshots_every,
 ):
     # array keys
     raw = gp.ArrayKey("RAW")
@@ -44,7 +46,7 @@ def train(
     pred_affs = gp.ArrayKey("PRED_AFFS")
 
     # model training setup 
-    model = MtlsdModel()
+    model = MtlsdModel(stack_infer=True)
     model.train()
     loss = WeightedMSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.5e-4)
@@ -75,9 +77,9 @@ def train(
     voxel_size = gp.Coordinate(net_config['voxel_size']) 
     input_size = gp.Coordinate((1,*input_shape)) * voxel_size
     output_size = gp.Coordinate((1,*output_shape)) * voxel_size
-    context = (input_size - output_size) * 2
+    context = (input_size - output_size) // 2
 
-    print(input_size, output_size)
+    print(input_size, output_size, context)
 
     request = gp.BatchRequest()
     request.add(raw, input_size)
@@ -104,15 +106,14 @@ def train(
             },
         )
         + gp.Normalize(raw)
-        + gp.Pad(raw, context, mode="reflect")
+        + gp.Pad(raw, None, mode="reflect")
         + gp.Pad(labels, context, mode="reflect")
         + gp.Pad(unlabelled, context, mode="reflect")
-        + gp.RandomLocation(mask=unlabelled, min_masked=0.01)
+        + gp.RandomLocation(mask=unlabelled, min_masked=0.05)
         for sample in samples
     )
     
     pipeline = source + gp.RandomProvider()
-    #pipeline += gp.Squeeze([raw, labels, unlabelled],axis=0)
 
     pipeline += gp.SimpleAugment(transpose_only=[1,2])
 
@@ -142,8 +143,10 @@ def train(
             unlabelled=unlabelled,
             lsds_mask=lsds_weights,
             sigma=120,
-            downsample=2,
+            downsample=4,
     )
+
+    pipeline += gp.GrowBoundary(labels, mask=unlabelled, only_xy=True)
 
     pipeline += CustomAffs(
         affinity_neighborhood=[[-1, 0, 0], [0, -1, 0], [0, 0, -1]],
@@ -153,11 +156,6 @@ def train(
         affinities_mask=gt_affs_mask,
         dtype=np.float32,
     )
-    # remove z-affinities, z-dimensions
-    #pipeline += SliceArray(gt_affs, np.s_[1:,0,:])
-    #pipeline += SliceArray(gt_affs_mask, np.s_[1:,0,:])
-    #pipeline += SliceArray(gt_lsds, np.s_[:,0])
-    #pipeline += SliceArray(lsds_weights, np.s_[:,0])
 
     pipeline += gp.BalanceLabels(gt_affs, affs_weights, mask=gt_affs_mask)
 
@@ -166,7 +164,7 @@ def train(
     #pipeline += gp.Unsqueeze([raw])
     pipeline += gp.Stack(batch_size)
 
-    pipeline += gp.PreCache(num_workers=20,cache_size=50)
+    pipeline += gp.PreCache(num_workers=40,cache_size=80)
 
     pipeline += gp.torch.Train(
         model,
@@ -185,9 +183,9 @@ def train(
             0: pred_lsds,
             1: pred_affs,
         },
-        log_dir=os.path.join(setup_dir,'log'),
-        checkpoint_basename=os.path.join(setup_dir,'model'),
-        save_every=save_every,
+        log_dir=os.path.join(out_dir,'log'),
+        checkpoint_basename=os.path.join(out_dir,'model'),
+        save_every=save_checkpoints_every,
     )
 
     pipeline += gp.IntensityScaleShift(raw, 0.5, 0.5)
@@ -203,11 +201,11 @@ def train(
             affs_weights: "affs_weights",
         },
         output_filename="batch_{iteration}.zarr",
-        output_dir=os.path.join(setup_dir,'snapshots'),
-        every=save_every,
+        output_dir=os.path.join(out_dir,'snapshots'),
+        every=save_snapshots_every,
     )
 
-    pipeline += gp.PrintProfilingStats(every=100)
+    #pipeline += gp.PrintProfilingStats(every=100)
 
     with gp.build(pipeline):
         for i in range(max_iterations):

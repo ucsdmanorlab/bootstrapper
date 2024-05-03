@@ -4,16 +4,13 @@ train:
   2d_model:
     setup_dir: "models/2d_model"
     samples: ["data/example_volume.zarr"]
-    raw_datasets: ["image/s0"]
-    labels_datasets: ["labels/ids/s0"]
-    mask_datasets: ["labels/mask/s0"]
-    max_iterations: 20000
-    save_every: 1000
-  
-  2d_to_3d_model:
-    setup_dir: "models/2d_to_3d_model"
-    max_iterations: 20000
-    save_every: 1000
+    raw_datasets: ["raw/s0"]
+    labels_datasets: ["labels/s0"]
+    mask_datasets: ["labels_mask/s0"]
+    max_iterations: 30000
+    out_dir: "example_run"
+    save_checkpoints_every: 5000
+    save_snapshots_every: 1000
   
   3d_model:
     setup_dir: "models/3d_model"
@@ -22,4 +19,6 @@ train:
     labels_datasets: ["post/segmentations/mean/50"]
     mask_datasets: ["post/mask/example"]
     max_iterations: 20000
-    save_every: 1000
+    out_dir: "example_run"
+    save_checkpoints_every: 5000
+    save_snapshots_every: 1000

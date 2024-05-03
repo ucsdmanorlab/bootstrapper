@@ -227,7 +227,7 @@ class CustomAffs(gp.BatchFilter):
         affinities_roi = request[self.affinities].roi
 
         affinities = seg_to_affgraph(
-            batch.arrays[self.labels].data.astype(np.int32),
+            batch.arrays[self.labels].data.astype(np.uint64),
             self.affinity_neighborhood
         ).astype(self.dtype)
 
