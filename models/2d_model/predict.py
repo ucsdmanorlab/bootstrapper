@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
 def predict(config):
-    iteration = config["iteration"]
+    checkpoint = config["checkpoint"]
     raw_file = config["raw_file"]
     raw_dataset = config["raw_datasets"][0]
     out_file = config["out_file"]
@@ -60,7 +60,7 @@ def predict(config):
     
     predict = gp.torch.Predict(
         model,
-        checkpoint=os.path.join(setup_dir,f'model_checkpoint_{iteration}'),
+        checkpoint=checkpoint,
         inputs={"input": raw},
         outputs={
             0: pred_lsds,
@@ -73,7 +73,7 @@ def predict(config):
             pred_lsds: out_lsds_dataset,
             pred_affs: out_affs_dataset,
         },
-        output_filename=out_file,
+        store=out_file,
     )
 
     scan = gp.DaisyRequestBlocks(
@@ -89,6 +89,7 @@ def predict(config):
         source
         + gp.Normalize(raw)
         + gp.Pad(raw, None, mode="reflect")
+        + gp.IntensityScaleShift(raw, 2, -1)
         + gp.Unsqueeze([raw])
         + predict
         + gp.Squeeze([pred_affs, pred_lsds])

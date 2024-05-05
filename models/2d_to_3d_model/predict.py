@@ -17,7 +17,7 @@ setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
 
 def predict(config):
-    iteration = config["iteration"]
+    checkpoint = config["checkpoint"]
     input_file = config["raw_file"]
     input_datasets = config["raw_datasets"] # [stacked_lsds_x, stacked_affs_x]
     out_file = config["out_file"]
@@ -66,7 +66,7 @@ def predict(config):
 
     predict = gp.torch.Predict(
             model,
-            checkpoint=os.path.join(setup_dir,f'model_checkpoint_{iteration}'),
+            checkpoint=checkpoint,
             inputs = {
                 'input_lsds': input_lsds,
                 'input_affs': input_affs

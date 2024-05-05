@@ -14,6 +14,7 @@ from scipy.ndimage import (
     measurements,
     center_of_mass,
     maximum_filter,
+    gaussian_filter,
     distance_transform_edt,
     binary_erosion
 )
@@ -65,6 +66,20 @@ def watershed_from_affinities(
         (fragments, max_id)
         or
         (fragments, max_id, seeds) if return_seeds == True"""
+   
+    # add random noise
+    random_noise = np.random.randn(*affs.shape) * 0.01
+
+    # add smoothed affs, to solve a similar issue to the random noise. We want to bias
+    # towards processing the central regions of objects first.
+    logging.info("Smoothing affs")
+    smoothed_affs: np.ndarray = (
+            gaussian_filter(affs, sigma=(0, 1, 2, 2))
+            - 0.5
+    ) * 0.05
+
+    affs = (affs + random_noise + smoothed_affs).astype(np.float32)
+    affs = np.clip(affs, 0.0, 1.0)
 
     if fragments_in_xy:
 
@@ -236,8 +251,8 @@ def watershed_in_block(
 
     if affs.dtype == np.uint8:
         logging.info("Assuming affinities are in [0,255]")
-        max_affinity_value = 255.0
-        affs.data = affs.data.astype(np.float32)
+        affs.data = affs.data.astype(np.float32)/255.0
+        max_affinity_value = 1.0
     else:
         max_affinity_value = 1.0
 

@@ -17,7 +17,7 @@ from funlib.persistence import open_ds, prepare_ds
 
 logging.getLogger().setLevel(logging.INFO)
 
-NUM_GPUS = 3
+NUM_GPUS = 4
 
 
 def predict_blockwise(config: dict):
@@ -25,7 +25,7 @@ def predict_blockwise(config: dict):
     print(config)
 
     setup_dir = config["setup_dir"]
-    iteration = config["iteration"]
+    checkpoint = config["checkpoint"]
     raw_file = config["raw_file"]
     raw_datasets = config["raw_datasets"]
     out_file = config["out_file"]
@@ -54,7 +54,7 @@ def predict_blockwise(config: dict):
 
     # add z-dimension if 2D network
     if len(input_shape) == 2:
-        input_shape = [1,*input_shape]
+        input_shape = [3,*input_shape] if "3ch" in setup_dir else [1,*input_shape]
         output_shape = [1,*output_shape]
 
     # get chunk size and context
@@ -93,6 +93,7 @@ def predict_blockwise(config: dict):
         out_prefix = ""
 
     # prepare output datasets
+    iteration = checkpoint.split('_')[-1]
     out_dataset_names = []
     for output_name, val in outputs.items():
         out_dims = val["out_dims"]
@@ -103,10 +104,7 @@ def predict_blockwise(config: dict):
             out_dataset = os.path.join(out_prefix,raw_datasets[0],f"{output_name}_{iteration}")
 
         elif "2d_to_3d_model" in setup_dir:
-            if "mtlsd" in setup_dir:
-                assert len(raw_datasets) == 2, f"{setup_dir} takes two inputs: stacked 2D LSDs and stacked 2D Affinities."
-            else:
-                assert len(raw_datasets) == 1, f"{setup_dir} takes only one input"
+            assert len(raw_datasets) == 2, f"{setup_dir} takes two inputs: stacked 2D LSDs and stacked 2D Affinities."
             out_dataset = f"{out_prefix}/{output_name}_{iteration}_from_{raw_datasets[0].split('_')[-1]}" 
 
         elif "3d_model" in setup_dir:
@@ -184,11 +182,9 @@ if __name__ == "__main__":
 
     config = yaml_config["predict"][setup]
     
-    # volume prediction
-    for raw_datasets in config["raw_datasets"]:
-        start = time.time()
-        predict_blockwise(config | {"raw_datasets": raw_datasets})
-        end = time.time()
+    start = time.time()
+    predict_blockwise(config)
+    end = time.time()
 
-        seconds = end - start
-        logging.info(f'Total time to predict blockwise on {raw_datasets}: {seconds} ')
+    seconds = end - start
+    logging.info(f'Total time to predict blockwise : {seconds} ')

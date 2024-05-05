@@ -7,6 +7,7 @@ import time
 import numpy as np
 from lsd.post.merge_tree import MergeTree
 from funlib.segment.arrays import relabel
+from scipy.ndimage import gaussian_filter
 import waterz
 
 from pathlib import Path
@@ -15,7 +16,8 @@ from funlib.persistence import open_ds
 from funlib.persistence.graphs import SQLiteGraphDataBase, PgSQLGraphDatabase
 from funlib.persistence.types import Vec
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
+#logging.basicConfig(level=logging.INFO)
 
 
 def agglomerate_in_block(
@@ -49,14 +51,21 @@ def agglomerate_in_block(
     affs = affs.to_ndarray()[0:3]
     if affs.dtype == np.uint8:
         affs = affs.astype(np.float32)/255.0
-    
-    # add fake z-affinity channel if stacked 2D affinities
-    if affs.shape[0] == 2:
-        logging.info("Adding fake z-affinities to 2D affs")
-        affs = np.stack([
-                        np.ones_like(affs[0]),
-                        affs[-2],
-                        affs[-1]])
+
+    # add random noise
+    random_noise = np.random.randn(*affs.shape) * 0.01
+
+    # add smoothed affs, to solve a similar issue to the random noise. We want to bias
+    # towards processing the central regions of objects first.
+    logging.info("Smoothing affs")
+    smoothed_affs = (
+            gaussian_filter(affs, sigma=(0, 1, 2, 2))
+            - 0.5
+    ) * 0.05
+
+    affs = (affs + random_noise + smoothed_affs).astype(np.float32)
+    affs = np.clip(affs, 0.005, 0.995)
+    logging.info("Smoothing affs done")
 
     # So far, 'rag' does not contain any edges belonging to write_roi (there
     # might be a few edges from neighboring blocks, though). Run waterz until

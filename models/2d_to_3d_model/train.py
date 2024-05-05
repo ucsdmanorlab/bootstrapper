@@ -130,7 +130,7 @@ def train(
     pipeline += SmoothArray(input_lsds, (0.5,1.5))
     
     # now we erode - we want the gt affs to have a pixel boundary
-    pipeline += gp.GrowBoundary(labels, steps=1, only_xy=True)
+    pipeline += gp.GrowBoundary(labels, steps=2, only_xy=True)
 
     pipeline += gp.AddAffinities(
         affinity_neighborhood=neighborhood,

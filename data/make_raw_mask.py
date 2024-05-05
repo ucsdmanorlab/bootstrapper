@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
     in_f = sys.argv[1] #"instance_seg_data.zarr"
     raw_ds = sys.argv[2]
-    mask_ds = "raw_mask" #sys.argv[3] #raw_ds.replace("raw","object_mask")
+    mask_ds = "raw_mask/s0" #sys.argv[3] #raw_ds.replace("raw","object_mask")
 
     raw = open_ds(in_f,raw_ds)
     roi = raw.roi
@@ -35,6 +35,7 @@ if __name__ == "__main__":
         np.zeros_like(disk(20))], axis=0)
 
     mask_arr = binary_closing(mask_arr, footprint)
+    mask_arr = binary_closing(mask_arr, footprint)
     mask_arr = (mask_arr).astype(np.uint8)
 
     factor = 2**int(raw_ds[-1])
@@ -50,7 +51,7 @@ if __name__ == "__main__":
             vs / Coordinate(factor),
             mask_arr.dtype,
             compressor={"id": "blosc", "clevel": 5},
-            write_size=(8,256,256),
+            write_size=Coordinate((8,256,256))*vs,
             delete=True)
 
     new_mask[roi] = mask_arr

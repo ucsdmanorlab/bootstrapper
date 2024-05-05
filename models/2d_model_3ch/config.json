@@ -15,7 +15,7 @@
         [[3, 3], [3, 3]]],
     "input_shape" : [196, 196],
     "output_shape" : [104, 104],
-    "shape_increase": [200,200],
+    "shape_increase": [400,400],
     "voxel_size": [50,2,2],
     "outputs": {
         "2d_lsds": {"out_dtype": "uint8", "out_dims": 6},

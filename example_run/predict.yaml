@@ -4,12 +4,11 @@ predict:
   2d_model:
     setup_dir: "models/2d_model"
     raw_file: "data/example_volume.zarr"
-    raw_datasets: 
-      - ["image/s0"]
+    raw_datasets: ["image/s0"]
     roi_offset: null
     roi_shape: null
-    iteration: 20000
-    out_file: "data/example_volume.zarr"
+    checkpoint: "example_run/model_checkpoint_20000"
+    out_file: "example_run/example_volume.zarr"
     out_prefix: "predictions"
     num_workers: 8
     num_cache_workers: 1
@@ -17,12 +16,11 @@ predict:
   2d_to_3d_model:
     setup_dir: "models/2d_to_3d_model"
     raw_file: "data/example_volume.zarr"
-    raw_datasets:
-      - ["predictions/image/s0/2d_lsds_20000", "predictions/image/s0/2d_affs_20000"]
+    raw_datasets: ["predictions/image/s0/2d_lsds_20000", "predictions/image/s0/2d_affs_20000"]
     roi_offset: null
     roi_shape: null
-    iteration: 10000
-    out_file: "data/example_volume.zarr"
+    checkpoint: "models/2d_to_3d_model/model_checkpoint_10000"
+    out_file: "example_run/example_volume.zarr"
     out_prefix: "predictions"
     num_workers: 12
     num_cache_workers: 1
@@ -30,11 +28,10 @@ predict:
   3d_model:
     setup_dir: "models/3d_model"
     raw_file: "data/example_volume.zarr"
-    raw_datasets: 
-      - ["image/s0"]
+    raw_datasets: ["image/s0"]
     roi_offset: null
     roi_shape: null
-    iteration: 50000
+    checkpoint: "example_run/model_checkpoint_50000"
     out_file: "data/example_volume.zarr"
     out_prefix: "predictions"
     num_workers: 8
