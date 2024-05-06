@@ -5,4 +5,4 @@ model_name=$2 # "2d_model", "3d_model", "custom_model"
 setup_dir=$(yq ".train.\"$model_name\".setup_dir" "$yaml_file")
 
 # Run the Python command in the setup_dir directory
-python "$setup_dir/train.py" "$yaml_file"
+python $setup_dir/train.py $yaml_file $model_name

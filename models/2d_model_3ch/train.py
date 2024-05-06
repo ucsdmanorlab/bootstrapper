@@ -22,6 +22,7 @@ torch.backends.cudnn.benchmark = True
 
 def train(
         setup_dir,
+        voxel_size,
         max_iterations,
         samples,
         raw_datasets,
@@ -74,10 +75,11 @@ def train(
     }
 
     # prepare request
-    voxel_size = gp.Coordinate(net_config['voxel_size']) 
+    voxel_size = gp.Coordinate(voxel_size) 
     input_size = gp.Coordinate((3,*input_shape)) * voxel_size
     output_size = gp.Coordinate((1,*output_shape)) * voxel_size
     context = (input_size - output_size) // 2
+    sigma = net_config['sigma']
 
     print(input_size, output_size, context)
 
@@ -141,8 +143,8 @@ def train(
             gt_lsds,
             unlabelled=unlabelled,
             lsds_mask=lsds_weights,
-            sigma=(0,120,120),
-            downsample=4,
+            sigma=(0,sigma,sigma),
+            downsample=2,
     )
 
     pipeline += gp.GrowBoundary(labels, mask=unlabelled, only_xy=True)
@@ -214,10 +216,11 @@ def train(
 if __name__ == "__main__":
 
     config_file = sys.argv[1]
+    model_name = sys.argv[2]
     with open(config_file, 'r') as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["train"]["2d_model_3ch"]
+    config = yaml_config["train"][model_name]
 
     assert config["setup_dir"] in setup_dir, \
         "model directories do not match"
