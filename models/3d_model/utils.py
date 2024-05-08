@@ -80,6 +80,11 @@ class UnmaskBackground(gp.BatchFilter):
         self.target_mask = target_mask
         self.background_mask = background_mask
     def process(self, batch, request):
-        batch[self.target_mask].data = np.logical_or(
-                batch[self.target_mask].data,
-                np.logical_not(batch[self.background_mask].data[1:,1:,1:])).astype(np.float32)
+        try:
+            batch[self.target_mask].data = np.logical_or(
+                    batch[self.target_mask].data,
+                    np.logical_not(batch[self.background_mask].data[1:,1:,1:])).astype(np.float32)
+        except ValueError:
+            batch[self.target_mask].data = np.logical_or(
+                    batch[self.target_mask].data,
+                    np.logical_not(batch[self.background_mask].data)).astype(np.float32)

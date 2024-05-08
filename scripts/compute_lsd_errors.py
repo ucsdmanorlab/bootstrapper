@@ -1,3 +1,5 @@
+import time
+import yaml
 import os
 import gunpowder as gp
 from funlib.persistence import prepare_ds, open_ds
@@ -5,18 +7,15 @@ from funlib.geometry import Coordinate, Roi
 
 from lsd.train.gp import AddLocalShapeDescriptor
 
+from scipy.ndimage import binary_dilation, binary_erosion
+from skimage.morphology import ball, disk
+
 import json
 import logging
 import sys
 import numpy as np
 
 logging.basicConfig(level=logging.INFO)
-
-setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
-config_path = os.path.join(setup_dir,"config.json")
-
-with open(config_path,"r") as f:
-    config = json.load(f)
 
 
 class ComputeDistance(gp.BatchFilter):
@@ -69,11 +68,11 @@ class ComputeDistance(gp.BatchFilter):
 
 class Threshold(gp.BatchFilter):
 
-    def __init__(self, i, o, threshold=0.05, floor=0.0):
+    def __init__(self, i, o, floor=0.0, ceil=1.0):
         self.i = i # input array key
         self.o = o # output array key
-        self.threshold = threshold
         self.floor = floor
+        self.ceil = ceil
 
     def setup(self):
         up_spec = self.spec[self.i].copy()
@@ -87,7 +86,21 @@ class Threshold(gp.BatchFilter):
     
     def process(self, batch, request):
         i_data = batch[self.i].data
-        o_data = (i_data > self.floor) & (i_data < self.threshold)
+        
+        # threshold
+        o_data = (i_data > self.floor) & (i_data < self.ceil)
+
+        # dilate/erode
+        z_struct = np.stack([ball(1)[0],]*3)
+        xy_struct = np.stack([np.zeros((3,3)),disk(1),np.zeros((3,3))])
+
+        o_data = binary_dilation(o_data, z_struct)
+        o_data = binary_erosion(o_data, z_struct)
+        
+        o_data = binary_dilation(o_data, xy_struct, iterations=2)
+        o_data = binary_erosion(o_data, xy_struct, iterations=4)
+        o_data = binary_dilation(o_data, xy_struct, iterations=2)
+
         o_data = o_data.astype(np.uint8)
 
         spec = batch[self.i].spec.copy()
@@ -96,11 +109,11 @@ class Threshold(gp.BatchFilter):
         batch[self.o] = gp.Array(o_data,spec)
 
 
-def compute_error_map(
+def compute_lsd_errors(
         seg_file,
         seg_dataset,
-        pred_file,
-        pred_dataset,
+        lsds_file,
+        lsds_dataset,
         mask_file,
         mask_dataset,
         out_file,
@@ -116,18 +129,18 @@ def compute_error_map(
     error_mask = gp.ArrayKey('ERROR_MASK')
 
     # get rois
-    pred_roi = open_ds(pred_file,pred_dataset).roi
+    pred_ds = open_ds(lsds_file,lsds_dataset)
+    pred_roi = pred_ds.roi
     seg_roi = open_ds(seg_file,seg_dataset).roi
     mask_roi = open_ds(mask_file,mask_dataset).roi
     roi = pred_roi.intersect(seg_roi).intersect(mask_roi)
     print(f"seg roi: {seg_roi}, pred_roi: {pred_roi}, mask_roi: {mask_roi}, intersection: {roi}")
 
     # io shapes
-    shape_increase = config["shape_increase"]
-    input_shape = [x + y for x,y in zip(shape_increase,config["input_shape"])]
-    output_shape = [x + y for x,y in zip(shape_increase,config["output_shape"])]
-    voxel_size = config["voxel_size"]
-    sigma = config["sigma"]
+    input_shape = [20, 212 + 420, 212 + 420]
+    output_shape = [4, 120 + 420, 120 + 420]
+    voxel_size = pred_ds.voxel_size
+    sigma = 80
  
     voxel_size = Coordinate(voxel_size)
     input_size = Coordinate(input_shape) * voxel_size
@@ -173,8 +186,8 @@ def compute_error_map(
                 {seg: gp.ArraySpec(voxel_size=voxel_size, interpolatable=False, roi=seg_roi)}
             ),
         gp.ZarrSource(
-                pred_file,
-                {pred: pred_dataset},
+                lsds_file,
+                {pred: lsds_dataset},
                 {pred: gp.ArraySpec(voxel_size=voxel_size, interpolatable=True, roi=pred_roi)}
             ),
         gp.ZarrSource(
@@ -203,7 +216,7 @@ def compute_error_map(
         error_map,
         mask)
 
-    pipeline += Threshold(error_map, error_mask, threshold=0.1) # 90% confidence
+    pipeline += Threshold(error_map, error_mask, floor=0.1) # 90% confidence
 
     pipeline += gp.ZarrWrite(
             dataset_names={
@@ -212,7 +225,7 @@ def compute_error_map(
             },
             store=out_file
         )
-    pipeline += gp.Scan(chunk_request, num_workers=40)
+    pipeline += gp.Scan(chunk_request, num_workers=80)
 
     predict_request = gp.BatchRequest()
 
@@ -220,3 +233,20 @@ def compute_error_map(
     with gp.build(pipeline):
         pipeline.request_batch(predict_request)
     print("Prediction finished")
+
+
+if __name__ == "__main__":
+
+    config_file = sys.argv[1]
+
+    with open(config_file, 'r') as f:
+        yaml_config = yaml.safe_load(f)
+
+    config = yaml_config["processing"]["compute_lsd_errors"]
+
+    start = time.time()
+    compute_lsd_errors(**config)
+    end = time.time()
+
+    seconds = end - start
+    logging.info(f'Total time to compute LSD errors: {seconds}')

@@ -86,6 +86,7 @@ def train(
 
     request = gp.BatchRequest()
     request.add(raw, input_size)
+    request.add(labels_mask, output_size)
     request.add(gt_lsds, output_size)
     request.add(lsds_weights, output_size)
     request.add(pred_lsds, output_size)
@@ -116,7 +117,7 @@ def train(
         + gp.Pad(labels_mask, context)
         + gp.Pad(unlabelled, context)
         + gp.RandomLocation()
-        + gp.Reject(mask=labels_mask, min_masked=0.5, reject_probability=1.0)
+        + gp.Reject(mask=unlabelled, min_masked=0.5, reject_probability=0.9999)
         for sample in samples
     )
     
@@ -131,15 +132,20 @@ def train(
         graph_raster_voxel_size=voxel_size[1:],
     )
 
+    pipeline += gp.ShiftAugment(
+        prob_slip=0.03,
+        prob_shift=0.03,
+        sigma=1)
+
     pipeline += gp.SimpleAugment(transpose_only=[1,2])
  
-    pipeline += gp.DefectAugment(raw)
+    pipeline += gp.DefectAugment(raw, prob_missing=0.03)
 
     pipeline += gp.IntensityAugment(
         raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1, z_section_wise=True
     )
 
-    pipeline += SmoothArray(raw)
+    #pipeline += SmoothArray(raw)
 
     pipeline += AddLocalShapeDescriptor(
             labels,
@@ -151,6 +157,7 @@ def train(
             downsample=2,
     )
     pipeline += UnmaskBackground(lsds_weights, labels_mask)
+    pipeline += gp.GrowBoundary(labels, mask=unlabelled, only_xy=True)
 
     pipeline += gp.AddAffinities(
         affinity_neighborhood=[[-1, 0, 0], [0, -1, 0], [0, 0, -1]],
@@ -162,6 +169,7 @@ def train(
         dtype=np.float32,
     )
 
+    pipeline += UnmaskBackground(gt_affs_mask, labels_mask)
     pipeline += gp.BalanceLabels(gt_affs, affs_weights, mask=gt_affs_mask)
 
     pipeline += gp.IntensityScaleShift(raw, 2, -1)
