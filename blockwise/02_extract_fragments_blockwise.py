@@ -136,7 +136,16 @@ def extract_fragments(
     affs = open_ds(affs_file, affs_dataset)
     voxel_size = affs.voxel_size
 
-    # ROI
+    # ROI 
+    if 'block_size' in config and config['block_size'] is not None:
+        block_size = Coordinate(config["block_size"])
+    else:
+        block_size = Coordinate(affs.chunk_shape[1:]) * voxel_size * 2
+
+    if 'context' in config and config['context'] is not None:
+        context = Coordinate(config["context"])
+    else:
+        context = Coordinate([0,] * affs.roi.dims)
 
     if 'roi_offset' in config and 'roi_shape' in config:
         roi_offset = config['roi_offset']
@@ -149,16 +158,6 @@ def extract_fragments(
         total_roi = Roi(roi_offset, roi_shape)
     else:
         total_roi = affs.roi
-    
-    if 'block_size' in config and config['block_size'] is not None:
-        block_size = Coordinate(config["block_size"])
-    else:
-        block_size = Coordinate(affs.chunk_shape[1:]) * voxel_size * 2
-
-    if 'context' in config and config['context'] is not None:
-        context = Coordinate(config["context"])
-    else:
-        context = Coordinate([0,] * affs.roi.dims)
 
     read_roi = Roi((0,)*affs.roi.dims, block_size).grow(context, context)
     write_roi = Roi((0,)*affs.roi.dims, block_size)
@@ -231,7 +230,7 @@ def extract_fragments(
     # blockwise watershed
     task = daisy.Task(
         task_id="ExtractFragmentsTask",
-        total_roi=total_roi,
+        total_roi=total_roi.grow(context,context),
         read_roi=read_roi,
         write_roi=write_roi,
         process_function=lambda: start_worker(config),

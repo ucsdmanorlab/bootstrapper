@@ -88,18 +88,6 @@ def agglomerate(
     fragments = open_ds(fragments_file, fragments_dataset, mode='r')
 
     # ROI
-    if 'roi_offset' in config and 'roi_shape' in config:
-        roi_offset = config['roi_offset']
-        roi_shape = config['roi_shape']
-    else:
-        roi_offset = None
-        roi_shape = None
-
-    if roi_offset is not None:
-        total_roi = Roi(roi_offset, roi_shape)
-    else:
-        total_roi = fragments.roi
-
     if 'block_size' in config and config['block_size'] is not None:
         block_size = Coordinate(config["block_size"])
     else:
@@ -110,6 +98,18 @@ def agglomerate(
     else:
         context = Coordinate(fragments.chunk_shape) / 4
         context *= fragments.voxel_size
+
+    if 'roi_offset' in config and 'roi_shape' in config:
+        roi_offset = config['roi_offset']
+        roi_shape = config['roi_shape']
+    else:
+        roi_offset = None
+        roi_shape = None
+
+    if roi_offset is not None:
+        total_roi = Roi(roi_offset, roi_shape).grow(context,context)
+    else:
+        total_roi = fragments.roi.grow(context,context)
 
     read_roi = Roi((0,)*affs.roi.dims, block_size).grow(context, context)
     write_roi = Roi((0,)*affs.roi.dims, block_size)
