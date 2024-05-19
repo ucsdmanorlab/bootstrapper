@@ -137,7 +137,7 @@ def train(
         raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1
     )
 
-    pipeline += SmoothArray(raw)
+    #pipeline += SmoothArray(raw)
 
     pipeline += CustomLSDs(
             labels,

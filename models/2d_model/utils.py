@@ -4,6 +4,7 @@ from gunpowder.array import Array
 from gunpowder.batch_request import BatchRequest
 from gunpowder.batch import Batch
 from gunpowder.coordinate import Coordinate
+from gunpowder.roi import Roi
 import random
 
 import numpy as np
@@ -17,6 +18,21 @@ from lsd.train.gp import AddLocalShapeDescriptor
 from lsd.train import LsdExtractor
 
 logger = logging.getLogger(__name__)
+
+def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
+
+    method_padding = Coordinate((0, sigma * 3, sigma * 3))
+
+    diag = np.sqrt(output_size[1] ** 2 + output_size[2] ** 2)
+
+    max_padding = Roi(
+        (
+            Coordinate([i / 2 for i in [output_size[0], diag, diag]])
+            + method_padding
+        ),
+        (0,) * 3,
+    ).snap_to_grid(voxel_size, mode=mode)
+
 
 class SliceArray(BatchFilter):
     def __init__(self, array, slice_obj):

@@ -127,6 +127,10 @@ def extract_segmentation(
             msg=f"Took {time.time() - start} seconds to extract segmentation from LUT"
         )
 
+        logging.info(
+            msg=f"{seg_file} {seg_name}"
+        )
+
     return True
 
 

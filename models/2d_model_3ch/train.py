@@ -78,7 +78,7 @@ def train(
     voxel_size = gp.Coordinate(voxel_size) 
     input_size = gp.Coordinate((3,*input_shape)) * voxel_size
     output_size = gp.Coordinate((1,*output_shape)) * voxel_size
-    context = (input_size - output_size) // 2
+    context = (input_size - output_size) / 2
     sigma = net_config['sigma']
 
     print(input_size, output_size, context)
@@ -136,7 +136,7 @@ def train(
         raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1, z_section_wise=True
     )
 
-    pipeline += SmoothArray(raw)
+    #pipeline += SmoothArray(raw)
 
     pipeline += CustomLSDs(
             labels,

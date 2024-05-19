@@ -12,17 +12,16 @@ from funlib.show.neuroglancer import add_layer
 from funlib.persistence import open_ds
 from funlib.persistence.graphs import SQLiteGraphDataBase
 
-neuroglancer.set_server_bind_address('localhost',bind_port=3336)
+neuroglancer.set_server_bind_address('localhost',bind_port=4443)
 
 
 f = sys.argv[1]
-
-skels = [os.path.join(os.path.dirname(f),"oblique_skels.graphml"),]
+skels = sys.argv[2:]
 print(skels)
 
 f = zarr.open(f,"r")
 #raw = f["raw"]
-labels = f["labels/s0"]
+labels = f["volumes/neuron_ids/s2"]
 
 vs = labels.attrs["resolution"] # voxel_size
 

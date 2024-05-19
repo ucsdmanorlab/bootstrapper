@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
     in_f = sys.argv[1] #"instance_seg_data.zarr"
     raw_ds = sys.argv[2]
-    mask_ds = "raw_mask/s0" #sys.argv[3] #raw_ds.replace("raw","object_mask")
+    mask_ds = sys.argv[3]
 
     raw = open_ds(in_f,raw_ds)
     roi = raw.roi

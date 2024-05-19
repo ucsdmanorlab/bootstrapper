@@ -9,20 +9,17 @@ from funlib.persistence import open_ds
 from funlib.persistence.graphs import PgSQLGraphDatabase
 from funlib.persistence.types import Vec
 
-import multiprocessing as mp
-
-from pathlib import Path
+import daisy
 import glob
+import yaml
 import json
 import logging
+import multiprocessing as mp
 import networkx as nx
 import numpy as np
 import os
 import sys
 import time
-import tqdm
-import yaml
-
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,7 +35,7 @@ class EvaluateAnnotations():
             gt_labels_ds,
             gt_skeleton_path,
             fragments_file,
-            fragments_ds,
+            fragments_dataset,
             rag_db_config,
             lut_dir,
             roi_offset,
@@ -50,9 +47,9 @@ class EvaluateAnnotations():
 
         self.labels = open_ds(gt_labels_file, gt_labels_ds)
         self.skeletons_file = gt_skeleton_path
-        self.fragments = open_ds(fragments_file, fragments_ds) 
+        self.fragments = open_ds(fragments_file, fragments_dataset) 
         self.db_config = rag_db_config
-        self.lut_dir = lut_dir
+        self.lut_dir = os.path.join(fragments_file,lut_dir,"fragment_segment")
         if roi_offset is not None:
             self.roi = Roi(roi_offset, roi_shape)
         else:
@@ -145,6 +142,9 @@ class EvaluateAnnotations():
                     remove_nodes.append(node)
                 else:
                     assert data['id'] >= 0
+
+        # remove isolated nodes
+        remove_nodes.extend(list(nx.isolates(skels)))
 
         logger.info("Removing %s nodes out of %s in gt skeletons", len(remove_nodes),len(skels.nodes))
         for node in remove_nodes:
@@ -628,6 +628,9 @@ class EvaluateAnnotations():
         #report['merge_stats'] = merge_stats
         #report['split_stats'] = split_stats
 
+        for k in {'voi_split_i', 'voi_merge_j'}:
+            del report[k]
+
         report['voi_sum'] = report['voi_split']+report['voi_merge']
         report['nvi_sum'] = report['nvi_split']+report['nvi_merge']
         
@@ -727,50 +730,10 @@ if __name__ == "__main__":
     with open(config_file, 'r') as f:
         yaml_config = yaml.safe_load(f)
     
-    config = yaml_config["processing"]["extract_segmentation"]
+    config = yaml_config["evaluation"] | {"rag_db_config": yaml_config["db"]}
 
-    frags_file = config["fragments_file"]
-    frags_ds = config["fragments_dataset"]
-    merge_function = config["merge_function"]
-    lut_dir = os.path.join(frags_file,config["lut_dir"],"fragment_segment")
-   
-    result_file = os.path.basename(config_file).split('.')[0]
-    
-    args = {
-        "net_type": frags_ds.split('/')[1],
-        "net_size": frags_ds.split('/')[2],
-        "2d_iteration": frags_ds.split('/')[3].split('_')[-1],
-        "3d_iteration": frags_ds.split('/')[3].split('_')[0],
-        "sparsity": frags_file.split('/')[-1].split('.')[0],
-        "merge_function": merge_function,
-    }
+    evaluate = EvaluateAnnotations(**config)
+    result = evaluate.evaluate()
 
-    gt_labels_file = "/scratch/04101/vvenu/bootstrap/data/oblique.zarr"
-    #gt_labels_ds = "labels/s0"
-    gt_labels_ds = "labels_filtered_relabeled"
-    gt_skeleton_path = "/scratch/04101/vvenu/bootstrap/data/oblique_skels.graphml"
+    print(result)
 
-    results_out_dir = f"/scratch/04101/vvenu/bootstrap/s0_oblique_grid/results/"
-
-    if not os.path.exists(os.path.join(results_out_dir,f"{result_file}.json")):
-
-        roi_offset = None
-        roi_shape = None
-        compute_mincut_metric = True
-
-        evaluate = EvaluateAnnotations(
-                gt_labels_file,
-                gt_labels_ds,
-                gt_skeleton_path,
-                frags_file,
-                frags_ds,
-                yaml_config["db"],
-                lut_dir,
-                roi_offset,
-                roi_shape,
-                compute_mincut_metric)
-        
-        ret = evaluate.evaluate()
-        
-        with open(os.path.join(results_out_dir,f"{result_file}.json"),"w") as f:
-            json.dump(args | ret,f,indent=4)

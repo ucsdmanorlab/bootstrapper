@@ -147,6 +147,7 @@ def train(
 
     #pipeline += SmoothArray(raw)
 
+    pipeline += gp.GrowBoundary(labels, mask=unlabelled, only_xy=True)
     pipeline += AddLocalShapeDescriptor(
             labels,
             gt_lsds,
@@ -156,7 +157,7 @@ def train(
             sigma=sigma,
             downsample=2,
     )
-    pipeline += UnmaskBackground(lsds_weights, labels_mask)
+    #pipeline += UnmaskBackground(lsds_weights, labels_mask)
     pipeline += gp.GrowBoundary(labels, mask=unlabelled, only_xy=True)
 
     pipeline += gp.AddAffinities(
@@ -169,7 +170,7 @@ def train(
         dtype=np.float32,
     )
 
-    pipeline += UnmaskBackground(gt_affs_mask, labels_mask)
+    #pipeline += UnmaskBackground(gt_affs_mask, labels_mask)
     pipeline += gp.BalanceLabels(gt_affs, affs_weights, mask=gt_affs_mask)
 
     pipeline += gp.IntensityScaleShift(raw, 2, -1)
