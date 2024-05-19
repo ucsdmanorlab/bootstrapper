@@ -42,7 +42,6 @@ def compute_errors(
         out_file,
         out_map_dataset,
         out_mask_dataset,
-        #return_arrays=True):
         return_arrays=False):
 
     # array keys
@@ -68,7 +67,6 @@ def compute_errors(
     voxel_size = pred_ds.voxel_size
     sigma = 80
  
-    voxel_size = Coordinate(voxel_size)
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
     context = calc_max_padding(output_size, voxel_size, sigma)
@@ -91,7 +89,7 @@ def compute_errors(
         out_map_dataset,
         total_output_roi,
         voxel_size,
-        np.float32,
+        np.uint8,
         write_size=output_size,
         delete=True) 
     
@@ -136,7 +134,7 @@ def compute_errors(
         pred,
         error_map,
         error_mask,
-        thresholds=(0.25,1.0),
+        thresholds=(0.1,1.0),
         labels_mask=mask,
         sigma=sigma,
         downsample=4,
@@ -145,7 +143,10 @@ def compute_errors(
             error_mask: gp.ArraySpec(interpolatable=False, voxel_size=voxel_size, roi=total_output_roi, dtype=np.uint8)
         } if not return_arrays else None
     )
-    
+   
+    pipeline += gp.IntensityScaleShift(error_map, 255, 0)
+    pipeline += gp.AsType(error_map, np.uint8)
+
     pipeline += gp.ZarrWrite(
             dataset_names={
                 error_map: out_map_dataset,
@@ -199,6 +200,7 @@ if __name__ == "__main__":
 
     start = time.time()
     ret = compute_errors(**config)
+    ret = None
     end = time.time()
 
     seconds = end - start
@@ -218,6 +220,6 @@ if __name__ == "__main__":
 
     for array_key in ret:
         arr = ret[array_key].data
-        stats[str(array_key)] = compute_stats(arr) 
+        stats[str(array_key)] = compute_stats(arr[:]) 
 
     print(stats)
