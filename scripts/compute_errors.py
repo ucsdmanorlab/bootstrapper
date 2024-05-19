@@ -6,21 +6,16 @@ import numpy as np
 import yaml
 import os
 
-from scipy.ndimage import binary_dilation, binary_erosion
-from skimage.morphology import ball, disk
-
 import gunpowder as gp
 from funlib.persistence import prepare_ds, open_ds
 from funlib.geometry import Coordinate, Roi
-from lsd.train.gp import AddLocalShapeDescriptor
 
-from lsd_error_stats import compute_stats 
-
+from add_lsd_errors import AddLSDErrors
 
 logging.basicConfig(level=logging.INFO)
 
 
-def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
+def calc_max_padding(output_size, voxel_size, sigma, mode="grow"):
 
     method_padding = Coordinate((sigma * 3,) * 3)
 
@@ -37,105 +32,7 @@ def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
     return max_padding.get_begin()
 
 
-class ComputeDistance(gp.BatchFilter):
-
-    def __init__(self, a, b, diff, mask):
-
-        self.a = a
-        self.b = b
-        self.diff = diff
-        self.mask = mask
-
-    def setup(self):
-
-        spec = self.spec[self.a].copy()
-        self.provides(
-            self.diff,
-            spec)
-
-    def process(self, batch, request):
-
-        crop_roi = request[self.diff].roi
-
-        a_data = batch[self.a].crop(crop_roi).data
-        b_data = batch[self.b].crop(crop_roi).data
-        mask_data = batch[self.mask].crop(crop_roi).data
-
-        diff_data = np.sum((a_data - b_data)**2, axis=0)
-        diff_data *= mask_data
-
-        spec = batch[self.a].spec.copy()
-        spec.roi = crop_roi
-
-        # normalize
-        epsilon = 1e-10  # a small constant to avoid division by zero
-        max_value = np.max(diff_data)
-
-        if max_value > epsilon:
-            diff_data /= max_value
-        else:
-            diff_data[:] = 0
-
-        batch[self.diff] = gp.Array(
-            diff_data,
-            spec
-        )
-
-
-class Threshold(gp.BatchFilter):
-
-    def __init__(self, i, o, floor=0.0, ceil=1.0, grow=(0,0,0)):
-        self.i = i # input array key
-        self.o = o # output array key
-        self.floor = floor
-        self.ceil = ceil
-        self.grow = Coordinate(grow)
-
-    def setup(self):
-        up_spec = self.spec[self.i].copy()
-        up_spec.dtype = np.uint8
-        self.provides(self.o,up_spec)
-
-    def prepare(self, request):
-
-        roi = request[self.i].roi
-
-        grow = self.grow 
-        grown_roi = roi.grow(grow,grow)
-        grown_roi = request[self.i].roi.union(grown_roi)
-
-        deps = gp.BatchRequest()
-        deps[self.i] = request[self.i].copy()
-        deps[self.i].roi = grown_roi
-        return deps
-    
-    def process(self, batch, request):
-        i_data = batch[self.i].data
-        
-        # threshold
-        o_data = (i_data > self.floor) & (i_data < self.ceil)
-
-        # dilate/erode
-        z_struct = np.stack([ball(1)[0],]*3)
-        xy_struct = np.stack([np.zeros((3,3)),disk(1),np.zeros((3,3))])
-
-        # to join gaps between z-splits in error mask
-        o_data = binary_dilation(o_data, z_struct)
-        o_data = binary_erosion(o_data, z_struct)
-        
-        # to remove minor pixel-wise differences along xy boundaries
-        o_data = binary_erosion(o_data, xy_struct, iterations=4)
-        o_data = binary_dilation(o_data, xy_struct, iterations=4)
-
-        o_data = o_data.astype(np.uint8)
-
-        spec = batch[self.i].spec.copy()
-        spec.dtype = np.uint8
-
-        batch[self.o] = gp.Array(o_data,spec).crop(request[self.o].roi)
-
-
-def compute_lsd_errors(
+def compute_errors(
         seg_file,
         seg_dataset,
         lsds_file,
@@ -145,6 +42,7 @@ def compute_lsd_errors(
         out_file,
         out_map_dataset,
         out_mask_dataset,
+        #return_arrays=True):
         return_arrays=False):
 
     # array keys
@@ -153,7 +51,7 @@ def compute_lsd_errors(
     mask = gp.ArrayKey('MASK')
     seg_lsds = gp.ArrayKey('SEG_LSDS')
     error_map = gp.ArrayKey('LSD_ERROR_MAP')
-    error_mask = gp.ArrayKey('ERROR_MASK')
+    error_mask = gp.ArrayKey('LSD_ERROR_MASK')
 
     # get rois
     pred_ds = open_ds(lsds_file,lsds_dataset)
@@ -164,13 +62,11 @@ def compute_lsd_errors(
     print(f"seg roi: {seg_roi}, pred_roi: {pred_roi}, mask_roi: {mask_roi}, intersection: {roi}")
 
     # io shapes
-    xy_increase = 0
-    input_shape = [32, 160 + xy_increase, 160 + xy_increase]
-    output_shape = [8, 100 + xy_increase, 100 + xy_increase]
+    output_shape = Coordinate(pred_ds.chunk_shape[1:]) / 2
+    input_shape = Coordinate(pred_ds.chunk_shape[1:])
 
     voxel_size = pred_ds.voxel_size
     sigma = 80
-    erode_grow = Coordinate((1,4,4)) * voxel_size
  
     voxel_size = Coordinate(voxel_size)
     input_size = Coordinate(input_shape) * voxel_size
@@ -229,24 +125,27 @@ def compute_lsd_errors(
 
     pipeline = sources + gp.MergeProvider()
 
-    pipeline += gp.Pad(seg, context)
+    pipeline += gp.Pad(seg, None)
+    pipeline += gp.Pad(pred, None)
+    pipeline += gp.Pad(mask, None)
     pipeline += gp.Normalize(pred)
 
-    pipeline += AddLocalShapeDescriptor(
+    pipeline += AddLSDErrors(
         seg,
-        seg_lsds,
-        sigma=sigma,
-        downsample=4)
-    
-    pipeline += ComputeDistance(
         seg_lsds,
         pred,
         error_map,
-        mask,
+        error_mask,
+        thresholds=(0.25,1.0),
+        labels_mask=mask,
+        sigma=sigma,
+        downsample=4,
+        array_specs={
+            error_map: gp.ArraySpec(interpolatable=False, voxel_size=voxel_size, roi=total_output_roi),
+            error_mask: gp.ArraySpec(interpolatable=False, voxel_size=voxel_size, roi=total_output_roi, dtype=np.uint8)
+        } if not return_arrays else None
     )
-
-    pipeline += Threshold(error_map, error_mask, floor=0.3, grow=erode_grow) # 90% confidence
-
+    
     pipeline += gp.ZarrWrite(
             dataset_names={
                 error_map: out_map_dataset,
@@ -273,6 +172,22 @@ def compute_lsd_errors(
             pipeline.request_batch(predict_request)
         
 
+def compute_stats(array):
+
+    total_voxels = int(np.prod(array.shape))
+    num_nonzero_voxels = array[array > 0].size 
+    mean = np.mean(array)
+    std = np.std(array)
+    
+    return {
+        'mean': mean,
+        'std': std,  
+        'num_nonzero_voxels': num_nonzero_voxels,
+        'total_voxels': total_voxels,
+        'nonzero_ratio' : num_nonzero_voxels / total_voxels,
+    }
+
+
 if __name__ == "__main__":
 
     config_file = sys.argv[1]
@@ -283,23 +198,26 @@ if __name__ == "__main__":
     config = yaml_config["processing"]["compute_lsd_errors"]
 
     start = time.time()
-    arrays = compute_lsd_errors(**config).arrays
+    ret = compute_errors(**config)
     end = time.time()
 
     seconds = end - start
     logging.info(f'Total time to compute LSD errors: {seconds}')
 
-    arrays = {
-            'lsd_error_map': open_ds(config['out_file'],config['out_map_dataset']),
-            'lsd_error_mask': open_ds(config['out_file'],config['out_mask_dataset']),
-    }
+    # compute LSD error statistics
+    if ret is None:
+        ret = {
+            'LSD_ERROR_MAP': open_ds(config['out_file'],config['out_map_dataset']),
+            'LSD_ERROR_MASK': open_ds(config['out_file'],config['out_mask_dataset'])
+        }
+    else:
+        ret = ret.arrays
 
-    if arrays is not None:
-        logging.info("Computing LSD Error statistics..")
-        stats = {}
+    logging.info("Computing LSD Error statistics..")
+    stats = {}
 
-        for array_key in arrays:
-            arr = arrays[array_key].data
-            stats[str(array_key)] = compute_stats(arr) 
+    for array_key in ret:
+        arr = ret[array_key].data
+        stats[str(array_key)] = compute_stats(arr) 
 
-        print(stats)
+    print(stats)
