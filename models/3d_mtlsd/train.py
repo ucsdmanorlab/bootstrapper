@@ -26,7 +26,6 @@ def train(
         samples,
         raw_datasets,
         labels_datasets,
-        labels_mask_datasets,
         unlabelled_mask_datasets,
         out_dir,
         save_checkpoints_every,
@@ -35,7 +34,6 @@ def train(
     # array keys
     raw = gp.ArrayKey("RAW")
     labels = gp.ArrayKey("LABELS")
-    labels_mask = gp.ArrayKey("LABELS_MASK")
     unlabelled = gp.ArrayKey("UNLABELLED")
     
     gt_lsds = gp.ArrayKey("GT_LSDS")
@@ -71,7 +69,6 @@ def train(
         samples[i]: {
             'raw': raw_datasets[i],
             'labels': labels_datasets[i],
-            'labels_mask': labels_mask_datasets[i],
             'unlabelled': unlabelled_mask_datasets[i]
         }
         for i in range(len(samples))
@@ -86,7 +83,6 @@ def train(
 
     request = gp.BatchRequest()
     request.add(raw, input_size)
-    request.add(labels_mask, output_size)
     request.add(gt_lsds, output_size)
     request.add(lsds_weights, output_size)
     request.add(pred_lsds, output_size)
@@ -101,23 +97,20 @@ def train(
             {
                 raw: samples[sample]['raw'],
                 labels: samples[sample]['labels'],
-                labels_mask: samples[sample]['labels_mask'],
                 unlabelled: samples[sample]['unlabelled']
             },
             {
                 raw: gp.ArraySpec(interpolatable=True),
                 labels: gp.ArraySpec(interpolatable=False),
-                labels_mask: gp.ArraySpec(interpolatable=False),
                 unlabelled: gp.ArraySpec(interpolatable=False),
             },
         )
         + gp.Normalize(raw)
         + gp.Pad(raw, None)
         + gp.Pad(labels, context)
-        + gp.Pad(labels_mask, context)
         + gp.Pad(unlabelled, context)
         + gp.RandomLocation()
-        + gp.Reject(mask=unlabelled, min_masked=0.5, reject_probability=0.9999)
+        + gp.Reject(mask=unlabelled, min_masked=0.4, reject_probability=0.999)
         for sample in samples
     )
     
@@ -147,30 +140,25 @@ def train(
 
     #pipeline += SmoothArray(raw)
 
-    pipeline += gp.GrowBoundary(labels, mask=unlabelled, only_xy=True)
     pipeline += AddLocalShapeDescriptor(
             labels,
             gt_lsds,
-            labels_mask=labels_mask,
             unlabelled=unlabelled,
             lsds_mask=lsds_weights,
             sigma=sigma,
-            downsample=2,
+            downsample=4,
     )
-    #pipeline += UnmaskBackground(lsds_weights, labels_mask)
-    pipeline += gp.GrowBoundary(labels, mask=unlabelled, only_xy=True)
+    pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=2, only_xy=True)
 
     pipeline += gp.AddAffinities(
         affinity_neighborhood=[[-1, 0, 0], [0, -1, 0], [0, 0, -1]],
         labels=labels,
         affinities=gt_affs,
-        labels_mask=labels_mask,
         unlabelled=unlabelled,
         affinities_mask=gt_affs_mask,
         dtype=np.float32,
     )
 
-    #pipeline += UnmaskBackground(gt_affs_mask, labels_mask)
     pipeline += gp.BalanceLabels(gt_affs, affs_weights, mask=gt_affs_mask)
 
     pipeline += gp.IntensityScaleShift(raw, 2, -1)
@@ -242,7 +230,7 @@ if __name__ == "__main__":
     config["setup_dir"] = setup_dir
 
     assert len(config["samples"]) == len(config["raw_datasets"]) == \
-        len(config["labels_datasets"]) == len(config["labels_mask_datasets"]) == \
+        len(config["labels_datasets"]) == \
         len(config["unlabelled_mask_datasets"]), \
         "number of samples and datasets do not match"
 

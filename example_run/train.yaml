@@ -1,8 +1,19 @@
-# Example train config 
+# Example train configs for example models 
   
 train:  
   2d_model:
     setup_dir: "models/2d_model"
+    samples: ["data/example_volume.zarr"]
+    raw_datasets: ["raw/s0"]
+    labels_datasets: ["labels/s0"]
+    mask_datasets: ["labels_mask/s0"]
+    max_iterations: 30000
+    out_dir: "example_run"
+    save_checkpoints_every: 5000
+    save_snapshots_every: 1000
+  
+  2d_model_3ch:
+    setup_dir: "models/2d_model_3ch"
     samples: ["data/example_volume.zarr"]
     raw_datasets: ["raw/s0"]
     labels_datasets: ["labels/s0"]
@@ -18,10 +29,27 @@ train:
     out_dir: "models/2d_to_3d_model"
     save_checkpoints_every: 5000
     save_snapshots_every: 1000
-
   
-  3d_model:
-    setup_dir: "models/3d_model"
+  3d_lsd_to_affs:
+    setup_dir: "models/3d_lsd_to_affs"
+    max_iterations: 20000
+    out_dir: "models/3d_lsd_to_affs"
+    save_checkpoints_every: 1000
+    save_snapshots_every: 1000
+  
+  3d_mtlsd:
+    setup_dir: "models/3d_mtlsd"
+    samples: ["data/example_volume.zarr"]
+    raw_datasets: ["image/s0"]
+    labels_datasets: ["post/segmentations/mean/50"]
+    mask_datasets: ["post/mask/example"]
+    max_iterations: 20000
+    out_dir: "example_run"
+    save_checkpoints_every: 5000
+    save_snapshots_every: 1000
+  
+  3d_lsd:
+    setup_dir: "models/3d_lsd"
     samples: ["data/example_volume.zarr"]
     raw_datasets: ["image/s0"]
     labels_datasets: ["post/segmentations/mean/50"]
