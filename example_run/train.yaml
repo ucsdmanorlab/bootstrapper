@@ -1,8 +1,8 @@
 # Example train configs for example models 
   
 train:  
-  2d_model:
-    setup_dir: "models/2d_model"
+  2d_mtlsd:
+    setup_dir: "models/2d_mtlsd"
     samples: ["data/example_volume.zarr"]
     raw_datasets: ["raw/s0"]
     labels_datasets: ["labels/s0"]
@@ -12,8 +12,8 @@ train:
     save_checkpoints_every: 5000
     save_snapshots_every: 1000
   
-  2d_model_3ch:
-    setup_dir: "models/2d_model_3ch"
+  2d_mtlsd_3ch:
+    setup_dir: "models/2d_mtlsd_3ch"
     samples: ["data/example_volume.zarr"]
     raw_datasets: ["raw/s0"]
     labels_datasets: ["labels/s0"]
@@ -23,11 +23,11 @@ train:
     save_checkpoints_every: 5000
     save_snapshots_every: 1000
 
-  2d_to_3d_model:
-    setup_dir: "models/2d_to_3d_model"
-    max_iterations: 30000
-    out_dir: "models/2d_to_3d_model"
-    save_checkpoints_every: 5000
+  2d_mtlsd_to_affs:
+    setup_dir: "models/2d_mtlsd_to_affs"
+    max_iterations: 20000
+    out_dir: "models/2d_mtlsd_to_affs"
+    save_checkpoints_every: 1000
     save_snapshots_every: 1000
   
   3d_lsd_to_affs:

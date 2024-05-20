@@ -11,7 +11,7 @@ import daisy
 from funlib.geometry import Coordinate, Roi
 from funlib.persistence import prepare_ds
 
-from model import MtlsdModel
+from model import LsdModel
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -42,7 +42,7 @@ def predict(config):
     output_size = Coordinate(output_shape) * voxel_size
     context = (input_size - output_size) // 2
     
-    model = MtlsdModel()
+    model = LsdModel()
     model.eval()
 
     raw = gp.ArrayKey('RAW')

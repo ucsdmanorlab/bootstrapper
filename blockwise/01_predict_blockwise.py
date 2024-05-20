@@ -98,16 +98,18 @@ def predict_blockwise(config: dict):
     for output_name, val in outputs.items():
         out_dims = val["out_dims"]
         out_dtype = val["out_dtype"]
-   
-        if "2d_model" in setup_dir:
-            assert len(raw_datasets) == 1
-            out_dataset = os.path.join(out_prefix,raw_datasets[0],f"{output_name}_{iteration}")
+ 
+        # pred to pred
+        if "_to_" in setup_dir:
+            if "mtlsd_to_" in setup_dir:
+                assert len(raw_datasets) == 2, f"{setup_dir} takes two inputs: LSDs and Affinities."
+            else:
+                assert len(raw_datasets) == 1
 
-        elif "2d_to_3d_model" in setup_dir:
-            assert len(raw_datasets) == 2, f"{setup_dir} takes two inputs: stacked 2D LSDs and stacked 2D Affinities."
             out_dataset = f"{out_prefix}/{output_name}_{iteration}_from_{raw_datasets[0].split('_')[-1]}" 
 
-        elif "3d_model" in setup_dir:
+        # image to pred
+        else:
             assert len(raw_datasets) == 1
             out_dataset = f"{out_prefix}/{output_name}_{iteration}"
 
