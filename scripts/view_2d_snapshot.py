@@ -5,7 +5,7 @@ import sys
 import zarr
 
 # set bind address if accessing remotely
-neuroglancer.set_server_bind_address('localhost',bind_port=4443)
+neuroglancer.set_server_bind_address('localhost',bind_port=3336)
 
 # path to snapshots/batch_{i}.zarr after training for i iterations
 f = zarr.open(sys.argv[1])
@@ -13,7 +13,11 @@ f = zarr.open(sys.argv[1])
 # get all datasets saved in snapshot
 datasets = [i for i in os.listdir(sys.argv[1]) if "." not in i]
 
-res = f[datasets[0]].attrs["resolution"][1:]
+shape = f[datasets[-1]].shape
+
+res = f[datasets[-1]].attrs["resolution"]
+if len(res) == 3:
+    res = res[-2:]
 
 viewer = neuroglancer.Viewer()
 
@@ -27,17 +31,23 @@ dims = neuroglancer.CoordinateSpace(
 with viewer.txn() as s:
     for ds in datasets:
         print(ds)
-        offset = f[ds].attrs["offset"][1:]
+        # load data to numpy array
+        data = f[ds][:]
+        
+        res = f[ds].attrs["resolution"]
+        offset = f[ds].attrs["offset"]
+
+        if ds != "raw" and len(data.shape) == 5:
+            data = np.squeeze(data,axis=-3)
+            offset = offset[1:]
+            res = res[1:]
+        elif ds == "raw" and len(data.shape) == 4 and len(res) == 3:
+            res = res[1:]
 
         # add a dummy batch and channel dim
         offset = [
             0,
         ] * 2 + [int(i / j) for i, j in zip(offset, res)]
-
-        # load data to numpy array
-        data = f[ds][:]
-        if ds != "raw":
-            data = np.squeeze(data,axis=-3)
 
         shader = """
 void main() {

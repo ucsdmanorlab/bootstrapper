@@ -4,7 +4,7 @@ import logging
 import numpy as np
 import time
 
-from scipy.ndimage import binary_dilation, binary_erosion
+from scipy.ndimage import binary_erosion, binary_dilation
 from skimage.morphology import ball, disk
 
 logger = logging.getLogger(__name__)
@@ -252,13 +252,13 @@ class AddLSDErrors(BatchFilter):
         z_struct = np.stack([ball(1)[0],]*3)
         xy_struct = np.stack([np.zeros((3,3)),disk(1),np.zeros((3,3))])
 
-        # to join gaps between z-splits in error mask
-        o_data = binary_dilation(o_data, z_struct)
-        o_data = binary_erosion(o_data, z_struct)
-        
         # to remove minor pixel-wise differences along xy boundaries
         o_data = binary_erosion(o_data, xy_struct, iterations=4)
         o_data = binary_dilation(o_data, xy_struct, iterations=4)
+
+        # to join gaps between z-splits in error mask
+        o_data = binary_dilation(o_data, z_struct)
+        o_data = binary_erosion(o_data, z_struct)
 
         o_data = o_data.astype(np.uint8)
         return o_data

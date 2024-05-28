@@ -5,7 +5,7 @@ import sys
 import webbrowser
 import zarr
 
-neuroglancer.set_server_bind_address('localhost', bind_port=4443)
+neuroglancer.set_server_bind_address('localhost', bind_port=3336)
 
 f = zarr.open(sys.argv[1])
 

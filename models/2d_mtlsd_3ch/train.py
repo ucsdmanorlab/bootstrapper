@@ -50,7 +50,7 @@ def train(
     model = MtlsdModel(stack_infer=True)
     model.train()
     loss = WeightedMSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-4)
     batch_size = 10
 
     # load net config
@@ -147,7 +147,7 @@ def train(
             downsample=2,
     )
 
-    pipeline += gp.GrowBoundary(labels, mask=unlabelled, only_xy=True)
+    pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=2, only_xy=True)
 
     pipeline += CustomAffs(
         affinity_neighborhood=[[-1, 0, 0], [0, -1, 0], [0, 0, -1]],

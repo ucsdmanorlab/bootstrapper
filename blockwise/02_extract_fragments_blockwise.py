@@ -140,7 +140,7 @@ def extract_fragments(
     if 'block_size' in config and config['block_size'] is not None:
         block_size = Coordinate(config["block_size"])
     else:
-        block_size = Coordinate(affs.chunk_shape[1:]) * voxel_size * 2
+        block_size = Coordinate(affs.chunk_shape[1:]) * voxel_size
 
     if 'context' in config and config['context'] is not None:
         context = Coordinate(config["context"])

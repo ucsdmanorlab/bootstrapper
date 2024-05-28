@@ -26,7 +26,7 @@ def train(
         samples,
         raw_datasets,
         labels_datasets,
-        unlabelled_mask_datasets,
+        mask_datasets,
         out_dir,
         save_checkpoints_every,
         save_snapshots_every,
@@ -69,7 +69,7 @@ def train(
         samples[i]: {
             'raw': raw_datasets[i],
             'labels': labels_datasets[i],
-            'unlabelled': unlabelled_mask_datasets[i]
+            'unlabelled': mask_datasets[i]
         }
         for i in range(len(samples))
     }
@@ -146,7 +146,7 @@ def train(
             unlabelled=unlabelled,
             lsds_mask=lsds_weights,
             sigma=sigma,
-            downsample=4,
+            downsample=2,
     )
     pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=2, only_xy=True)
 
@@ -231,7 +231,7 @@ if __name__ == "__main__":
 
     assert len(config["samples"]) == len(config["raw_datasets"]) == \
         len(config["labels_datasets"]) == \
-        len(config["unlabelled_mask_datasets"]), \
+        len(config["mask_datasets"]), \
         "number of samples and datasets do not match"
 
     train(**config)

@@ -87,6 +87,7 @@ def extract_segmentation(
             voxel_size=voxel_size,
             dtype=np.uint64,
             write_roi=write_roi,
+            compressor={"id": "blosc", "clevel": 5},
             delete=True,
         )
 

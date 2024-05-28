@@ -61,8 +61,8 @@ def compute_errors(
     print(f"seg roi: {seg_roi}, pred_roi: {pred_roi}, mask_roi: {mask_roi}, intersection: {roi}")
 
     # io shapes
-    output_shape = Coordinate(pred_ds.chunk_shape[1:]) / 2
-    input_shape = Coordinate(pred_ds.chunk_shape[1:])
+    output_shape = Coordinate(pred_ds.chunk_shape[1:])
+    input_shape = Coordinate(pred_ds.chunk_shape[1:]) * 2
 
     voxel_size = pred_ds.voxel_size
     sigma = 80
@@ -134,7 +134,7 @@ def compute_errors(
         pred,
         error_map,
         error_mask,
-        thresholds=(0.1,1.0),
+        thresholds=(0.09,1.0),
         labels_mask=mask,
         sigma=sigma,
         downsample=4,
@@ -154,7 +154,7 @@ def compute_errors(
             },
             store=out_file
         )
-    pipeline += gp.Scan(chunk_request, num_workers=20)
+    pipeline += gp.Scan(chunk_request, num_workers=40)
 
     # request
     predict_request = gp.BatchRequest()
