@@ -12,7 +12,7 @@ import gunpowder as gp
 
 from lsd.train.gp import AddLocalShapeDescriptor
 from model import AffsUNet, WeightedMSELoss
-from utils import CreateLabels, SmoothArray, IntensityAugment
+from utils import CreateLabels, SmoothArray, IntensityAugment, CustomGrowBoundary
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -27,6 +27,7 @@ def init_weights(m):
 
 def train(
         setup_dir,
+        voxel_size,
         max_iterations,
         out_dir,
         save_checkpoints_every,
@@ -37,7 +38,7 @@ def train(
     model.apply(init_weights)
     model.train()
     loss = WeightedMSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.5e-4)
+    optimizer = torch.optim.RAdam(model.parameters(), lr=0.5e-4)
 
     labels = gp.ArrayKey("SYNTHETIC_LABELS")
     input_lsds = gp.ArrayKey("INPUT_3D_LSDS")
@@ -66,7 +67,7 @@ def train(
         output_shape = [x + y for x,y in zip(shape_increase,net_config["output_shape"])]
     print(output_shape)
 
-    voxel_size = gp.Coordinate(net_config['voxel_size']) 
+    voxel_size = gp.Coordinate(voxel_size) 
     input_size = gp.Coordinate(input_shape) * voxel_size
     output_size = gp.Coordinate(output_shape) * voxel_size
     
@@ -100,6 +101,7 @@ def train(
     )
 
     # do this on non eroded labels - that is what predicted lsds will look like
+    pipeline += CustomGrowBoundary(labels, max_steps=3, only_xy=True)
     pipeline += AddLocalShapeDescriptor(
             labels,
             input_lsds,
@@ -121,7 +123,7 @@ def train(
     pipeline += SmoothArray(input_lsds, (0.75,2.0))
     
     # now we erode - we want the gt affs to have a pixel boundary
-    pipeline += gp.GrowBoundary(labels, steps=2, only_xy=True)
+    pipeline += gp.GrowBoundary(labels, steps=1, only_xy=True)
 
     pipeline += gp.AddAffinities(
         affinity_neighborhood=neighborhood,
