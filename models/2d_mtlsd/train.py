@@ -145,10 +145,10 @@ def train(
             unlabelled=unlabelled,
             lsds_mask=lsds_weights,
             sigma=(0,sigma,sigma),
-            downsample=2,
+            downsample=4,
     )
 
-    pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=2, only_xy=True)
+    pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=1, only_xy=True)
 
     pipeline += CustomAffs(
         affinity_neighborhood=[[-1, 0, 0], [0, -1, 0], [0, 0, -1]],

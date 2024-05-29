@@ -101,7 +101,7 @@ def train(
     )
 
     # do this on non eroded labels - that is what predicted lsds will look like
-    pipeline += CustomGrowBoundary(labels, max_steps=3, only_xy=True)
+    pipeline += CustomGrowBoundary(labels, max_steps=1, only_xy=True)
     pipeline += AddLocalShapeDescriptor(
             labels,
             input_lsds,

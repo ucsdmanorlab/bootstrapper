@@ -133,7 +133,6 @@ def train(
     )
 
     #pipeline += SmoothArray(raw)
-    pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=2, only_xy=True)
 
     pipeline += AddLocalShapeDescriptor(
             labels,
@@ -141,7 +140,7 @@ def train(
             unlabelled=unlabelled,
             lsds_mask=lsds_weights,
             sigma=sigma,
-            downsample=2,
+            downsample=4,
     )
 
     pipeline += gp.IntensityScaleShift(raw, 2, -1)

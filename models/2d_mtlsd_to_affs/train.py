@@ -101,8 +101,12 @@ def train(
         subsample=4,
         spatial_dims=3,
     )
+    
+    pipeline += CustomLSDs(
+        labels, input_lsds, sigma=80, downsample=4
+    )
 
-    pipeline += CustomGrowBoundary(labels, max_steps=3, only_xy=True)
+    pipeline += CustomGrowBoundary(labels, max_steps=1, only_xy=True)
 
     # that is what predicted affs will look like
     pipeline += CustomAffs(
@@ -112,10 +116,6 @@ def train(
         dtype=np.float32,
     )
     
-    pipeline += CustomLSDs(
-        labels, input_lsds, sigma=80, downsample=4
-    )
-
     # add random noise
     pipeline += gp.NoiseAugment(input_affs)
     pipeline += gp.NoiseAugment(input_lsds)
