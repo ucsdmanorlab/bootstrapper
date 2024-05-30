@@ -23,6 +23,7 @@ torch.backends.cudnn.benchmark = True
 def train(
         setup_dir,
         voxel_size,
+        sigma,
         max_iterations,
         samples,
         raw_datasets,
@@ -79,7 +80,6 @@ def train(
     input_size = gp.Coordinate((3,*input_shape)) * voxel_size
     output_size = gp.Coordinate((1,*output_shape)) * voxel_size
     context = (input_size - output_size) / 2
-    sigma = net_config['sigma']
 
     print(input_size, output_size, context)
 

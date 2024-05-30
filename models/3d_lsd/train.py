@@ -22,6 +22,7 @@ torch.backends.cudnn.benchmark = True
 def train(
         setup_dir,
         voxel_size,
+        sigma,
         max_iterations,
         samples,
         raw_datasets,
@@ -57,7 +58,6 @@ def train(
     shape_increase = [0,0,0] #net_config["shape_increase"]
     input_shape = [x + y for x,y in zip(shape_increase,net_config["input_shape"])]
     output_shape = [x + y for x,y in zip(shape_increase,net_config["output_shape"])]
-    sigma = net_config['sigma']
 
     # prepare samples
     samples = {

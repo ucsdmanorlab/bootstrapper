@@ -8,6 +8,7 @@ train:
     labels_datasets: ["labels/s0"]
     mask_datasets: ["labels_mask/s0"]
     voxel_size: [50, 2, 2]
+    sigma: 80
     max_iterations: 30000
     out_dir: "example_run"
     save_checkpoints_every: 5000
@@ -20,6 +21,7 @@ train:
     labels_datasets: ["labels/s0"]
     mask_datasets: ["labels_mask/s0"]
     voxel_size: [50, 2, 2]
+    sigma: 80
     max_iterations: 30000
     out_dir: "example_run"
     save_checkpoints_every: 5000
@@ -28,6 +30,7 @@ train:
   2d_mtlsd_to_affs:
     setup_dir: "models/2d_mtlsd_to_affs"
     voxel_size: [50, 2, 2]
+    sigma: 80
     max_iterations: 10000
     out_dir: "models/2d_mtlsd_to_affs"
     save_checkpoints_every: 1000
@@ -36,6 +39,7 @@ train:
   3d_lsd_to_affs:
     setup_dir: "models/3d_lsd_to_affs"
     voxel_size: [50, 2, 2]
+    sigma: 80
     max_iterations: 10000
     out_dir: "models/3d_lsd_to_affs"
     save_checkpoints_every: 1000
@@ -48,6 +52,7 @@ train:
     labels_datasets: ["post/segmentations/mean/50"]
     mask_datasets: ["post/mask/example"]
     voxel_size: [50, 2, 2]
+    sigma: 80
     max_iterations: 20000
     out_dir: "example_run"
     save_checkpoints_every: 5000
@@ -60,6 +65,7 @@ train:
     labels_datasets: ["post/segmentations/mean/50"]
     mask_datasets: ["post/mask/example"]
     voxel_size: [50, 2, 2]
+    sigma: 80
     max_iterations: 20000
     out_dir: "example_run"
     save_checkpoints_every: 5000

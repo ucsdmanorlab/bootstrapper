@@ -15,7 +15,6 @@
     "input_shape": [20, 212, 212],
     "output_shape": [4, 120, 120],
     "shape_increase": [0, 240, 240],
-    "sigma": 80,
     "outputs": {
         "3d_lsds": {"out_dtype": "uint8", "out_dims": 10},
         "3d_affs": {"out_dtype": "uint8", "out_dims": 3}}

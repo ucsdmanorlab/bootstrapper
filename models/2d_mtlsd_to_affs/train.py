@@ -27,6 +27,7 @@ def init_weights(m):
 def train(
         setup_dir,
         voxel_size,
+        sigma,
         max_iterations,
         out_dir,
         save_checkpoints_every,
@@ -103,10 +104,10 @@ def train(
     )
     
     pipeline += CustomLSDs(
-        labels, input_lsds, sigma=80, downsample=4
+        labels, input_lsds, sigma=sigma, downsample=4
     )
 
-    pipeline += CustomGrowBoundary(labels, max_steps=1, only_xy=True)
+    pipeline += CustomGrowBoundary(labels, max_steps=2, only_xy=True)
 
     # that is what predicted affs will look like
     pipeline += CustomAffs(

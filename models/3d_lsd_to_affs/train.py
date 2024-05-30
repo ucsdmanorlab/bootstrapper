@@ -28,6 +28,7 @@ def init_weights(m):
 def train(
         setup_dir,
         voxel_size,
+        sigma,
         max_iterations,
         out_dir,
         save_checkpoints_every,
@@ -105,7 +106,7 @@ def train(
     pipeline += AddLocalShapeDescriptor(
             labels,
             input_lsds,
-            sigma=80,
+            sigma=sigma,
             downsample=4,
     )
 
