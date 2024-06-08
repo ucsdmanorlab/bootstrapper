@@ -1,0 +1,14 @@
+# Example train configs for example models 
+  
+train:  
+    setup_dir: "models/2d_mtlsd"
+    samples: ["data/example_volume.zarr"]
+    raw_datasets: ["raw/s0"]
+    labels_datasets: ["labels/s0"]
+    mask_datasets: ["labels_mask/s0"]
+    voxel_size: [50, 2, 2]
+    sigma: 80
+    max_iterations: 30000
+    out_dir: "example_run"
+    save_checkpoints_every: 5000
+    save_snapshots_every: 1000

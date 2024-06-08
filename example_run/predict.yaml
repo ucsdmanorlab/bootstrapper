@@ -11,6 +11,7 @@ predict:
     out_file: "example_run/example_volume.zarr"
     out_prefix: "predictions"
     num_workers: 8
+    num_gpus: 1
     num_cache_workers: 1
   
   2d_mtlsd_to_affs:
@@ -23,6 +24,7 @@ predict:
     out_file: "example_run/example_volume.zarr"
     out_prefix: "predictions"
     num_workers: 12
+    num_gpus: 1
     num_cache_workers: 1
 
   3d_mtlsd:
@@ -35,4 +37,5 @@ predict:
     out_file: "data/example_volume.zarr"
     out_prefix: "predictions"
     num_workers: 8
+    num_gpus: 1
     num_cache_workers: 1

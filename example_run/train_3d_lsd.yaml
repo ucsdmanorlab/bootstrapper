@@ -1,0 +1,15 @@
+# Example train configs for example models 
+  
+train:  
+  3d_lsd:
+    setup_dir: "models/3d_lsd"
+    samples: ["data/example_volume.zarr"]
+    raw_datasets: ["image/s0"]
+    labels_datasets: ["post/segmentations/mean/50"]
+    mask_datasets: ["post/mask/example"]
+    voxel_size: [50, 2, 2]
+    sigma: 80
+    max_iterations: 20000
+    out_dir: "example_run"
+    save_checkpoints_every: 5000
+    save_snapshots_every: 1000
