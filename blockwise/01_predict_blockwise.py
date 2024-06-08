@@ -10,6 +10,7 @@ import os
 import re
 import time
 import subprocess
+import pprint
 
 from pathlib import Path
 from funlib.geometry import Roi, Coordinate
@@ -17,12 +18,10 @@ from funlib.persistence import open_ds, prepare_ds
 
 logging.getLogger().setLevel(logging.INFO)
 
-NUM_GPUS = 4
-
 
 def predict_blockwise(config: dict):
 
-    print(config)
+    pprint.pp(config)
 
     setup_dir = config["setup_dir"]
     checkpoint = config["checkpoint"]
@@ -158,7 +157,7 @@ def start_worker(config: dict, worker: str):
     config_file = Path(config["out_file"]) / "config.json"
 
     worker_id = daisy.Context.from_env()["worker_id"]
-    os.environ["CUDA_VISIBLE_DEVICES"] = f"{int(worker_id) % NUM_GPUS}"
+    os.environ["CUDA_VISIBLE_DEVICES"] = f"{int(worker_id) % config['num_gpus']}"
    
     with open(config_file, "w") as f:
         json.dump(config, f)

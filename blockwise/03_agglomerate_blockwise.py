@@ -91,7 +91,7 @@ def agglomerate(
     if 'block_size' in config and config['block_size'] is not None:
         block_size = Coordinate(config["block_size"])
     else:
-        block_size = fragments.chunk_shape * 4 * fragments.voxel_size
+        block_size = fragments.chunk_shape * fragments.voxel_size
 
     if 'context' in config and config['context'] is not None:
         context = Coordinate(config["context"])
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     with open(config_file, 'r') as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["processing"]["agglomerate"] | yaml_config["db"]
+    config = yaml_config["processing"]["hglom_segment"] | yaml_config["db"]
 
     start = time.time()
     agglomerate(config)

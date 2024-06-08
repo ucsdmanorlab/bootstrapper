@@ -164,14 +164,15 @@ def agglomerate_worker(input_config):
     # open RAG DB
     logging.info("Opening RAG DB...")
     
-    if 'rag_path' in config:  
+    if 'db_file' in config:  
         # SQLiteGraphDatabase
         rag_provider = SQLiteGraphDataBase(
-            Path(config['rag_path']),
-            position_attributes=["center_z", "center_y", "center_x"],
+            db_file=Path(config['db_file']),
+            position_attribute="center",
             mode="r+",
             nodes_table=config['nodes_table'],
             edges_table=config['edges_table'],
+            node_attrs={"center": Vec(int,3)},
             edge_attrs={"merge_score": float, "agglomerated": bool}
         )
         logging.info("Using SQLiteGraphDatabase")

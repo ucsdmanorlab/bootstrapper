@@ -11,6 +11,7 @@ import os
 import pymongo
 import sys
 import time
+import pprint
 
 from pathlib import Path
 from funlib.geometry import Coordinate, Roi
@@ -108,7 +109,7 @@ def extract_fragments(
 
     '''
 
-    print(config)
+    pprint.pp(config)
 
     # Extract parameters from the config dictionary
     affs_file = config['affs_file']
@@ -140,12 +141,13 @@ def extract_fragments(
     if 'block_size' in config and config['block_size'] is not None:
         block_size = Coordinate(config["block_size"])
     else:
-        block_size = Coordinate(affs.chunk_shape[1:]) * voxel_size
+        block_size = Coordinate(affs.chunk_shape[1:]) * 2 * voxel_size
 
     if 'context' in config and config['context'] is not None:
         context = Coordinate(config["context"])
     else:
         context = Coordinate([0,] * affs.roi.dims)
+        #context = Coordinate(affs.chunk_shape[1:]) * voxel_size / 4
 
     if 'roi_offset' in config and 'roi_shape' in config:
         roi_offset = config['roi_offset']
@@ -182,7 +184,7 @@ def extract_fragments(
         voxel_size=voxel_size,
         dtype=np.uint64,
         write_size=write_roi.shape,
-        force_exact_write_size=False,
+        force_exact_write_size=True,
         compressor={"id": "blosc", "clevel": 5},
         delete=True,
     )
@@ -192,14 +194,15 @@ def extract_fragments(
 
     # Create / Open RAG DB
     logging.info(msg="Creating RAG DB...")
-    if 'rag_path' in config:  
+    if 'db_file' in config:  
         # SQLiteGraphDatabase
         rag_provider = SQLiteGraphDataBase(
-            Path(config['rag_path']),
-            position_attributes=["center_z", "center_y", "center_x"],
+            position_attribute="center",
+            db_file=Path(config['db_file']),
             mode="w",
             nodes_table=config['nodes_table'],
             edges_table=config['edges_table'],
+            node_attrs={"center": Vec(int,3)},
             edge_attrs={"merge_score": float, "agglomerated": bool}
         )
         rag_provider.con.close() 
@@ -285,7 +288,7 @@ if __name__ == "__main__":
     with open(config_file, 'r') as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["processing"]["extract_fragments"] | yaml_config["db"]
+    config = yaml_config["processing"]["hglom_segment"] | yaml_config["db"]
 
     start = time.time()
     extract_fragments(config)

@@ -55,7 +55,7 @@ def find_segments(
     thresholds_minmax = config['thresholds_minmax']
     thresholds_step = config['thresholds_step']
     merge_function = config['merge_function']
-    num_workers = config['num_workers']
+    num_workers = max(4, config['num_workers']) 
 
     logging.info("Reading fragments")
     start: float = time.time()
@@ -76,14 +76,15 @@ def find_segments(
 
     logging.info("Opening RAG DB...")
     
-    if 'rag_path' in config:  
+    if 'db_file' in config:  
         # SQLiteGraphDatabase
         graph_provider = SQLiteGraphDataBase(
-            Path(config['rag_path']),
-            position_attributes=["center_z", "center_y", "center_x"],
+            position_attribute="center",
+            db_file=Path(config['db_file']),
             mode="r",
             nodes_table=config['nodes_table'],
             edges_table=config['edges_table'],
+            node_attrs={"center": Vec(int,3)},
             edge_attrs={"merge_score": float, "agglomerated": bool}
         )
         logging.info("Using SQLiteGraphDatabase")
@@ -190,7 +191,7 @@ if __name__ == "__main__":
     with open(config_file, 'r') as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["processing"]["find_segments"] | yaml_config["db"]
+    config = yaml_config["processing"]["hglom_segment"] | yaml_config["db"]
 
     start = time.time()
     find_segments(config)

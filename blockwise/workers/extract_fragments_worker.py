@@ -410,8 +410,8 @@ def watershed_in_block(
         )
         for node, c in fragment_centers.items()
     ])
-    #rag_provider.write_graph(rag,block.write_roi)
-    rag_provider.write_nodes(rag.nodes,block.write_roi)
+    rag_provider.write_graph(rag,block.write_roi)
+    #rag_provider.write_nodes(rag.nodes,block.write_roi)
 
 def extract_fragments_worker(input_config):
 
@@ -457,14 +457,15 @@ def extract_fragments_worker(input_config):
     # open RAG DB
     logging.info("Opening RAG DB...")
 
-    if 'rag_path' in config:  
+    if 'db_file' in config:  
         # SQLiteGraphDatabase
         rag_provider = SQLiteGraphDataBase(
-            Path(config['rag_path']),
-            position_attributes=["center_z", "center_y", "center_x"],
+            db_file=Path(config['db_file']),
+            position_attribute="center",
             mode="r+",
             nodes_table=config['nodes_table'],
             edges_table=config['edges_table'],
+            node_attrs={"center": Vec(int,3)},
             edge_attrs={"merge_score": float, "agglomerated": bool}
         )
         logging.info("Using SQLiteGraphDatabase")
