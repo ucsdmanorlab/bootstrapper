@@ -5,6 +5,7 @@ import sys
 import numpy as np
 import yaml
 import os
+import pprint
 
 import gunpowder as gp
 from funlib.persistence import prepare_ds, open_ds
@@ -42,6 +43,7 @@ def compute_errors(
         out_file,
         out_map_dataset,
         out_mask_dataset,
+        thresholds=(0.1,1.0),
         return_arrays=False):
 
     # array keys
@@ -134,7 +136,7 @@ def compute_errors(
         pred,
         error_map,
         error_mask,
-        thresholds=(0.09,1.0),
+        thresholds=thresholds,
         labels_mask=mask,
         sigma=sigma,
         downsample=4,
@@ -200,26 +202,30 @@ if __name__ == "__main__":
 
     start = time.time()
     ret = compute_errors(**config)
-    ret = None
     end = time.time()
 
     seconds = end - start
     logging.info(f'Total time to compute LSD errors: {seconds}')
 
     # compute LSD error statistics
-    if ret is None:
-        ret = {
-            'LSD_ERROR_MAP': open_ds(config['out_file'],config['out_map_dataset']),
-            'LSD_ERROR_MASK': open_ds(config['out_file'],config['out_mask_dataset'])
-        }
-    else:
-        ret = ret.arrays
+    ret = {
+        'LSD_ERROR_MAP': (config['out_file'],config['out_map_dataset']),
+        'LSD_ERROR_MASK': (config['out_file'],config['out_mask_dataset'])
+    }
 
     logging.info("Computing LSD Error statistics..")
     stats = {}
 
-    for array_key in ret:
+    for array_key, val in ret.items():
+        arr = open_ds(val[0],val[1])_
         arr = ret[array_key].data
-        stats[str(array_key)] = compute_stats(arr[:]) 
+        scores = compute_stats(arr[:]) 
+        stats[str(array_key)] = scores 
 
-    print(stats)
+        scores_out_file = os.path.join(val[0],val[1],'.scores')
+        logging.info(f"Writing scores for {array_key} to {scores_out_file}..")
+
+        with open(scores_out_file, 'r+') as f:
+            json.dump(scores, f, indent=4)
+
+    pprint.pp(stats)

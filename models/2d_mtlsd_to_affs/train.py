@@ -89,25 +89,27 @@ def train(
             
     pipeline += gp.Pad(labels,None,mode="reflect")
 
-    pipeline += gp.SimpleAugment(transpose_only=[1, 2])
+    pipeline += gp.DeformAugment(
+        control_point_spacing=(voxel_size[0], voxel_size[0]),
+        jitter_sigma=(5.0, 5.0),
+        spatial_dims=2,
+        subsample=1,
+        scale_interval=(0.9, 1.1),
+        graph_raster_voxel_size=voxel_size[1:],
+    )
 
-    pipeline += gp.ElasticAugment(
-        control_point_spacing=[voxel_size[1], voxel_size[0], voxel_size[0]],
-        jitter_sigma=[0, 5, 5],
-        scale_interval=(0.8,1.2),
-        rotation_interval=(0, math.pi / 2),
+    pipeline += gp.ShiftAugment(
         prob_slip=0.05,
         prob_shift=0.05,
-        max_misalign=10,
-        subsample=4,
-        spatial_dims=3,
-    )
+        sigma=1)
+
+    pipeline += gp.SimpleAugment(transpose_only=[1,2])
     
     pipeline += CustomLSDs(
         labels, input_lsds, sigma=sigma, downsample=4
     )
 
-    pipeline += CustomGrowBoundary(labels, max_steps=2, only_xy=True)
+    pipeline += CustomGrowBoundary(labels, max_steps=1, only_xy=True)
 
     # that is what predicted affs will look like
     pipeline += CustomAffs(
