@@ -58,6 +58,8 @@ def filter_segmentation(
         #mean_size = np.mean(id_counts)
         size_filtered = all_ids[id_counts < dust_filter]
         print(f"size filtered: {len(size_filtered)}")
+    else:
+        size_filtered = []
 
     if remove_outliers:
         # get mean and std of counts
@@ -69,6 +71,8 @@ def filter_segmentation(
         
         outliers = all_ids[(np.abs(id_counts - mean) > 6 * std)]
         print(f"mean: {mean}, std: {std}, outliers: {len(outliers)}")
+    else:
+        outliers = []
 
     if remove_z_fragments:
         # Find unique IDs by z-slice
@@ -79,6 +83,8 @@ def filter_segmentation(
         z_id_counts = np.array([np.sum([uid in slice_ids for slice_ids in unique_ids_by_slice]) for uid in tqdm(all_ids)])
         z_fragments = all_ids[z_id_counts < N]
         print(f"z fragments: {len(z_fragments)}")
+    else:
+        z_fragments = []
     
     to_remove = reduce(np.union1d,(size_filtered, z_fragments, outliers))
     print(f"removing {len(to_remove) - 1} ids")

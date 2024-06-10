@@ -104,14 +104,14 @@ def train(
         + gp.Pad(labels, context)
         + gp.Pad(unlabelled, context)
         + gp.RandomLocation()
-        + gp.Reject(mask=unlabelled, min_masked=0.4, reject_probability=0.999)
+        + gp.Reject(mask=unlabelled, min_masked=0.1, reject_probability=0.999)
         for sample in samples
     )
     
     pipeline = source + gp.RandomProvider()
 
     pipeline += gp.DeformAugment(
-        control_point_spacing=(voxel_size[0], voxel_size[0]),
+        control_point_spacing=(voxel_size[-1] * 10, voxel_size[-1] * 10),
         jitter_sigma=(2.0, 2.0),
         spatial_dims=2,
         subsample=1,

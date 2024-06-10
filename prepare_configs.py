@@ -60,7 +60,7 @@ def get_rag_db_config(sqlite_path=None):
         db_host = os.environ.get('RAG_DB_HOST')
         db_user = os.environ.get('RAG_DB_USER')
         db_password = os.environ.get('RAG_DB_PASSWORD')
-        db_port = int(os.environ.get('RAG_DB_PORT'))
+        db_port = os.environ.get('RAG_DB_PORT')
 
         if not all([db_host, db_user, db_password, db_port]):
             print("PgSQL Database credentials not found in environment variables.")
@@ -74,7 +74,7 @@ def get_rag_db_config(sqlite_path=None):
         os.environ['RAG_DB_HOST'] = db_host
         os.environ['RAG_DB_USER'] = db_user
         os.environ['RAG_DB_PASSWORD'] = db_password
-        os.environ['RAG_DB_PORT'] = db_port
+        os.environ['RAG_DB_PORT'] = str(db_port)
 
         return {
             'db_host': db_host,
@@ -423,7 +423,7 @@ def main():
 
         round_number = int(input(f"Enter new round number (default: {len(existing_rounds)}): ") or len(existing_rounds))
         round_name = input(f"Enter name for round number {round_number} (default: 'round_{round_number}'):") or None
-        previous_round = input(f"Base this round off a previous round? If yes, enter round name:") or None 
+        previous_round = input(f"Base this round off a previous round? If yes, enter round name:") or None #TODO 
 
         if previous_round is not None:
             prc = {}
@@ -431,6 +431,8 @@ def main():
                 step = os.path.basename(yc).split('.')[0]
                 with open(yc, 'r') as f:
                     prc[step] = yaml.safe_load(f)
+        else:
+            prc = None
 
         print(f"Preparing configs for round number {round_number}..")
         rc = make_round_configs(base_dir, round_number, round_name=round_name, previous_round=prc)

@@ -208,7 +208,7 @@ class AddLSDErrors(BatchFilter):
         error_map_array = self._create_diff(
                 seg_descriptor_array.data,
                 pred_descriptor_array.data,
-                labels_mask_array.data)
+                None if not self.labels_mask else labels_mask_array.data)
 
         # create error mask array
         error_mask_array = self._create_mask(

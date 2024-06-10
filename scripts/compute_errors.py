@@ -49,16 +49,22 @@ def compute_errors(
     # array keys
     seg = gp.ArrayKey('SEGMENTATION')
     pred = gp.ArrayKey('PRED_LSDS')
-    mask = gp.ArrayKey('MASK')
     seg_lsds = gp.ArrayKey('SEG_LSDS')
     error_map = gp.ArrayKey('LSD_ERROR_MAP')
     error_mask = gp.ArrayKey('LSD_ERROR_MASK')
-
-    # get rois
+    
     pred_ds = open_ds(lsds_file,lsds_dataset)
     pred_roi = pred_ds.roi
     seg_roi = open_ds(seg_file,seg_dataset).roi
-    mask_roi = open_ds(mask_file,mask_dataset).roi
+    
+    if mask_file is not None:
+        mask = gp.ArrayKey('MASK')
+        mask_roi = open_ds(mask_file,mask_dataset).roi
+    else:
+        mask = None
+        mask_roi = pred_roi
+
+    # get rois
     roi = pred_roi.intersect(seg_roi).intersect(mask_roi)
     print(f"seg roi: {seg_roi}, pred_roi: {pred_roi}, mask_roi: {mask_roi}, intersection: {roi}")
 
@@ -80,7 +86,8 @@ def compute_errors(
     chunk_request = gp.BatchRequest()
     chunk_request.add(seg, input_size)
     chunk_request.add(pred, input_size)
-    chunk_request.add(mask, input_size)
+    if mask is not None:
+        chunk_request.add(mask, input_size)
     chunk_request.add(seg_lsds, input_size)
     chunk_request.add(error_map, output_size)
     chunk_request.add(error_mask, output_size)
@@ -115,19 +122,19 @@ def compute_errors(
                 lsds_file,
                 {pred: lsds_dataset},
                 {pred: gp.ArraySpec(interpolatable=True)}
-            ),
-        gp.ZarrSource(
-                mask_file,
-                {mask: mask_dataset},
-                {mask: gp.ArraySpec(interpolatable=False)}
-            ),
-    )
+            ),)
+    if mask is not None:
+        sources += (gp.ZarrSource(
+                    mask_file,
+                    {mask: mask_dataset},
+                    {mask: gp.ArraySpec(interpolatable=False)}),)
 
     pipeline = sources + gp.MergeProvider()
 
     pipeline += gp.Pad(seg, None)
     pipeline += gp.Pad(pred, None)
-    pipeline += gp.Pad(mask, None)
+    if mask is not None:
+        pipeline += gp.Pad(mask, None)
     pipeline += gp.Normalize(pred)
 
     pipeline += AddLSDErrors(
@@ -200,32 +207,33 @@ if __name__ == "__main__":
 
     config = yaml_config["processing"]["compute_lsd_errors"]
 
-    start = time.time()
-    ret = compute_errors(**config)
-    end = time.time()
+    if config != {}:
+        start = time.time()
+        ret = compute_errors(**config)
+        end = time.time()
 
-    seconds = end - start
-    logging.info(f'Total time to compute LSD errors: {seconds}')
+        seconds = end - start
+        logging.info(f'Total time to compute LSD errors: {seconds}')
 
-    # compute LSD error statistics
-    ret = {
-        'LSD_ERROR_MAP': (config['out_file'],config['out_map_dataset']),
-        'LSD_ERROR_MASK': (config['out_file'],config['out_mask_dataset'])
-    }
+        # compute LSD error statistics
+        ret = {
+            'LSD_ERROR_MAP': (config['out_file'],config['out_map_dataset']),
+            'LSD_ERROR_MASK': (config['out_file'],config['out_mask_dataset'])
+        }
 
-    logging.info("Computing LSD Error statistics..")
-    stats = {}
+        logging.info("Computing LSD Error statistics..")
+        stats = {}
 
-    for array_key, val in ret.items():
-        arr = open_ds(val[0],val[1])_
-        arr = ret[array_key].data
-        scores = compute_stats(arr[:]) 
-        stats[str(array_key)] = scores 
+        for array_key, val in ret.items():
+            arr = open_ds(val[0],val[1])
+            arr = ret[array_key].data
+            scores = compute_stats(arr[:]) 
+            stats[str(array_key)] = scores 
 
-        scores_out_file = os.path.join(val[0],val[1],'.scores')
-        logging.info(f"Writing scores for {array_key} to {scores_out_file}..")
+            scores_out_file = os.path.join(val[0],val[1],'.scores')
+            logging.info(f"Writing scores for {array_key} to {scores_out_file}..")
 
-        with open(scores_out_file, 'r+') as f:
-            json.dump(scores, f, indent=4)
+            with open(scores_out_file, 'r+') as f:
+                json.dump(scores, f, indent=4)
 
-    pprint.pp(stats)
+        pprint.pp(stats)
