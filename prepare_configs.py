@@ -135,21 +135,24 @@ def check_and_update(defaults):
         return defaults
 
 def make_round_configs(base_dir, round_number, round_name=None, previous_round=None): 
-    volumes = get_volumes() 
 
-    voxel_size = volumes[0]['voxel_size']  # Assuming voxel_size is the same for all volumes
-    i = round_number
-
-    if round_name is None:
-        round_name = f"round_{i}"
-
-    #TODO: previous round stuff
+    # previous round
     if previous_round is not None:
         previous_round_name = list(revious_round.keys())[0]
     else:
         if i != 0:
             previous_round_name = f"round_{i-1}"
 
+    # get volumes for this round
+    volumes = get_volumes()
+
+    # round number, name
+    voxel_size = volumes[0]['voxel_size']  # Assuming voxel_size is the same for all volumes
+    i = round_number
+    if round_name is None:
+        round_name = f"round_{i}"
+
+    # training config
     model_name = input(f"Enter model for {round_name}: ") or ('2d_mtlsd' if i == 0 else '3d_lsd')
     setup_dir = os.path.abspath(os.path.join(base_dir, f'{round_name}', model_name))
     copy_model_scripts(model_name, setup_dir)
@@ -164,19 +167,13 @@ def make_round_configs(base_dir, round_number, round_name=None, previous_round=N
     save_checkpoints_every = int(input(f"Enter save checkpoints every for {round_name} (default is 5000): ") or 5000)
     save_snapshots_every = int(input(f"Enter save snapshots every for {round_name} (default is 1000): ") or 1000)
 
-    # train config
-    #TODO: check this
     training_samples = [v for v in volumes if None not in [v['labels_dataset'],v['unlabelled_mask_dataset']]]
-    #training_samples = [v for v in volumes if (i == 0 and None not in [v['labels_dataset'],v['unlabelled_mask_dataset']]) or i > 0]
-
     train_config = check_and_update({
             'setup_dir': setup_dir,
             'samples': [x['zarr_container'] for x in training_samples],
             'raw_datasets': [x['raw_dataset'] for x in training_samples],
             'labels_datasets': [x['labels_dataset'] for x in training_samples],
             'mask_datasets': [x['unlabelled_mask_dataset'] for x in training_samples],
-#            'labels_datasets': [x['labels_dataset'] if i == 0 else f"pseudo_gt/{previous_round_name}/ids" for x in training_samples], # TODO: check / fix
-#            'mask_datasets': [x['unlabelled_mask_dataset'] if i == 0 else f"pseudo_gt/{previous_round_name}/mask" for x in training_samples],
             'voxel_size': voxel_size,
             'sigma': sigma,
             'out_dir': setup_dir,
@@ -190,7 +187,7 @@ def make_round_configs(base_dir, round_number, round_name=None, previous_round=N
     print("Predict, segment, and filter configs for all target volumes")
     pred_iter = int(input(f"Enter checkpoint iteration for {round_name} inference (default is 30000): ") or 30000)
 
-    # get model outputs
+    # get model prediction outputs
     with open(os.path.join(setup_dir,'config.json'),'r') as f:
         model_outputs = json.load(f)['outputs']
 
@@ -251,7 +248,6 @@ def make_round_configs(base_dir, round_number, round_name=None, previous_round=N
     # target volume configs
     target_volumes = volumes
     target_configs = {}
-
     for t_vol in target_volumes:
 
         # get volume shape
@@ -272,8 +268,9 @@ def make_round_configs(base_dir, round_number, round_name=None, previous_round=N
             shape = full_shape
             roi_shape = [x * y for x,y in zip(shape,voxel_size)]
 
+        # small volume or not ?
         small_volume = False
-        if np.prod(shape) <= 134217728: # 1GB uint64
+        if np.prod(shape) <= 134217728: # 512x512x512 uint64, ~1GB
             small_volume = True
 
         # inference
@@ -394,6 +391,7 @@ def make_round_configs(base_dir, round_number, round_name=None, previous_round=N
 
     # make round config
     rnd = {}
+    rnd['volumes'] = volumes
     rnd[f'train_{model_name}'] = {'train': train_config}
     for target, config in target_configs.items():
         rnd[os.path.basename(target).split('.')[0]] = config
@@ -423,7 +421,7 @@ def main():
 
         round_number = int(input(f"Enter new round number (default: {len(existing_rounds)}): ") or len(existing_rounds))
         round_name = input(f"Enter name for round number {round_number} (default: 'round_{round_number}'):") or None
-        previous_round = input(f"Base this round off a previous round? If yes, enter round name:") or None #TODO 
+        previous_round = input(f"Base this round off a previous round? If yes, enter round name:") or None
 
         if previous_round is not None:
             prc = {}

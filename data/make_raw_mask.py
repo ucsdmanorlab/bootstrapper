@@ -40,8 +40,9 @@ if __name__ == "__main__":
 
     factor = 2**int(raw_ds[-1])
     factor = (1, factor, factor)
-    print(f"upscaling by {factor}")
-    mask_arr = upscale(mask_arr, factor) 
+    if factor[-1] > 1:
+        print(f"upscaling by {factor}")
+        mask_arr = upscale(mask_arr, factor) 
 
     print(f"writing..{mask_ds}")
     new_mask = prepare_ds(

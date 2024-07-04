@@ -169,6 +169,13 @@ if __name__ == "__main__":
         type=str,
         help="The name of the dataset")
     parser.add_argument(
+        '--scales',
+        '-s',
+        nargs='*',
+        type=int,
+        required=True,
+        help="The downscaling factor between scales") 
+    parser.add_argument(
         '--chunk_shape',
         '-c',
         nargs='*',
@@ -178,4 +185,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    create_scale_pyramid(args.file, args.ds, [[1,2,2],[1,2,2]], args.chunk_shape)
+    create_scale_pyramid(args.file, args.ds, args.scales, args.chunk_shape)

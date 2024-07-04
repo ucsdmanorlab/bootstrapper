@@ -33,6 +33,7 @@ if __name__ == "__main__":
 
     in_f = sys.argv[1] #"instance_seg_data.zarr"
     labels_ds = sys.argv[2]
-    unlabelled_ds = labels_ds.replace("ids","mask")
+    unlabelled_ds = sys.argv[3]
+    #unlabelled_ds = labels_ds.replace("ids","mask")
 
     create_mask(in_f, labels_ds, unlabelled_ds)

@@ -248,6 +248,7 @@ class AddLSDErrors(BatchFilter):
         # threshold
         o_data = (i_data > floor) & (i_data < ceil)
 
+        #TODO: make erode-dilate optional
         # dilate/erode
         z_struct = np.stack([ball(1)[0],]*3)
         xy_struct = np.stack([np.zeros((3,3)),disk(1),np.zeros((3,3))])

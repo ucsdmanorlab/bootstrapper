@@ -141,5 +141,3 @@ if __name__ == "__main__":
        out_ds_name,
        out_dtype,
        out_vs)
-
-    # TODO: add masking of array, with morphological operation options
