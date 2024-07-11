@@ -1,88 +1,65 @@
 import os
-import sys
-import zarr
-import numpy as np
 import subprocess
-import ast
 
-this_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
+def get_input(prompt, default):
+    return input(f"{prompt} (default: {default}): ") or default
+
+def run_subprocess(script, *args):
+    subprocess.run(["python", os.path.join(this_dir, script), *args], check=True)
+
+def run_scale_pyramid(zarr_file, dataset_name):
+    scales = get_input("Enter scales", "1 2 2 1 2 2").split()
+    chunks = get_input("Enter chunk size", "8 256 256").split()
+    run_subprocess('data/scale_pyramid.py', '-f', zarr_file, '-d', dataset_name, '-s', *scales, '-c', *chunks)
+
+def process_dataset(dataset_type, zarr_file, resolution):
+    path = get_input(f"Enter path to {dataset_type} tifs / tif stack", None)
+    if not path:
+        return None, False
+    
+    dataset_name = get_input(f"Enter output {dataset_type} dataset name", f"volumes/{dataset_type}/s0")
+    run_subprocess('data/make_3d_zarr_array.py', path, zarr_file, dataset_name, *resolution)
+    
+    ds_scale_pyramid = get_input(f"Run downscale pyramid to {dataset_type} volume?", "y").lower().strip() == 'y'
+    if ds_scale_pyramid:
+        run_scale_pyramid(zarr_file, dataset_name)
+    
+    return dataset_name, ds_scale_pyramid
+
+def process_masks(zarr_file, dataset, mask_type):
+    if not dataset:
+        default_name = f"volumes/{'raw/image' if mask_type == 'raw' else 'labels/ids'}/s0"
+        dataset = get_input(f"Provide {'raw image' if mask_type == 'raw' else 'labels'} dataset name", default_name), False
+    
+    mask_dataset = dataset[0].replace('image' if mask_type == 'raw' else 'ids', 'mask')
+    source_dataset = dataset[0].replace('s0', 's2') if dataset[1] and mask_type == 'raw' else dataset[0]
+    
+    script = 'data/make_raw_mask.py' if mask_type == 'raw' else 'data/make_object_mask.py'
+    run_subprocess(script, zarr_file, source_dataset, mask_dataset)
+    
+    if dataset[1]:
+        run_scale_pyramid(zarr_file, mask_dataset)
 
 def main():
-    # base dir ? make if DNE
-    base_dir = input("Enter base directory (default:'./exp_dir'): ") or './exp_dir'
-    os.makedirs(base_dir, exist_ok=True) 
-
-    # out zarr ?  
-    out_zarr_f = input(f"Enter output zarr container name (default: '{os.path.join(base_dir,test.zarr')}): ") or os.path.join(base_dir,"test.zarr")
-
-    # output resolution ?
-    out_z_res = int(input("Enter Z resolution (in world units, default = 1):") or 1)
-    out_yx_res = int(input("Enter YX resolution (in world units, default = 1):") or 1)
-    out_vs = [out_z_res, out_yx_res, out_yx_res]
+    base_dir = get_input("Enter base directory", './test')
+    os.makedirs(base_dir, exist_ok=True)
     
-    # image dataset ?
-    img_path = input("Enter path to aligned image tif stack or directory containing aligned image tifs (Enter to skip): ") or None
-    if img_path:
-        out_img_ds_name = input("Enter output image dataset name (default: 'volumes/image/s0'):") or "volumes/image/s0"
+    zarr_file = get_input("Enter output zarr container name", os.path.join(base_dir, "test.zarr"))
+    resolution = [
+        get_input("Enter Z resolution (in world units)", "1"),
+        get_input("Enter YX resolution (in world units)", "1")
+    ]
 
-        # run img(s) to zarr
-        subprocess.run(["python",os.path.join(this_dir,'data/make_3d_zarr_array.py'),img_path,out_zarr_f,out_img_ds_name,out_z_res,out_yx_res], check=True)
+    # Process raw image dataset
+    img_dataset = process_dataset("raw/image", zarr_file, resolution)
+    if get_input("Make raw masks?", "y").lower().strip() == 'y':
+        process_masks(zarr_file, img_dataset, 'raw')
 
-        # run scale pyramid ?
-        img_down_scale_pyr = input("Run downscale pyramid to image volume? (y/n)") or "y" 
-        img_down_scale_pyr = img_down_scale_pyr.lower().strip() == 'y'
-
-        if img_down_scale_pyr:
-            scales = input("Enter scales (default = [[1,2,2],[1,2,2]]):")
-            scales = ast.literal_eval(scales) if scales else [[1,2,2],[1,2,2]]
-            chunks = input("Enter chunk size (default = [8,256,256]):") 
-            chunks = ast.literal_eval(chunks) if chunks else [8,256,256]
-
-            subprocess.run(["python",os.path.join(this_dir,'data/scale_pyramid.py'),'-f',out_zarr_f,'-d',out_img_ds_name,'-s',scales,'-c',chunks],check=True)
-
-        # make raw mask
-        make_raw_mask = input("Make raw masks? (y/n): ") or "y"
-        make_raw_mask = make_raw_mask.lower().strip() == 'y'
-
-        if make_raw_mask:
-            out_raw_mask_ds_name = out_img_ds_name.replace('image','image_mask')
-            subprocess.run(["python",os.path.join(this_dir,'data/make_raw_mask.py'),out_zarr_f,out_img_ds_name,out_raw_mask_ds_name],check=True)
-            
-            if img_down_scale_pyr:
-                subprocess.run(["python",os.path.join(this_dir,'data/scale_pyramid.py'),'-f',out_zarr_f,'-d',out_raw_mask_ds_name,'-s',scales,'-c',chunks],check=True)
-
-
-    # labels dataset ?
-    labels_path = input("Enter path to labels tifs / tif stack (Enter to skip): ") or None
-    if labels_path:
-        out_labels_ds_name = input("Enter output labels dataset name (default: 'volumes/labels/ids/s0'):") or "volumes/labels/ids/s0"
-
-        # run labels to zarr
-        subprocess.run(["python",os.path.join(this_dir,'data/make_3d_zarr_array.py'),labels_path,out_zarr_f,out_labels_ds_name,out_z_res,out_yx_res], check=True)
-
-        # run scale pyramid ?
-        labels_down_scale_pyr = input("Run downscale pyramid to labels volume? (y/n)") or "y" 
-        labels_down_scale_pyr = labels_down_scale_pyr.lower().strip() == 'y'
-
-        if labels_down_scale_pyr:
-            scales = input("Enter scales (default = [[1,2,2],[1,2,2]]):")
-            scales = ast.literal_eval(scales) if scales else [[1,2,2],[1,2,2]]
-            chunks = input("Enter chunk size (default = [8,256,256]):") 
-            chunks = ast.literal_eval(chunks) if chunks else [8,256,256]
-
-            subprocess.run(["python",os.path.join(this_dir,'data/scale_pyramid.py'),'-f',out_zarr_f,'-d',out_labels_ds_name,'-s',scales,'-c',chunks],check=True)
-
-        # make unlabelled mask 
-        make_obj_mask = input("Make object masks? (y/n): ") or "y"
-        make_obj_mask = make_object_mask.lower().strip() == 'y'
-
-        if make_obj_mask:
-            out_obj_mask_ds_name = out_labels_ds_name.replace('ids','mask')
-            subprocess.run(["python",os.path.join(this_dir,'data/make_object_mask.py'),out_zarr_f,out_labels_ds_name,out_obj_mask_ds_name],check=True)
-            
-            if labels_down_scale_pyr:
-                subprocess.run(["python",os.path.join(this_dir,'data/scale_pyramid.py'),'-f',out_zarr_f,'-d',out_obj_mask_ds_name,'-s',scales,'-c',chunks],check=True)
-
+    # Process labels dataset
+    labels_dataset = process_dataset("labels/ids", zarr_file, resolution)
+    if get_input("Make object masks?", "y").lower().strip() == 'y':
+        process_masks(zarr_file, labels_dataset, 'object')
 
 if __name__ == "__main__":
+    this_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
     main()

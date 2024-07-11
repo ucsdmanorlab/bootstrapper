@@ -24,7 +24,7 @@ if __name__ == "__main__":
     roi = raw.roi
     vs = raw.voxel_size
 
-    print("loading")
+    print(f"loading {raw_ds} from {in_f}")
     raw_arr = raw.to_ndarray(roi)
     mask_arr = raw.to_ndarray(roi) > 0
 

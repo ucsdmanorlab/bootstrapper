@@ -101,8 +101,6 @@ def create_scale_pyramid(in_file, in_ds_name, scales, chunk_shape):
         ds_name = in_ds_name
         in_ds_name = in_ds_name[:-3]
 
-    print("Scaling %s by a factor of %s" % (in_file, scales))
-
     prev_array = open_ds(in_file, ds_name)
 
     if chunk_shape is not None:
@@ -110,6 +108,9 @@ def create_scale_pyramid(in_file, in_ds_name, scales, chunk_shape):
     else:
         chunk_shape = daisy.Coordinate(prev_array.data.chunks)
         print("Reusing chunk shape of %s for new datasets" % (chunk_shape,))
+    
+    scales = [scales[i:i+len(chunk_shape)] for i in range(0, len(scales), len(chunk_shape))]
+    print("Scaling %s by a factor of %s" % (in_file, scales))
 
     if prev_array.n_channel_dims == 0:
         num_channels = 1
@@ -174,7 +175,7 @@ if __name__ == "__main__":
         nargs='*',
         type=int,
         required=True,
-        help="The downscaling factor between scales") 
+        help="The downscaling factor between scales, e.g. 1 2 2 1 2 2") 
     parser.add_argument(
         '--chunk_shape',
         '-c',

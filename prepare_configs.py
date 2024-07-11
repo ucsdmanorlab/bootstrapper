@@ -411,7 +411,7 @@ def make_round_configs(base_dir, round_number, round_name=None, previous_round=N
 
 
 def main():
-    base_dir = input("Enter base directory: ") or "./exp_dir"
+    base_dir = input("Enter base directory: ") or "./test"
     config_dir = os.path.join(base_dir,'configs')
     
     if os.path.exists(config_dir) and len(os.listdir(config_dir)) > 0:
