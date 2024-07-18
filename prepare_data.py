@@ -2,15 +2,15 @@ import os
 import subprocess
 
 def get_input(prompt, default):
-    return input(f"{prompt} (default: {default}): ") or default
+    return input(f"\n{prompt} (default: {default}): \n") or default
 
 def run_subprocess(script, *args):
     subprocess.run(["python", os.path.join(this_dir, script), *args], check=True)
 
-def run_scale_pyramid(zarr_file, dataset_name):
+def run_scale_pyramid(zarr_file, dataset_name, mode='down'):
     scales = get_input("Enter scales", "1 2 2 1 2 2").split()
     chunks = get_input("Enter chunk size", "8 256 256").split()
-    run_subprocess('data/scale_pyramid.py', '-f', zarr_file, '-d', dataset_name, '-s', *scales, '-c', *chunks)
+    run_subprocess('data/scale_pyramid.py', '-f', zarr_file, '-d', dataset_name, '-s', *scales, '-c', *chunks, '-m', mode)
 
 def process_dataset(dataset_type, zarr_file, resolution):
     path = get_input(f"Enter path to {dataset_type} tifs / tif stack", None)
@@ -27,18 +27,23 @@ def process_dataset(dataset_type, zarr_file, resolution):
     return dataset_name, ds_scale_pyramid
 
 def process_masks(zarr_file, dataset, mask_type):
-    if not dataset:
-        default_name = f"volumes/{'raw/image' if mask_type == 'raw' else 'labels/ids'}/s0"
-        dataset = get_input(f"Provide {'raw image' if mask_type == 'raw' else 'labels'} dataset name", default_name), False
+    if not dataset[0]:
+        dataset = get_input(f"Provide {'raw image' if mask_type == 'img' else 'labels'} dataset name", None), False
+
+        if not dataset[0]:
+            return
     
-    mask_dataset = dataset[0].replace('image' if mask_type == 'raw' else 'ids', 'mask')
-    source_dataset = dataset[0].replace('s0', 's2') if dataset[1] and mask_type == 'raw' else dataset[0]
+    source_dataset = dataset[0]
+    out_mask_dataset = dataset[0].replace('image' if mask_type == 'img' else 'ids', 'mask')
+    script = 'data/mask_blockwise.py'
     
-    script = 'data/make_raw_mask.py' if mask_type == 'raw' else 'data/make_object_mask.py'
-    run_subprocess(script, zarr_file, source_dataset, mask_dataset)
-    
-    if dataset[1]:
-        run_scale_pyramid(zarr_file, mask_dataset)
+    if dataset[1] and get_input("Do masking downscaled dataset then upscale?",'y') == 'y':
+        source_dataset = source_dataset.replace('s0','s2')
+        out_mask_dataset = out_mask_dataset.replace('s0','s2')
+        run_subprocess(script, '-f', zarr_file, '-i', source_dataset, '-o', out_mask_dataset, '-m', mask_type)
+        run_scale_pyramid(zarr_file, out_mask_dataset, mode='up')
+    else:
+        run_subprocess(script, '-f', zarr_file, '-i', source_dataset, '-o', out_mask_dataset, '-m', mask_type)
 
 def main():
     base_dir = get_input("Enter base directory", './test')
@@ -53,12 +58,12 @@ def main():
     # Process raw image dataset
     img_dataset = process_dataset("raw/image", zarr_file, resolution)
     if get_input("Make raw masks?", "y").lower().strip() == 'y':
-        process_masks(zarr_file, img_dataset, 'raw')
+        process_masks(zarr_file, img_dataset, 'img')
 
     # Process labels dataset
     labels_dataset = process_dataset("labels/ids", zarr_file, resolution)
     if get_input("Make object masks?", "y").lower().strip() == 'y':
-        process_masks(zarr_file, labels_dataset, 'object')
+        process_masks(zarr_file, labels_dataset, 'obj')
 
 if __name__ == "__main__":
     this_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))

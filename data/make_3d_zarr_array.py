@@ -1,93 +1,48 @@
-from tqdm import tqdm
 import os
 import sys
 import glob
-from tifffile import imread
+from tqdm import tqdm
 import numpy as np
-from funlib.persistence import prepare_ds, open_ds
+from tifffile import imread
+from scipy.ndimage import find_objects
+from funlib.persistence import prepare_ds
 from funlib.geometry import Coordinate, Roi
 import zarr
 
-
-def create_3d_array_from_image(
-        img_path,
-        out_zarr,
-        out_ds,
-        out_dtype,
-        out_voxel_size=[1,1,1],
-):
-
-    print("loading", img_path)
-    im = imread(img_path)
-    shape = im.shape
-    if shape[-1] == 3:
-        shape = shape[:3]
-        im = im[:,:,:,0]
-
-    print(f"total voxel shape: {shape}")
-    voxel_size = Coordinate(out_voxel_size)
-    total_roi = Roi((0,0,0), Coordinate(shape) * voxel_size)
-
-    out_image_ds = prepare_ds(
-        out_zarr,
-        out_ds,
-        total_roi,
-        voxel_size,
-        out_dtype,
-        compressor={"id": "blosc"},
-    )
+def create_3d_array(img_path, out_zarr, out_ds, out_dtype, out_voxel_size=[1, 1, 1], voxel_offset=[0, 0, 0]):
     
-    if out_dtype == np.uint8 and im.dtype != np.uint8:
-        print("making uint8")
-        # rescale to uint8 (we then normalize to float during inference)
-        im = (im // 256).astype(np.uint8)
+    print(f"Loading {'directory' if os.path.isdir(img_path) else 'image'}: {img_path}")
+    if os.path.isdir(img_path):
+        img_paths = sorted(glob.glob(f"{img_path}/*.tif"))
+        full_array = np.zeros((len(img_paths), *imread(img_paths[0]).shape), dtype=out_dtype)
+        for i, im_path in tqdm(enumerate(img_paths), total=len(img_paths)):
+            im = imread(img_path)
+            if im.shape[-1] == 3:
+                im = im[...,0]
+            full_array[i] = im
     else:
-        im = im.astype(out_dtype)
+        full_array = imread(img_path)
+        if full_array.shape[-1] == 3:
+            full_array = full_array[...,0]
+    
+    shape = full_array.shape
+    print(f"Total voxel shape: {shape}, voxel offset: {voxel_offset}")
 
-    print("writing")
-    out_image_ds[total_roi] = im
+    default_bbox = 'y' if out_dtype != np.uint8 else 'n'
+    bbox = input(f"\nPerform bounding box crop? (default: '{default_bbox}'): ") or default_bbox
+    if bbox.lower().strip() == 'y':
+        bbox = find_objects(full_array > 0)[0]
+        full_array = full_array[bbox]
+        shape = full_array.shape
+        bbox_offset = [x.start for x in bbox]
+        
+        print(f"Total voxel shape after bounding box: {shape}, voxel_offset: {bbox_offset}")
+    else:
+        bbox_offset = [0,0,0]
 
-
-def create_mask(in_f, in_ds, out_ds):
-
-    labels = open_ds(in_f, in_ds)
-    roi = labels.roi
-    vs = labels.voxel_size
-
-    labels_arr = labels.to_ndarray(roi)
-    unlabelled_arr = labels.to_ndarray(roi) > 0
-    unlabelled_arr = (unlabelled_arr).astype(np.uint8)
-
-    print(f"writing..{out_ds}")
-    unlabelled = prepare_ds(
-            in_f,
-            out_ds,
-            roi,
-            vs,
-            unlabelled_arr.dtype,
-            compressor={"id": "blosc", "clevel": 5},
-            delete=True)
-
-    unlabelled[roi] = unlabelled_arr
-
-
-def create_3d_array_from_images(
-        img_dir,
-        out_zarr,
-        out_ds,
-        out_dtype,
-        out_voxel_size=[1,1,1],
-):
-
-    img_paths = sorted(glob.glob(f"{img_dir}/*.tif")) 
-
-    # get total shape
-    im = imread(img_paths[0])
-    num_z = len(img_paths)
-    shape = (num_z,*im.shape)
-    print(f"total voxel shape: {shape}")
+    # prepare output dataset
     voxel_size = Coordinate(out_voxel_size)
-    total_roi = Roi((0,0,0), Coordinate(shape) * voxel_size)
+    total_roi = Roi(Coordinate(voxel_offset) + Coordinate(bbox_offset), shape) * voxel_size
 
     out_image_ds = prepare_ds(
         out_zarr,
@@ -98,46 +53,25 @@ def create_3d_array_from_images(
         compressor={"id": "blosc"},
     )
 
-    for i, im_path in tqdm(enumerate(img_paths)):
+    # convert dtype
+    if out_dtype == np.uint8 and full_array.dtype != np.uint8:
+        full_array = (full_array // 256).astype(np.uint8)
+    else:
+        full_array = full_array.astype(out_dtype)
 
-        im = imread(im_path)
-
-        if out_dtype == np.uint8 and im.dtype != np.uint8:
-            # rescale to uint8 (we then normalize to float during inference)
-            im = (im // 256).astype(np.uint8)
-        else:
-            im = im.astype(out_dtype)
-
-        write_roi = Roi((i,0,0),(1,*shape[1:])) * voxel_size
-
-        out_image_ds[write_roi] = np.expand_dims(im, axis=0)
+    print(f"Writing {out_ds} to {out_zarr}..")
+    out_image_ds[total_roi] = full_array
 
 
 if __name__ == "__main__":
-
     tif_dir_or_path = sys.argv[1]
-    out_zarr = sys.argv[2] #path/to/output.zarr
-    out_ds_name = sys.argv[3] #'volumes/image/s0'
+    out_zarr = sys.argv[2]
+    out_ds_name = sys.argv[3]
     out_z_res = int(sys.argv[4])
     out_yx_res = int(sys.argv[5])
-    out_vs = [out_z_res, out_yx_res, out_yx_res]
+    out_vs = [int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[5])]
+    voxel_offset = [int(sys.argv[6]), int(sys.argv[7]), int(sys.argv[8])] if len(sys.argv) == 9 else [0, 0, 0]
 
-    if 'image' in out_ds_name:
-        out_dtype = np.uint8
-    elif 'mask' in out_ds_name:
-        out_dtype = np.uint8
-    else:
-        out_dtype = np.uint64
+    out_dtype = np.uint8 if ('image' in out_ds_name or 'raw' in out_ds_name or 'mask' in out_ds_name) else np.uint64
 
-    print(f"creating volume {out_ds_name}")
-    if os.path.isdir(tif_dir_or_path):
-       create_fn = create_3d_array_from_images
-    else:
-       create_fn = create_3d_array_from_image
-
-    create_fn(
-       tif_dir_or_path,
-       out_zarr,
-       out_ds_name,
-       out_dtype,
-       out_vs)
+    create_3d_array(tif_dir_or_path, out_zarr, out_ds_name, out_dtype, out_vs, voxel_offset)

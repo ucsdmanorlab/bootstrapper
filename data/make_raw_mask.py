@@ -5,14 +5,7 @@ import numpy as np
 from skimage.morphology import binary_closing, disk
 from funlib.persistence import open_ds, prepare_ds
 from funlib.geometry import Coordinate, Roi
-from skimage.transform import rescale
 import sys
-
-def upscale(array, factor):
-
-    upscaled = rescale(array, factor, order=0);
-
-    return upscaled
 
 if __name__ == "__main__":
 
@@ -25,7 +18,6 @@ if __name__ == "__main__":
     vs = raw.voxel_size
 
     print(f"loading {raw_ds} from {in_f}")
-    raw_arr = raw.to_ndarray(roi)
     mask_arr = raw.to_ndarray(roi) > 0
 
     print("doing closing")
@@ -38,18 +30,12 @@ if __name__ == "__main__":
     mask_arr = binary_closing(mask_arr, footprint)
     mask_arr = (mask_arr).astype(np.uint8)
 
-    factor = 2**int(raw_ds[-1])
-    factor = (1, factor, factor)
-    if factor[-1] > 1:
-        print(f"upscaling by {factor}")
-        mask_arr = upscale(mask_arr, factor) 
-
     print(f"writing..{mask_ds}")
     new_mask = prepare_ds(
             in_f,
             mask_ds,
             roi,
-            vs / Coordinate(factor),
+            vs,
             mask_arr.dtype,
             compressor={"id": "blosc", "clevel": 5},
             write_size=Coordinate((8,256,256))*vs,
