@@ -10,24 +10,32 @@ from funlib.geometry import Coordinate, Roi
 import zarr
 
 def create_3d_array(img_path, out_zarr, out_ds, out_dtype, out_voxel_size=[1, 1, 1], voxel_offset=[0, 0, 0]):
-    
+   
+    # load
     print(f"Loading {'directory' if os.path.isdir(img_path) else 'image'}: {img_path}")
     if os.path.isdir(img_path):
-        img_paths = sorted(glob.glob(f"{img_path}/*.tif"))
-        full_array = np.zeros((len(img_paths), *imread(img_paths[0]).shape), dtype=out_dtype)
+        img_paths = sorted(glob.glob(os.path.join(img_path,"*.tif")))
+        full_array = np.zeros((len(img_paths), *imread(img_paths[0]).shape))
         for i, im_path in tqdm(enumerate(img_paths), total=len(img_paths)):
-            im = imread(img_path)
-            if im.shape[-1] == 3:
+            im = imread(im_path)
+            if len(im.shape) == 3 and im.shape[-1] == 3:
                 im = im[...,0]
             full_array[i] = im
     else:
         full_array = imread(img_path)
-        if full_array.shape[-1] == 3:
+        if len(full_array.shape) == 4 and full_array.shape[-1] == 3:
             full_array = full_array[...,0]
     
     shape = full_array.shape
     print(f"Total voxel shape: {shape}, voxel offset: {voxel_offset}")
 
+    # convert dtype
+    if out_dtype == np.uint8 and full_array.dtype != np.uint8:
+        full_array = (full_array // 256).astype(np.uint8)
+    else:
+        full_array = full_array.astype(out_dtype)
+
+    # bounding box
     default_bbox = 'y' if out_dtype != np.uint8 else 'n'
     bbox = input(f"\nPerform bounding box crop? (default: '{default_bbox}'): ") or default_bbox
     if bbox.lower().strip() == 'y':
@@ -52,12 +60,6 @@ def create_3d_array(img_path, out_zarr, out_ds, out_dtype, out_voxel_size=[1, 1,
         out_dtype,
         compressor={"id": "blosc"},
     )
-
-    # convert dtype
-    if out_dtype == np.uint8 and full_array.dtype != np.uint8:
-        full_array = (full_array // 256).astype(np.uint8)
-    else:
-        full_array = full_array.astype(out_dtype)
 
     print(f"Writing {out_ds} to {out_zarr}..")
     out_image_ds[total_roi] = full_array
