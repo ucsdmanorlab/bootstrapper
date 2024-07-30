@@ -15,7 +15,6 @@ def crop(zarr_container, dataset, out_container=None, out_dataset=None):
     slices = find_objects(arr > 0)[0]
     new_offset = [offset[i]+(slices[i].start * res[i]) for i in range(3)]
 
-    # write
     if out_container is None:
         out_container = zarr_container
 
@@ -32,7 +31,14 @@ def crop(zarr_container, dataset, out_container=None, out_dataset=None):
 
 if __name__ == "__main__":
 
-    f = sys.argv[1]
-    ds = sys.argv[2]
+    in_f = sys.argv[1]
+    in_ds = sys.argv[2]
 
-    crop(f,ds)
+    try:
+        out_f = sys.argv[3]
+        out_ds = sys.argv[4]    
+    except:
+        out_f = None
+        out_ds = None
+
+    crop(in_f,in_ds,out_f,out_ds)
