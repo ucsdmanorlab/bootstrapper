@@ -18,9 +18,9 @@ def get_volumes():
         vol = {}
         vol['zarr_container'] = input("Enter Zarr container path: ")
         vol['raw_dataset'] = input("Enter raw dataset path: ")
+        vol['raw_mask_dataset'] = input("Enter raw mask dataset path (or leave blank if none): ") or None
         vol['labels_dataset'] = input("Enter labels dataset path (or leave blank if none): ") or None
         vol['unlabelled_mask_dataset'] = input("Enter unlabelled mask dataset path (or leave blank if none): ") or None
-        vol['raw_mask_dataset'] = input("Enter raw mask dataset path (or leave blank if none): ") or None
         with zarr.open(vol['zarr_container'], 'r') as f:
             voxel_size = f[vol['raw_dataset']].attrs['resolution']
         same_voxel_size = input(f"Voxel size for this image volume is {voxel_size}. Use this? (y/n) ") or "y"
@@ -136,6 +136,8 @@ def check_and_update(defaults):
 
 def make_round_configs(base_dir, round_number, round_name=None, previous_round=None): 
 
+    i = round_number
+    
     # previous round
     if previous_round is not None:
         previous_round_name = list(revious_round.keys())[0]
@@ -148,7 +150,6 @@ def make_round_configs(base_dir, round_number, round_name=None, previous_round=N
 
     # round number, name
     voxel_size = volumes[0]['voxel_size']  # Assuming voxel_size is the same for all volumes
-    i = round_number
     if round_name is None:
         round_name = f"round_{i}"
 
@@ -185,7 +186,7 @@ def make_round_configs(base_dir, round_number, round_name=None, previous_round=N
 
     # predict, segment, filter configs
     print("Predict, segment, and filter configs for all target volumes")
-    pred_iter = int(input(f"Enter checkpoint iteration for {round_name} inference (default is 30000): ") or 30000)
+    pred_iter = int(input(f"Enter checkpoint iteration for {round_name} inference (default is {max_iterations}): ") or max_iterations)
 
     # get model prediction outputs
     with open(os.path.join(setup_dir,'config.json'),'r') as f:

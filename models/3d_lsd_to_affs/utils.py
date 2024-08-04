@@ -365,7 +365,7 @@ class CustomGrowBoundary(gp.BatchFilter):
 
             if steps > 0:
                 eroded_label_mask = binary_erosion(
-                    label_mask, iterations=self.steps, border_value=1
+                    label_mask, iterations=steps, border_value=1
                 )
             else:
                 eroded_label_mask = label_mask
