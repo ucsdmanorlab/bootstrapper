@@ -17,7 +17,8 @@ def run_scale_pyramid(zarr_file, dataset_name, mode='down'):
     run_subprocess('data/scale_pyramid.py', '-f', zarr_file, '-d', dataset_name, '-s', *scales, '-c', *chunks, '-m', mode)
 
 def process_dataset(dataset_type, zarr_file, resolution):
-    path = get_input(f"Enter path to {dataset_type} tif directory, tif stack, or zarr container", None)
+    # input path
+    path = get_input(f"Enter path to input {dataset_type} tif directory, tif stack, or zarr container", None)
     if not path:
         return None
     
@@ -35,6 +36,8 @@ def process_dataset(dataset_type, zarr_file, resolution):
                 in_f.store.rename(in_ds, in_ds+'__tmp')
                 in_f.create_group('/'.join(dataset_name.split('/')[:-1]))
                 in_f.store.rename(in_ds+'__tmp', dataset_name)
+            elif os.path.abspath(path) == os.path.abspath(zarr_file) and in_ds == dataset_name:
+                pass
             else:
                 print(f"Copying {path}/{in_ds} to {zarr_file}/{dataset_name}..")
                 out_f[dataset_name] = in_f[in_ds]
@@ -44,29 +47,37 @@ def process_dataset(dataset_type, zarr_file, resolution):
     
     return dataset_name
 
-def process_masks(zarr_file, dataset, mask_type):
-    source_dataset = dataset
-    out_mask_dataset = dataset.replace('image' if mask_type == 'img' else 'ids', 'mask')
-    script = 'data/mask_blockwise.py'
-    
-    if get_input("Do masking downscaled dataset then upscale?", 'y').lower().strip() == 'y':
-        source_dataset = source_dataset.replace('s0', 's2')
-        out_mask_dataset = out_mask_dataset.replace('s0', 's2')
-        run_subprocess(script, '-f', zarr_file, '-i', source_dataset, '-o', out_mask_dataset, '-m', mask_type)
-        run_scale_pyramid(zarr_file, out_mask_dataset, mode='up')
-    else:
-        run_subprocess(script, '-f', zarr_file, '-i', source_dataset, '-o', out_mask_dataset, '-m', mask_type)
-
 def prepare(dataset_type, zarr_file, resolution):
+    # get array
     dataset = process_dataset(dataset_type, zarr_file, resolution)
-    
+   
+    # if not blank
     if dataset:
-        if get_input(f"Run downscale pyramid on {dataset}?", "y").lower().strip() == 'y':
+        # scale pyramid ?
+        do_scale_pyr = get_input(f"Run downscale pyramid on {dataset}?", "y").lower().strip() == 'y'
+        if do_scale_pyr:
             run_scale_pyramid(zarr_file, dataset)
         
-        mask_type = 'img' if 'image' in dataset_type else 'obj'
-        if get_input(f"Make {'raw' if mask_type == 'img' else 'object'} masks?", "y").lower().strip() == 'y':
-            process_masks(zarr_file, dataset, mask_type)
+        mask_type = 'img' if dataset_type == 'image' else 'obj'
+        make_mask = get_input(f"Make {'raw' if mask_type == 'img' else 'object'} masks?", "y").lower().strip() == 'y'
+
+        # mask ?
+        if make_mask:
+            source_dataset = dataset
+            transform = lambda s: '/'.join(parts[:-2] + [parts[-2] + '_mask'] + parts[-1:]) if (parts := s.split('/')) and len(parts) > 1 else s + '_mask'
+
+            if do_scale_pyr:
+                if not source_dataset.endswith('s0'):
+                    source_dataset += '/s0'
+                do_upscale = get_input("Do masking downscaled dataset then upscale?", 'y').lower().strip() == 'y'
+                if do_upscale:
+                    source_dataset = source_dataset.replace('s0', 's2')
+
+            out_mask_dataset = transform(source_dataset)
+            run_subprocess('data/mask_blockwise.py', '-f', zarr_file, '-i', source_dataset, '-o', out_mask_dataset, '-m', mask_type)
+
+            if do_upscale:
+                run_scale_pyramid(zarr_file, out_mask_dataset, mode='up')
 
 def main():
     base_dir = get_input("Enter base directory", 'test')
@@ -78,8 +89,8 @@ def main():
         get_input("Enter YX resolution (in world units)", "1")
     ]
 
-    prepare("raw/image", zarr_file, resolution)
-    prepare("labels/ids", zarr_file, resolution)
+    prepare("image", zarr_file, resolution)
+    prepare("labels", zarr_file, resolution)
 
 if __name__ == "__main__":
     this_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
