@@ -1,6 +1,3 @@
-import multiprocessing as mp
-mp.set_start_method('fork')
-
 import sys
 import yaml
 import os
@@ -55,7 +52,6 @@ def find_segments(
     thresholds_minmax = config['thresholds_minmax']
     thresholds_step = config['thresholds_step']
     merge_function = config['merge_function']
-    num_workers = max(4, config['num_workers']) 
 
     logging.info("Reading fragments")
     start: float = time.time()
@@ -141,21 +137,20 @@ def find_segments(
     # parallel processing
     start = time.time()
 
-    with mp.Pool(processes=num_workers) as pool:
-        pool.starmap(
-            get_connected_components,
-            [
-                (
-                    np.asarray(nodes,dtype=np.uint64),
-                    np.asarray(edges,dtype=np.uint64),
-                    np.asarray(scores),
-                    t,
-                    f"{config['edges_table']}",
-                    out_dir,
-                )
-                for t in thresholds
-            ],
-        )
+
+    nodes = np.asarray(nodes,dtype=np.uint64)
+    edges = np.asarray(edges,dtype=np.uint64)
+    scores = np.asarray(scores)
+
+    for t in thresholds:
+        get_connected_components(
+                nodes,
+                edges,
+                scores,
+                t,
+                f"{config['edges_table']}",
+                out_dir,
+            )
 
     logging.info(f"Created and stored lookup tables in {time.time() - start}")
 

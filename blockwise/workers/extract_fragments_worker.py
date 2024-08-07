@@ -319,7 +319,8 @@ def watershed_in_block(
                 affs=affs.data/max_affinity_value,
                 thresholds=[epsilon_agglomerate],
                 fragments=fragments_data,
-                scoring_function='OneMinus<HistogramQuantileAffinity<RegionGraphType, 25, ScoreValue, 256, false>>',
+                #scoring_function='OneMinus<HistogramQuantileAffinity<RegionGraphType, 25, ScoreValue, 256, false>>',
+                scoring_function='OneMinus<MeanAffinity<RegionGraphType, ScoreValue>>',
                 discretize_queue=256,
                 return_merge_history=False,
                 return_region_graph=False)
