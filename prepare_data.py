@@ -41,6 +41,8 @@ def process_dataset(dataset_type, zarr_file, resolution):
             else:
                 print(f"Copying {path}/{in_ds} to {zarr_file}/{dataset_name}..")
                 out_f[dataset_name] = in_f[in_ds]
+                out_f[dataset_name].attrs['offset'] = in_f[in_ds].attrs['offset']
+                out_f[dataset_name].attrs['resolution'] = in_f[in_ds].attrs['resolution']
     else:
         dataset_name = get_input(f"Enter output {dataset_type} dataset name", f"volumes/{dataset_type}/s0")
         run_subprocess('data/make_3d_zarr_array.py', path, zarr_file, dataset_name, *resolution)

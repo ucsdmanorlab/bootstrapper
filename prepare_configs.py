@@ -186,7 +186,7 @@ def make_round_configs(base_dir, round_number, round_name=None, previous_round=N
 
     # predict, segment, filter configs
     print("Predict, segment, and filter configs for all target volumes")
-    pred_iter = int(input(f"Enter checkpoint iteration for {round_name} inference (default is {max_iterations}): ") or max_iterations)
+    pred_iter = int(input(f"Enter checkpoint iteration for {round_name} inference (default is {max_iterations - 1}): ") or max_iterations - 1)
 
     # get model prediction outputs
     with open(os.path.join(setup_dir,'config.json'),'r') as f:
