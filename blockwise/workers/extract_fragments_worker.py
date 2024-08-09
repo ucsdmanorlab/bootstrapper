@@ -311,7 +311,7 @@ def watershed_in_block(
         # add fake z-affinity channel if stacked 2D affinities
         if affs.data.shape[0] == 2:
             affs.data = np.stack([
-                            np.zeros_like(affs.data[0]),
+                            0.5*np.zeros_like(affs.data[0]),
                             affs.data[-2],
                             affs.data[-1]])
 
@@ -466,7 +466,7 @@ def extract_fragments_worker(input_config):
             mode="r+",
             nodes_table=config['nodes_table'],
             edges_table=config['edges_table'],
-            node_attrs={"center": Vec(int,3)},
+            node_attrs={"center": Vec(int,affs.roi.dims)},
             edge_attrs={"merge_score": float, "agglomerated": bool}
         )
         logging.info("Using SQLiteGraphDatabase")
@@ -482,7 +482,7 @@ def extract_fragments_worker(input_config):
             mode="r+",
             nodes_table=config['nodes_table'],
             edges_table=config['edges_table'],
-            node_attrs={"center": Vec(int,3)},
+            node_attrs={"center": Vec(int,affs.roi.dims)},
             edge_attrs={"merge_score": float, "agglomerated": bool}
         )
         logging.info("Using PgSQLGraphDatabase")

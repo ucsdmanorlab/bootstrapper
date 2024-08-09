@@ -16,8 +16,7 @@ from funlib.persistence import open_ds
 from funlib.persistence.graphs import SQLiteGraphDataBase, PgSQLGraphDatabase
 from funlib.persistence.types import Vec
 
-logging.basicConfig(level=logging.DEBUG)
-#logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO)
 
 
 def agglomerate_in_block(
@@ -72,6 +71,13 @@ def agglomerate_in_block(
     # threshold 0 to get the waterz RAG, which tells us which nodes are
     # neighboring. Use this to populate 'rag' with edges. Then run waterz for
     # the given threshold.
+   
+    # add fake z-affinities
+    if affs.shape[0] == 2:
+        affs = np.stack([
+                        0.5*np.ones_like(affs[0]),
+                        affs[-2],
+                        affs[-1]])
 
     # for efficiency, we create one waterz call with both thresholds
     generator = waterz.agglomerate(
@@ -172,7 +178,7 @@ def agglomerate_worker(input_config):
             mode="r+",
             nodes_table=config['nodes_table'],
             edges_table=config['edges_table'],
-            node_attrs={"center": Vec(int,3)},
+            node_attrs={"center": Vec(int,affs.roi.dims)},
             edge_attrs={"merge_score": float, "agglomerated": bool}
         )
         logging.info("Using SQLiteGraphDatabase")
@@ -188,7 +194,7 @@ def agglomerate_worker(input_config):
             mode="r+",
             nodes_table=config['nodes_table'],
             edges_table=config['edges_table'],
-            node_attrs={"center": Vec(int,3)},
+            node_attrs={"center": Vec(int,affs.roi.dims)},
             edge_attrs={"merge_score": float, "agglomerated": bool}
         )
         logging.info("Using PgSQLGraphDatabase")

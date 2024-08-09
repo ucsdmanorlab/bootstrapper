@@ -202,7 +202,7 @@ def extract_fragments(
             mode="w",
             nodes_table=config['nodes_table'],
             edges_table=config['edges_table'],
-            node_attrs={"center": Vec(int,3)},
+            node_attrs={"center": Vec(int,affs.roi.dims)},
             edge_attrs={"merge_score": float, "agglomerated": bool}
         )
         rag_provider.con.close() 
@@ -219,7 +219,7 @@ def extract_fragments(
             mode="w",
             nodes_table=config['nodes_table'],
             edges_table=config['edges_table'],
-            node_attrs={"center": Vec(int,3)},
+            node_attrs={"center": Vec(int,affs.roi.dims)},
             edge_attrs={"merge_score": float, "agglomerated": bool}
         )
         rag_provider.connection.close() 
