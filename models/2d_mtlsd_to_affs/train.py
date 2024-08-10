@@ -161,7 +161,7 @@ def train(
         },
         loss_inputs={0: pred_affs, 1: gt_affs, 2: affs_weights},
         outputs={0: pred_affs},
-        save_every=1000,
+        save_every=save_checkpoints_every,
         log_dir=os.path.join(setup_dir,'log'),
         checkpoint_basename=os.path.join(setup_dir,'model'),
     )
@@ -179,7 +179,7 @@ def train(
         },
         output_filename="batch_{iteration}.zarr",
         output_dir=os.path.join(setup_dir,'snapshots'),
-        every=1000,
+        every=save_snapshots_every,
     )
 
     with gp.build(pipeline):
