@@ -242,7 +242,8 @@ def make_round_configs(base_dir, round_number, round_name=None, previous_round=N
     filter_params = {
         "dust_filter" : 1000,
         "remove_outliers" : True,
-        "remove_z_fragments" : True,
+        "remove_z_fragments" : 10,
+        "overlap_filter": 0.0,
         "erode_out_mask" : False,
     }
 
