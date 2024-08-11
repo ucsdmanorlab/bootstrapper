@@ -23,6 +23,9 @@ def process_dataset(dataset_type, zarr_file, resolution):
         return None
     
     if path.endswith('.zarr'):
+        with zarr.open(path,'r') as f:
+            print(f.tree())
+
         in_ds = get_input(f"Enter input {dataset_type} dataset name contained in {path}", dataset_type.split('/')[0])
         dataset_name = get_input(f"Enter output {dataset_type} dataset name", in_ds)
         

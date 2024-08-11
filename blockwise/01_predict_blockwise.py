@@ -181,7 +181,7 @@ if __name__ == "__main__":
     with open(config_file, 'r') as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["predict"][setup]
+    config = yaml_config[setup]
     
     start = time.time()
     predict_blockwise(config)

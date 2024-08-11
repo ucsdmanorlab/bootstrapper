@@ -12,7 +12,7 @@ from funlib.show.neuroglancer import add_layer
 from funlib.persistence import open_ds
 from funlib.persistence.graphs import SQLiteGraphDataBase
 
-neuroglancer.set_server_bind_address('localhost',bind_port=4443)
+neuroglancer.set_server_bind_address('0.0.0.0')
 
 
 f = sys.argv[1]

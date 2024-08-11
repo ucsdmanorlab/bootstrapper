@@ -115,6 +115,8 @@ def filter_segmentation(
         overlap_filter=0.0,
         exclude_ids=None,
         erode_out_mask=False,
+        roi_offset=None,
+        roi_shape=None,
         block_size=None,
         context=None,
         num_workers=20
@@ -124,6 +126,11 @@ def filter_segmentation(
     in_labels = open_ds(seg_file, seg_dataset)
 
     # Define block size and ROIs
+    if roi_offset is not None:
+        total_roi = Roi(roi_offset, roi_shape)
+    else:
+        total_roi = in_labels.roi
+    
     if block_size is None:
         block_size = in_labels.chunk_shape * in_labels.voxel_size
     if context is None:
@@ -138,7 +145,7 @@ def filter_segmentation(
     out_labels = prepare_ds(
         out_file,
         out_labels_dataset,
-        in_labels.roi,
+        total_roi,
         in_labels.voxel_size,
         in_labels.dtype,
         write_size=block_size,
@@ -147,7 +154,7 @@ def filter_segmentation(
     out_mask = prepare_ds(
         out_file,
         out_mask_dataset,
-        in_labels.roi,
+        total_roi,
         in_labels.voxel_size,
         np.uint8,
         write_size=block_size,
@@ -171,7 +178,7 @@ def filter_segmentation(
     # Create a daisy task
     filter_task = daisy.Task(
         'FilterSegmentationTask',
-        in_labels.roi.grow(context,context),
+        total_roi.grow(context,context),
         read_roi,
         write_roi,
         process_function=partial(filter_in_block, in_labels, out_labels, out_mask, lsd_errors, to_remove, erode_out_mask),
@@ -190,5 +197,5 @@ if __name__ == "__main__":
     config_file = sys.argv[1]
     with open(config_file, 'r') as f:
         yaml_config = yaml.safe_load(f)
-    config = yaml_config["processing"]["filter"]
+    config = yaml_config
     filter_segmentation(**config)

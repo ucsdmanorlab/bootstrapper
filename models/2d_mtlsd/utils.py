@@ -33,6 +33,7 @@ def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
         (0,) * 3,
     ).snap_to_grid(voxel_size, mode=mode)
 
+    return max_padding.get_begin()
 
 class SliceArray(BatchFilter):
     def __init__(self, array, slice_obj):
@@ -156,7 +157,7 @@ class CustomAffs(BatchFilter):
             "Upstream does not provide %s needed by " "AddAffinities" % self.labels
         )
 
-        voxel_size = self.spec[self.labels].voxel_size
+        voxel_size = Coordinate(self.spec[self.labels].voxel_size)
 
         dims = self.affinity_neighborhood.shape[1] 
         self.padding_neg = (
@@ -290,7 +291,6 @@ class CustomLSDs(AddLocalShapeDescriptor):
                 self.sigma[1:], self.mode, self.downsample
         )
 
-
     def process(self, batch, request):
 
         labels = batch[self.segmentation].data
@@ -317,11 +317,9 @@ class CustomLSDs(AddLocalShapeDescriptor):
         if self.lsds_mask and self.lsds_mask in request:
 
             if self.labels_mask:
-
-                mask = self._create_mask(old_batch, self.labels_mask, descriptor)#, crop)
+                mask = self._create_mask(old_batch, self.labels_mask, descriptor)
 
             else:
-
                 mask = (labels != 0).astype(
                     np.float32
                 )
@@ -335,7 +333,7 @@ class CustomLSDs(AddLocalShapeDescriptor):
             if self.unlabelled:
 
                 unlabelled_mask = self._create_mask(
-                    old_batch, self.unlabelled, descriptor#, crop
+                    old_batch, self.unlabelled, descriptor
                 )
 
                 mask = mask * unlabelled_mask
@@ -349,12 +347,10 @@ class CustomLSDs(AddLocalShapeDescriptor):
         return batch
 
 
-    def _create_mask(self, batch, mask, lsds):#, #crop):
+    def _create_mask(self, batch, mask, lsds):
 
         mask = batch.arrays[mask].data
 
         mask = np.array([mask] * lsds.shape[0])
-
-        #mask = mask[(slice(None),) + crop]
 
         return mask

@@ -5,7 +5,7 @@ import sys
 import zarr
 
 # set bind address if accessing remotely
-neuroglancer.set_server_bind_address('localhost',bind_port=3336)
+neuroglancer.set_server_bind_address('0.0.0.0')
 
 # path to snapshots/batch_{i}.zarr after training for i iterations
 f = zarr.open(sys.argv[1])

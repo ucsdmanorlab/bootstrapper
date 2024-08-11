@@ -164,7 +164,7 @@ if __name__ == "__main__":
     with open(config_file, 'r') as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["processing"]["hglom_segment"] | yaml_config["db"]
+    config = yaml_config["hglom_segment"] | yaml_config["db"]
 
     start = time.time()
     agglomerate(config)

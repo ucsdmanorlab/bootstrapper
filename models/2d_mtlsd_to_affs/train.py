@@ -106,7 +106,7 @@ def train(
     pipeline += gp.SimpleAugment(transpose_only=[1,2])
     
     pipeline += CustomLSDs(
-        labels, input_lsds, sigma=sigma, downsample=4
+        labels, input_lsds, sigma=sigma, downsample=2
     )
 
     pipeline += CustomGrowBoundary(labels, max_steps=1, only_xy=True)

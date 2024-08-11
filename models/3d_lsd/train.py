@@ -140,7 +140,7 @@ def train(
             unlabelled=unlabelled,
             lsds_mask=lsds_weights,
             sigma=sigma,
-            downsample=4,
+            downsample=2,
     )
 
     pipeline += gp.IntensityScaleShift(raw, 2, -1)

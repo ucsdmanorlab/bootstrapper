@@ -146,7 +146,7 @@ def train(
             unlabelled=unlabelled,
             lsds_mask=lsds_weights,
             sigma=sigma,
-            downsample=4,
+            downsample=2,
     )
     pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=1, only_xy=True)
 

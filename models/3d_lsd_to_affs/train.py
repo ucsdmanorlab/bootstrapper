@@ -110,7 +110,7 @@ def train(
             labels,
             input_lsds,
             sigma=sigma,
-            downsample=4,
+            downsample=2,
     )
 
     # add random noise
