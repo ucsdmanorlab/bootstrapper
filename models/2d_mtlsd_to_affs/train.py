@@ -193,7 +193,7 @@ if __name__ == "__main__":
     with open(config_file, 'r') as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["train"]["2d_mtlsd_to_affs"]
+    config = yaml_config["2d_mtlsd_to_affs"]
 
     assert config["setup_dir"] in setup_dir, \
         "model directories do not match"

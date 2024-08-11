@@ -16,7 +16,7 @@ def get_volumes():
     for i in range(num_volumes):
         print(f"Volume {i+1}:")
         vol = {}
-        vol["zarr_container"] = input("Enter Zarr container path: ")
+        vol["zarr_container"] = os.path.abspath(input("Enter Zarr container path: "))
         with zarr.open(vol["zarr_container"], "r") as f:
             print(f.tree())
 
@@ -534,7 +534,7 @@ def make_round_configs(base_dir, round_number, round_name=None):
 
 
 def main():
-    base_dir = input("Enter base directory: ") or "./test"
+    base_dir = os.path.abspath(input("Enter base directory: ") or "./test")
 
     existing_rounds = [
         d

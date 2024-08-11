@@ -220,9 +220,7 @@ if __name__ == "__main__":
 
     config_file = sys.argv[1]
     with open(config_file, 'r') as f:
-        yaml_config = yaml.safe_load(f)
-
-    config = yaml_config["train"]
+        config = yaml.safe_load(f)
 
     assert config["setup_dir"] in setup_dir, \
         "model directories do not match"
