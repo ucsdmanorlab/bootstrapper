@@ -3,7 +3,8 @@ import math
 import torch
 import torch.nn as nn
 
-class ConvPass(nn.Module):
+
+class ConvPass(torch.nn.Module):
 
     def __init__(
             self,
@@ -16,19 +17,17 @@ class ConvPass(nn.Module):
         super(ConvPass, self).__init__()
 
         if activation is not None:
-            activation = getattr(nn, activation)
+            activation = getattr(torch.nn, activation)
 
-        self.activation = activation
         layers = []
-        residual = []
 
-        for index, kernel_size in enumerate(kernel_sizes):
+        for kernel_size in kernel_sizes:
 
             self.dims = len(kernel_size)
 
             conv = {
-                2: nn.Conv2d,
-                3: nn.Conv3d,
+                2: torch.nn.Conv2d,
+                3: torch.nn.Conv3d,
                 4: Conv4d
             }[self.dims]
 
@@ -47,53 +46,19 @@ class ConvPass(nn.Module):
             except KeyError:
                 raise RuntimeError("%dD convolution not implemented" % self.dims)
 
-            if index == 0:
-
-                residual.append(
-                        conv(
-                            in_channels,
-                            out_channels,
-                            kernel_size=1,
-                            padding=pad))
-
             in_channels = out_channels
 
-            if activation is not None and index < len(kernel_sizes)-1:
-                
+            if activation is not None:
                 layers.append(activation())
 
-        self.out_activation = None
-        if activation is not None:
-            self.out_activation = activation()
-
-        self.conv_pass = nn.Sequential(*layers)
-        self.residual = nn.Sequential(*residual)
-
-    def crop(self, to_crop, target_size):
-        z, y, x = target_size[-3:]
-        sx = (to_crop.shape[-1] - x) // 2
-        sy = (to_crop.shape[-2] - y) // 2
-        sz = (to_crop.shape[-3] - z) // 2
-
-        return to_crop[..., sz:sz+z, sy:sy+y, sx:sx+x]
+        self.conv_pass = torch.nn.Sequential(*layers)
 
     def forward(self, x):
 
-        out = self.conv_pass(x)
-
-        res = self.residual(x)
-
-        cropped = self.crop(res,  out.size())
-
-        ret = out + cropped
-
-        if self.activation is not None:
-            ret = self.out_activation(ret)
-
-        return ret
+        return self.conv_pass(x)
 
 
-class Downsample(nn.Module):
+class Downsample(torch.nn.Module):
 
     def __init__(
             self,
@@ -105,9 +70,9 @@ class Downsample(nn.Module):
         self.downsample_factor = downsample_factor
 
         pool = {
-            2: nn.MaxPool2d,
-            3: nn.MaxPool3d,
-            4: nn.MaxPool3d  # only 3D pooling, even for 4D input
+            2: torch.nn.MaxPool2d,
+            3: torch.nn.MaxPool3d,
+            4: torch.nn.MaxPool3d  # only 3D pooling, even for 4D input
         }[self.dims]
 
         self.down = pool(
@@ -128,7 +93,7 @@ class Downsample(nn.Module):
         return self.down(x)
 
 
-class Upsample(nn.Module):
+class Upsample(torch.nn.Module):
 
     def __init__(
             self,
@@ -137,7 +102,8 @@ class Upsample(nn.Module):
             in_channels=None,
             out_channels=None,
             crop_factor=None,
-            next_conv_kernel_sizes=None):
+            next_conv_kernel_sizes=None,
+            padding='valid'):
 
         super(Upsample, self).__init__()
 
@@ -152,8 +118,8 @@ class Upsample(nn.Module):
         if mode == 'transposed_conv':
 
             up = {
-                2: nn.ConvTranspose2d,
-                3: nn.ConvTranspose3d
+                2: torch.nn.ConvTranspose2d,
+                3: torch.nn.ConvTranspose3d
             }[self.dims]
 
             self.up = up(
@@ -164,9 +130,11 @@ class Upsample(nn.Module):
 
         else:
 
-            self.up = nn.Upsample(
-                    scale_factor=tuple(scale_factor),
+            self.up = torch.nn.Upsample(
+                scale_factor=scale_factor,
                 mode=mode)
+
+        self.padding = padding
 
     def crop_to_factor(self, x, factor, kernel_sizes):
         '''Crop feature maps to ensure translation equivariance with stride of
@@ -245,7 +213,7 @@ class Upsample(nn.Module):
 
         g_up = self.up(g_out)
 
-        if self.next_conv_kernel_sizes is not None:
+        if self.next_conv_kernel_sizes is not None and self.padding == 'valid':
             g_cropped = self.crop_to_factor(
                 g_up,
                 self.crop_factor,
@@ -258,7 +226,7 @@ class Upsample(nn.Module):
         return torch.cat([f_cropped, g_cropped], dim=1)
 
 
-class UNet(nn.Module):
+class UNet(torch.nn.Module):
 
     def __init__(
             self,
@@ -344,7 +312,7 @@ class UNet(nn.Module):
 
                 Which activation to use after a convolution. Accepts the name
                 of any tensorflow activation function (e.g., ``ReLU`` for
-                ``nn.ReLU``).
+                ``torch.nn.ReLU``).
 
             fov (optional):
 
@@ -428,7 +396,8 @@ class UNet(nn.Module):
                     in_channels=num_fmaps*fmap_inc_factor**(level + 1),
                     out_channels=num_fmaps*fmap_inc_factor**(level + 1),
                     crop_factor=crop_factors[level],
-                    next_conv_kernel_sizes=kernel_size_up[level])
+                    next_conv_kernel_sizes=kernel_size_up[level],
+                    padding=padding)
                 for level in range(self.num_levels - 1)
             ])
             for _ in range(num_heads)
