@@ -47,9 +47,9 @@ def train(
     pred_affs = gp.ArrayKey("PRED_AFFS")
     affs_weights = gp.ArrayKey("AFFS_WEIGHTS")
     
-    with open(os.path.join(setup_dir, "config.json")) as f:
+    with open(os.path.join(setup_dir, "net_config.json")) as f:
         logging.info(
-            "Reading setup config from %s" % os.path.join(setup_dir, "config.json")
+            "Reading setup config from %s" % os.path.join(setup_dir, "net_config.json")
         )
         net_config = json.load(f)
 
@@ -62,7 +62,7 @@ def train(
                 input_lsds=torch.empty(size=[1,10]+input_shape),
             )[0].shape[1:]
         net_config['output_shape'] = list(output_shape)
-        with open(os.path.join(setup_dir,"config.json"),"w") as f:
+        with open(os.path.join(setup_dir,"net_config.json"),"w") as f:
             json.dump(net_config,f,indent=4)
     else: 
         output_shape = [x + y for x,y in zip(shape_increase,net_config["output_shape"])]

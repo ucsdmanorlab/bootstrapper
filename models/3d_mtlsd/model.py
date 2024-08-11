@@ -7,7 +7,7 @@ from unet import UNet, ConvPass
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
 # load model parameters
-with open(os.path.join(setup_dir, "config.json")) as f:
+with open(os.path.join(setup_dir, "net_config.json")) as f:
     net_config = json.load(f)
 
 in_channels = net_config['in_channels']

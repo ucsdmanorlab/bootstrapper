@@ -423,14 +423,14 @@ def make_round_configs(base_dir, round_number, round_name=None):
             os.path.join(
                 t_vol["zarr_container"], f"post/{round_name}-{model_name}/rag.db"
             )
-            if (use_sqlite and confirm_sqlite)
+            if use_sqlite == confirm_sqlite
             else None
         )
         db_config = check_and_update(get_rag_db_config(sqlite_path=sqlite_path))
 
         # blockwise or not ?
         do_blockwise = True
-        if small_volume:
+        if use_sqlite:
             do_blockwise = False
         confirm_blockwise = (
             input(f"do_blockwise = {do_blockwise}. Continue? (y/n, default: y): ")

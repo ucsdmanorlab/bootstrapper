@@ -54,9 +54,9 @@ def train(
     batch_size = 1
 
     # load net config
-    with open(os.path.join(setup_dir, "config.json")) as f:
+    with open(os.path.join(setup_dir, "net_config.json")) as f:
         logging.info(
-            "Reading setup config from %s" % os.path.join(setup_dir, "config.json")
+            "Reading setup config from %s" % os.path.join(setup_dir, "net_config.json")
         )
         net_config = json.load(f)
 
