@@ -34,7 +34,7 @@ def scale_block(in_array, out_array, factor, mode, block):
     if n_channels >= 1:
         factor = (1,)*n_channels + factor
 
-    if in_data.dtype == np.uint64 or 'label' in name or 'id' in name:
+    if in_data.dtype == np.uint64 or 'label' in name or 'id' in name or 'mask' in name:
         if mode == 'down':
             slices = tuple(slice(k//2, None, k) for k in factor)
             out_data = in_data[slices]
