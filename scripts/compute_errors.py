@@ -203,9 +203,7 @@ if __name__ == "__main__":
     config_file = sys.argv[1]
 
     with open(config_file, 'r') as f:
-        yaml_config = yaml.safe_load(f)
-
-    config = yaml_config["processing"]["compute_lsd_errors"]
+        config = yaml.safe_load(f)
 
     if config != {}:
         start = time.time()

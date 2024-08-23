@@ -16,7 +16,7 @@ def run_scale_pyramid(zarr_file, dataset_name, mode='down'):
     chunks = get_input("Enter chunk size", "8 256 256").split()
     run_subprocess('data/scale_pyramid.py', '-f', zarr_file, '-d', dataset_name, '-s', *scales, '-c', *chunks, '-m', mode)
 
-def process_dataset(dataset_type, zarr_file, resolution):
+def process_dataset(dataset_type, zarr_file):
     # input path
     path = get_input(f"Enter path to input {dataset_type} tif directory, tif stack, or zarr container", None)
     if not path:
@@ -47,14 +47,19 @@ def process_dataset(dataset_type, zarr_file, resolution):
                 out_f[dataset_name].attrs['offset'] = in_f[in_ds].attrs['offset']
                 out_f[dataset_name].attrs['resolution'] = in_f[in_ds].attrs['resolution']
     else:
+        resolution = [
+            get_input("Enter Z resolution (in world units)", "1"),
+            get_input("Enter YX resolution (in world units)", "1")
+        ]
+        
         dataset_name = get_input(f"Enter output {dataset_type} dataset name", f"volumes/{dataset_type}/s0")
         run_subprocess('data/make_3d_zarr_array.py', path, zarr_file, dataset_name, *resolution)
     
     return dataset_name
 
-def prepare(dataset_type, zarr_file, resolution):
+def prepare(dataset_type, zarr_file):
     # get array
-    dataset = process_dataset(dataset_type, zarr_file, resolution)
+    dataset = process_dataset(dataset_type, zarr_file)
    
     # if not blank
     if dataset:
@@ -89,13 +94,9 @@ def main():
     os.makedirs(base_dir, exist_ok=True)
     
     zarr_file = get_input("Enter output zarr container name", os.path.join(base_dir, "test.zarr"))
-    resolution = [
-        get_input("Enter Z resolution (in world units)", "1"),
-        get_input("Enter YX resolution (in world units)", "1")
-    ]
 
-    prepare("image", zarr_file, resolution)
-    prepare("labels", zarr_file, resolution)
+    prepare("image", zarr_file)
+    prepare("labels", zarr_file)
 
 if __name__ == "__main__":
     this_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))

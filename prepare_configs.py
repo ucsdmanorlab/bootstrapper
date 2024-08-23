@@ -215,6 +215,8 @@ def make_round_configs(base_dir, round_number, round_name=None):
     ]  # Assuming voxel_size is the same for all volumes
 
     # Training config
+    print("\nTRAINING: ")
+    
     model_name = input(f"Enter model for {round_name}: ") or (
         "2d_mtlsd" if i == 0 else "3d_lsd"
     )
@@ -265,13 +267,13 @@ def make_round_configs(base_dir, round_number, round_name=None):
     )
 
     # Output config directory
-    config_dir = os.path.join(setup_dir, "configs")
-    os.makedirs((config_dir), exist_ok=True)
+    config_dir = os.path.join(setup_dir, "pipeline")
+    os.makedirs(config_dir, exist_ok=True)
     train_config_file = os.path.join(config_dir, "train.yaml")
     with open(train_config_file, "w") as f:
         yaml.dump(train_config, f)
-    print("\n")
 
+    print("\nPREDICT: ")
     # Predict config parameters
     pred_iter = int(
         input(
@@ -354,6 +356,7 @@ def make_round_configs(base_dir, round_number, round_name=None):
     }
 
     # target volume configs
+    print("\n TARGET VOLUMES:")
     target_volumes = volumes
     for t_vol in target_volumes:
 
@@ -362,7 +365,7 @@ def make_round_configs(base_dir, round_number, round_name=None):
 
         # get ROI
         print(
-            f"{t_vol['zarr_container']} target ROIs -- comma-separated world units, not voxels, default is None: "
+            f"\n{t_vol['zarr_container']} target ROIs -- comma-separated world units, not voxels, default is None: "
         )
         roi_offset, roi_shape = get_roi(full_shape, voxel_size)
 
@@ -412,8 +415,8 @@ def make_round_configs(base_dir, round_number, round_name=None):
             f"{round_name}-{model_name} database config for {t_vol['zarr_container']}:"
         )
         use_sqlite = (
-            False if np.prod(roi_shape) / np.prod(voxel_size) > 1342177280 else True
-        )  # ~(50,5000,5000) uint64, ~10GB
+            False if np.prod(roi_shape) / np.prod(voxel_size) > 268435455 else True
+        )  # ~2GB, uint64
         confirm_sqlite = (
             input(f"use_sqlite = {use_sqlite}. Continue? (y/n, default: y): ") or "y"
         )
