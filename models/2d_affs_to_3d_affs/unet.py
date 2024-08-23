@@ -19,9 +19,11 @@ class ConvPass(torch.nn.Module):
         if activation is not None:
             activation = getattr(torch.nn, activation)
 
+        self.activation = activation
         layers = []
+        residual = []
 
-        for kernel_size in kernel_sizes:
+        for index, kernel_size in enumerate(kernel_sizes):
 
             self.dims = len(kernel_size)
 
@@ -46,16 +48,49 @@ class ConvPass(torch.nn.Module):
             except KeyError:
                 raise RuntimeError("%dD convolution not implemented" % self.dims)
 
+            if index == 0:
+                residual.append(
+                        conv(
+                            in_channels,
+                            out_channels,
+                            kernel_size=1,
+                            padding=pad))
+
+
             in_channels = out_channels
 
-            if activation is not None:
+            if activation is not None and index < len(kernel_sizes)-1:
                 layers.append(activation())
 
+        self.out_activation = None
+        if activation is not None:
+            self.out_activation = activation()
+
         self.conv_pass = torch.nn.Sequential(*layers)
+        self.residual = torch.nn.Sequential(*residual)
+
+    def crop(self, to_crop, target_size):
+        z, y, x = target_size[-3:]
+        sx = (to_crop.shape[-1] - x) // 2
+        sy = (to_crop.shape[-2] - y) // 2
+        sz = (to_crop.shape[-3] - z) // 2
+
+        return to_crop[..., sz:sz+z, sy:sy+y, sx:sx+x]
 
     def forward(self, x):
 
-        return self.conv_pass(x)
+        out = self.conv_pass(x)
+
+        res = self.residual(x)
+
+        cropped = self.crop(res,  out.size())
+
+        ret = out + cropped
+
+        if self.activation is not None:
+            ret = self.out_activation(ret)
+
+        return ret
 
 
 class Downsample(torch.nn.Module):

@@ -10,9 +10,8 @@ import torch
 import zarr
 import gunpowder as gp
 
-from lsd.train.gp import AddLocalShapeDescriptor
 from model import AffsUNet, WeightedMSELoss
-from utils import CreateLabels, SmoothArray, IntensityAugment, CustomGrowBoundary
+from utils import CreateLabels, CustomAffs, CustomLSDs, SmoothArray, IntensityAugment, CustomGrowBoundary
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -42,7 +41,7 @@ def train(
     optimizer = torch.optim.RAdam(model.parameters(), lr=0.5e-4)
 
     labels = gp.ArrayKey("SYNTHETIC_LABELS")
-    input_lsds = gp.ArrayKey("INPUT_3D_LSDS")
+    input_lsds = gp.ArrayKey("INPUT_2D_LSDS")
     gt_affs = gp.ArrayKey("GT_AFFS")
     pred_affs = gp.ArrayKey("PRED_AFFS")
     affs_weights = gp.ArrayKey("AFFS_WEIGHTS")
@@ -59,7 +58,7 @@ def train(
     
     if 'output_shape' not in net_config:
         output_shape = model.forward(
-                input_lsds=torch.empty(size=[1,10]+input_shape),
+                input_lsds=torch.empty(size=[1,6]+input_shape),
             )[0].shape[1:]
         net_config['output_shape'] = list(output_shape)
         with open(os.path.join(setup_dir,"net_config.json"),"w") as f:
@@ -87,8 +86,6 @@ def train(
             
     pipeline += gp.Pad(labels,None,mode="reflect")
 
-    pipeline += gp.SimpleAugment(transpose_only=[1, 2])
-
     pipeline += gp.DeformAugment(
         control_point_spacing=(voxel_size[0], voxel_size[0]),
         jitter_sigma=(5.0, 5.0),
@@ -104,27 +101,30 @@ def train(
         sigma=1)
 
     pipeline += gp.SimpleAugment(transpose_only=[1,2])
-
-    # do this on non eroded labels - that is what predicted lsds will look like
-    pipeline += AddLocalShapeDescriptor(
-            labels,
-            input_lsds,
-            sigma=sigma,
-            downsample=2,
+    
+    # that is what predicted lsds will look like
+    pipeline += CustomLSDs(
+        labels, input_lsds, sigma=sigma, downsample=2
     )
 
+    
     # add random noise
-    pipeline += gp.NoiseAugment(input_lsds)
+    pipeline += gp.NoiseAugment(input_lsds, mode='poisson')
    
     # add defects
     pipeline += gp.DefectAugment(input_lsds, axis=1)
 
     # intensity
-    pipeline += gp.IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1)
     pipeline += IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
 
     # smooth the batch by different sigmas to simulate noisy predictions
-    pipeline += SmoothArray(input_lsds, (0.75,2.0))
+    pipeline += SmoothArray(input_lsds, (0.5,1.5))
+    
+    # intensity
+    pipeline += IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
+
+    # smooth the batch by different sigmas to simulate noisy predictions
+    pipeline += SmoothArray(input_lsds, (0.0,1.0))
     
     # now we erode - we want the gt affs to have a pixel boundary
     pipeline += gp.GrowBoundary(labels, steps=1, only_xy=True)
@@ -182,7 +182,7 @@ if __name__ == "__main__":
     with open(config_file, 'r') as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["3d_lsd_to_affs"]
+    config = yaml_config["2d_mtlsd_to_3d_affs"]
 
     assert config["setup_dir"] in setup_dir, \
         "model directories do not match"

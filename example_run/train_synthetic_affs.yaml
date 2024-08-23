@@ -1,11 +1,37 @@
 # Example train configs for example models 
-  
-train:  
-  2d_mtlsd_to_affs:
-    setup_dir: "models/2d_mtlsd_to_affs"
-    voxel_size: [50, 2, 2]
-    sigma: 80
-    max_iterations: 10000
-    out_dir: "models/2d_mtlsd_to_affs"
-    save_checkpoints_every: 1000
-    save_snapshots_every: 1000
+ 
+2d_affs_to_3d_affs:
+  setup_dir: "models/2d_affs_to_3d_affs"
+  voxel_size: [50, 8, 8]
+  sigma: 80
+  max_iterations: 10000
+  out_dir: "models/2d_affs_to_3d_affs"
+  save_checkpoints_every: 1000
+  save_snapshots_every: 1000
+
+2d_lsd_to_3d_affs:
+  setup_dir: "models/2d_lsd_to_3d_affs"
+  voxel_size: [50, 8, 8]
+  sigma: 80
+  max_iterations: 10000
+  out_dir: "models/2d_lsd_to_3d_affs"
+  save_checkpoints_every: 1000
+  save_snapshots_every: 1000
+
+2d_mtlsd_to_3d_affs:
+  setup_dir: "models/2d_mtlsd_to_3d_affs"
+  voxel_size: [50, 8, 8]
+  sigma: 80
+  max_iterations: 10000
+  out_dir: "models/2d_mtlsd_to_3d_affs"
+  save_checkpoints_every: 1000
+  save_snapshots_every: 1000
+
+3d_lsd_to_3d_affs:
+  setup_dir: "models/3d_lsd_to_3d_affs"
+  voxel_size: [50, 8, 8]
+  sigma: 80
+  max_iterations: 10000
+  out_dir: "models/3d_lsd_to_3d_affs"
+  save_checkpoints_every: 1000
+  save_snapshots_every: 1000
