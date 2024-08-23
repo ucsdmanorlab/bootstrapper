@@ -449,7 +449,7 @@ def extract_fragments_worker(input_config):
         fragments_dataset,
         mode='r+')
 
-    if config['mask_file']:
+    if 'mask_file' in config and 'mask_dataset' in config and config['mask_file']:
         logging.info(f"Reading mask from {config['mask_file']}")
         mask = open_ds(config['mask_file'], config['mask_dataset'])
     else:

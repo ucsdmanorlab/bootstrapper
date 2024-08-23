@@ -184,7 +184,6 @@ def extract_fragments(
         voxel_size=voxel_size,
         dtype=np.uint64,
         write_size=write_roi.shape,
-        force_exact_write_size=True,
         compressor={"id": "blosc", "clevel": 5},
         delete=True,
     )
@@ -244,7 +243,6 @@ def extract_fragments(
         num_workers=num_workers,
         timeout=10,
         max_retries=20,
-        read_write_conflict=True,
         fit='shrink')
     
     done: bool = daisy.run_blockwise(tasks=[task])
