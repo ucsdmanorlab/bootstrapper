@@ -41,7 +41,6 @@ def train(
     optimizer = torch.optim.RAdam(model.parameters(), lr=0.5e-4)
 
     labels = gp.ArrayKey("SYNTHETIC_LABELS")
-    input_affs = gp.ArrayKey("INPUT_2D_AFFS")
     input_lsds = gp.ArrayKey("INPUT_2D_LSDS")
     gt_affs = gp.ArrayKey("GT_AFFS")
     pred_affs = gp.ArrayKey("PRED_AFFS")
@@ -59,7 +58,6 @@ def train(
     
     if 'output_shape' not in net_config:
         output_shape = model.forward(
-                input_affs=torch.empty(size=[1,2]+input_shape),
                 input_lsds=torch.empty(size=[1,6]+input_shape),
             )[0].shape[1:]
         net_config['output_shape'] = list(output_shape)
@@ -75,7 +73,6 @@ def train(
     
     request = gp.BatchRequest()
     request.add(labels, input_size)
-    request.add(input_affs, input_size)
     request.add(input_lsds, input_size)
     request.add(gt_affs, output_size)
     request.add(pred_affs, output_size)
@@ -105,42 +102,28 @@ def train(
 
     pipeline += gp.SimpleAugment(transpose_only=[1,2])
     
+    # that is what predicted lsds will look like
     pipeline += CustomLSDs(
         labels, input_lsds, sigma=sigma, downsample=2
     )
 
-    pipeline += CustomGrowBoundary(labels, max_steps=1, only_xy=True)
-
-    # that is what predicted affs will look like
-    pipeline += CustomAffs(
-        affinity_neighborhood=neighborhood,
-        labels=labels,
-        affinities=input_affs,
-        dtype=np.float32,
-    )
     
     # add random noise
-    pipeline += gp.NoiseAugment(input_affs, mode='poisson')
     pipeline += gp.NoiseAugment(input_lsds, mode='gaussian')
    
     # add defects
-    pipeline += gp.DefectAugment(input_affs, axis=1)
     pipeline += gp.DefectAugment(input_lsds, axis=1)
 
     # intensity
-    pipeline += IntensityAugment(input_affs, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
     pipeline += IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
 
     # smooth the batch by different sigmas to simulate noisy predictions
-    pipeline += SmoothArray(input_affs, (0.5,1.5))
     pipeline += SmoothArray(input_lsds, (0.5,1.5))
     
     # intensity
-    pipeline += IntensityAugment(input_affs, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
     pipeline += IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
 
     # smooth the batch by different sigmas to simulate noisy predictions
-    pipeline += SmoothArray(input_affs, (0.0,1.0))
     pipeline += SmoothArray(input_lsds, (0.0,1.0))
     
     # now we erode - we want the gt affs to have a pixel boundary
@@ -165,7 +148,6 @@ def train(
         optimizer,
         inputs={
             "input_lsds": input_lsds,
-            "input_affs": input_affs,
         },
         loss_inputs={0: pred_affs, 1: gt_affs, 2: affs_weights},
         outputs={0: pred_affs},
@@ -174,12 +156,11 @@ def train(
         checkpoint_basename=os.path.join(setup_dir,'model'),
     )
 
-    pipeline += gp.Squeeze([input_affs,input_lsds,gt_affs,pred_affs,affs_weights])
+    pipeline += gp.Squeeze([input_lsds,gt_affs,pred_affs,affs_weights])
     
     pipeline += gp.Snapshot(
         dataset_names={
             labels: "labels",
-            input_affs: "input_affs",
             input_lsds: "input_lsds",
             gt_affs: "gt_affs",
             pred_affs: "pred_affs",
@@ -201,7 +182,7 @@ if __name__ == "__main__":
     with open(config_file, 'r') as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["2d_mtlsd_to_3d_affs"]
+    config = yaml_config["3d_affs_from_2d_lsd"]
 
     assert config["setup_dir"] in setup_dir, \
         "model directories do not match"
