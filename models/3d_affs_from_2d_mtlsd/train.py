@@ -11,7 +11,7 @@ import zarr
 import gunpowder as gp
 
 from model import AffsUNet, WeightedMSELoss
-from utils import CreateLabels, CustomAffs, CustomLSDs, SmoothArray, IntensityAugment, CustomGrowBoundary
+from utils import CreateLabels, CustomAffs, CustomLSDs, SmoothArray, IntensityAugment, CustomGrowBoundary, ObfuscateAffs
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -118,6 +118,9 @@ def train(
         affinities=input_affs,
         dtype=np.float32,
     )
+
+    # add missing boundaries
+    pipeline += ObfuscateAffs(input_affs)
     
     # add random noise
     pipeline += gp.NoiseAugment(input_affs, mode='poisson')
