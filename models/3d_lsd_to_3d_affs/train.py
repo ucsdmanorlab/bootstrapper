@@ -114,7 +114,7 @@ def train(
     )
 
     # add random noise
-    pipeline += gp.NoiseAugment(input_lsds, mode='poisson')
+    pipeline += gp.NoiseAugment(input_lsds, mode='gaussian')
    
     # add defects
     pipeline += gp.DefectAugment(input_lsds, axis=1)

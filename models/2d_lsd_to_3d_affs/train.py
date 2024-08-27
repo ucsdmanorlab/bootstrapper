@@ -109,7 +109,7 @@ def train(
 
     
     # add random noise
-    pipeline += gp.NoiseAugment(input_lsds, mode='poisson')
+    pipeline += gp.NoiseAugment(input_lsds, mode='gaussian')
    
     # add defects
     pipeline += gp.DefectAugment(input_lsds, axis=1)
@@ -182,7 +182,7 @@ if __name__ == "__main__":
     with open(config_file, 'r') as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["2d_mtlsd_to_3d_affs"]
+    config = yaml_config["2d_lsd_to_3d_affs"]
 
     assert config["setup_dir"] in setup_dir, \
         "model directories do not match"
