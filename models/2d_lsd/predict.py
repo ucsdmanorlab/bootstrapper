@@ -1,4 +1,4 @@
-from model import MtlsdModel
+from model import LsdModel
 from funlib.persistence import prepare_ds
 from funlib.geometry import Roi, Coordinate
 import gunpowder as gp
@@ -23,7 +23,6 @@ def predict(config):
     num_cache_workers = config["num_cache_workers"]
     
     out_lsds_dataset = out_dataset_names[0]
-    out_affs_dataset = out_dataset_names[1]
 
     # load net config
     with open(os.path.join(setup_dir, "net_config.json")) as f:
@@ -33,25 +32,23 @@ def predict(config):
         net_config = json.load(f)
 
     shape_increase = net_config["shape_increase"]
-    input_shape = [3,*[x + y for x,y in zip(shape_increase,net_config["input_shape"])]]
+    input_shape = [1,*[x + y for x,y in zip(shape_increase,net_config["input_shape"])]]
     output_shape = [1,*[x + y for x,y in zip(shape_increase,net_config["output_shape"])]]
 
     voxel_size = Coordinate(zarr.open(raw_file,"r")[raw_dataset].attrs["resolution"])
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
-    context = (input_size - output_size) // 2
+    context = (input_size - output_size) / 2
 
-    model = MtlsdModel(stack_infer=True)
+    model = LsdModel(stack_infer=True)
     model.eval()
 
     raw = gp.ArrayKey("RAW")
     pred_lsds = gp.ArrayKey("PRED_LSDS")
-    pred_affs = gp.ArrayKey("PRED_AFFS")
 
     chunk_request = gp.BatchRequest()
     chunk_request.add(raw, input_size)
     chunk_request.add(pred_lsds, output_size)
-    chunk_request.add(pred_affs, output_size)
 
     source = gp.ZarrSource(
         raw_file, {raw: raw_dataset}, {raw: gp.ArraySpec(interpolatable=True)}
@@ -63,14 +60,12 @@ def predict(config):
         inputs={"input": raw},
         outputs={
             0: pred_lsds,
-            1: pred_affs,
         },
     )
 
     write = gp.ZarrWrite(
         dataset_names={
             pred_lsds: out_lsds_dataset,
-            pred_affs: out_affs_dataset,
         },
         store=out_file,
     )
@@ -80,7 +75,6 @@ def predict(config):
             roi_map={
                 raw: 'read_roi',
                 pred_lsds: 'write_roi',
-                pred_affs: 'write_roi',
             },
             num_workers = num_cache_workers)
 
@@ -91,11 +85,9 @@ def predict(config):
         + gp.IntensityScaleShift(raw, 2, -1)
         + gp.Unsqueeze([raw])
         + predict
-        + gp.Squeeze([pred_affs, pred_lsds])
-        + gp.Normalize(pred_affs)
+        + gp.Squeeze([pred_lsds])
         + gp.Normalize(pred_lsds)
         + gp.IntensityScaleShift(pred_lsds, 255, 0)
-        + gp.IntensityScaleShift(pred_affs, 255, 0)
         + write
         + scan
     )
@@ -114,4 +106,3 @@ if __name__ == "__main__":
         run_config = json.load(f)
         
     predict(run_config)
-

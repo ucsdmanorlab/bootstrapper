@@ -18,7 +18,8 @@ kernel_size_down = eval(repr(net_config['kernel_size_down']).replace('[', '(').r
 kernel_size_up = eval(repr(net_config['kernel_size_up']).replace('[', '(').replace(']', ')'))
 outputs = net_config['outputs']
 
-class LsdModel(torch.nn.Module):
+
+class AffsModel(torch.nn.Module):
 
     def __init__(
             self,
@@ -42,15 +43,15 @@ class LsdModel(torch.nn.Module):
                 constant_upsample=True,
                 padding="valid")
 
-        self.lsds_head = ConvPass(num_fmaps, outputs['3d_lsds']['dims'], [[1, 1, 1]], activation='Sigmoid')
+        self.affs_head = ConvPass(num_fmaps, outputs['3d_affs']['dims'], [[1, 1, 1]], activation='Sigmoid')
 
     def forward(self, input):
 
         z = self.unet(input)
 
-        lsds = self.lsds_head(z)
+        affs = self.affs_head(z)
 
-        return lsds
+        return affs
 
 
 class WeightedMSELoss(torch.nn.Module):
@@ -75,10 +76,10 @@ class WeightedMSELoss(torch.nn.Module):
 
     def forward(
             self,
-            lsds_prediction,
-            lsds_target,
-            lsds_weights):
+            affs_prediction,
+            affs_target,
+            affs_weights):
 
-        lsds_loss = self._calc_loss(lsds_prediction, lsds_target, lsds_weights)
+        affs_loss = self._calc_loss(affs_prediction, affs_target, affs_weights)
 
-        return lsds_loss
+        return affs_loss

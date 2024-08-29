@@ -5,8 +5,8 @@ from scipy.ndimage import binary_erosion, binary_dilation, distance_transform_ed
 from skimage.measure import label
 from skimage.morphology import disk, star, ellipse
 from skimage.segmentation import expand_labels, watershed
+from skimage.utils import random_noise
 
-from gunpowder.nodes.add_affinities import seg_to_affgraph
 from lsd.train.gp import AddLocalShapeDescriptor
 from lsd.train import LsdExtractor
 
@@ -123,7 +123,7 @@ class CreateLabels(gp.BatchProvider):
 
 
 
-class SmoothArray(gp.BatchFilter):
+class SmoothAugment(gp.BatchFilter):
     def __init__(self, array, blur_range):
         self.array = array
         self.range = blur_range
@@ -165,92 +165,6 @@ class SmoothArray(gp.BatchFilter):
             raise AssertionError("array shape is not 2d, 3d, or multi-channel 3d")
 
         batch[self.array].data = array
-
-
-class CustomAffs(gp.BatchFilter):
-    def __init__(
-            self,
-            affinity_neighborhood,
-            labels,
-            affinities,
-            dtype=np.float32):
-
-        self.affinity_neighborhood = np.array(affinity_neighborhood)
-        self.labels = labels
-        self.affinities = affinities
-        self.dtype = dtype
-
-    def setup(self):
-
-        assert self.labels in self.spec, (
-            "Upstream does not provide %s needed by "
-            "AddAffinities"%self.labels)
-
-        voxel_size = self.spec[self.labels].voxel_size
-
-        dims = self.affinity_neighborhood.shape[1]
-        self.padding_neg = gp.Coordinate(
-                min([0] + [a[d] for a in self.affinity_neighborhood])
-                for d in range(dims)
-        )*voxel_size
-
-        self.padding_pos = gp.Coordinate(
-                max([0] + [a[d] for a in self.affinity_neighborhood])
-                for d in range(dims)
-        )*voxel_size
-
-        spec = self.spec[self.labels].copy()
-        if spec.roi is not None:
-            spec.roi = spec.roi.grow(self.padding_neg, -self.padding_pos)
-        spec.dtype = self.dtype
-
-        self.provides(self.affinities, spec)
-        self.enable_autoskip()
-
-    def prepare(self, request):
-
-        deps = gp.BatchRequest()
-
-        # grow labels ROI to accomodate padding
-        labels_roi = request[self.affinities].roi.grow(
-            -self.padding_neg,
-            self.padding_pos)
-        deps[self.labels] = request[self.affinities].copy()
-        deps[self.labels].dtype = None
-        deps[self.labels].roi = labels_roi
-
-        return deps
-
-    def process(self, batch, request):
-        outputs = gp.Batch()
-
-        affinities_roi = request[self.affinities].roi
-
-        affinities = seg_to_affgraph(
-            batch.arrays[self.labels].data.astype(np.uint64),
-            self.affinity_neighborhood
-        ).astype(self.dtype)
-
-        # crop affinities to requested ROI
-        offset = affinities_roi.get_offset()
-        shift = -offset - self.padding_neg
-        crop_roi = affinities_roi.shift(shift)
-        crop_roi /= self.spec[self.labels].voxel_size
-        crop = crop_roi.get_bounding_box()
-
-        affinities = affinities[(slice(None),)+crop]
-
-        # remove z-channel of affinities
-        affinities = affinities[1:3]
-
-        spec = self.spec[self.affinities].copy()
-        spec.roi = affinities_roi
-        outputs.arrays[self.affinities] = gp.Array(affinities, spec)
-
-        # Should probably have a better way of handling arbitrary batch attributes
-        batch.affinity_neighborhood = self.affinity_neighborhood[1:]
-
-        return outputs
 
 
 class CustomLSDs(AddLocalShapeDescriptor):
@@ -517,3 +431,44 @@ class CustomGrowBoundary(gp.BatchFilter):
         # label new background
         background = np.logical_not(foreground)
         gt[background] = self.background
+
+
+class NoiseAugment(gp.BatchFilter):
+    def __init__(self, array, mode="gaussian", p=0.5, clip=True, **kwargs):
+        self.array = array
+        self.mode = mode
+        self.clip = clip
+        self.kwargs = kwargs
+        self.p = p
+
+    def setup(self):
+        self.enable_autoskip()
+        self.updates(self.array, self.spec[self.array])
+
+    def prepare(self, request):
+        deps = gp.BatchRequest()
+        deps[self.array] = request[self.array].copy()
+        return deps
+
+    def process(self, batch, request):
+
+        if np.random.random() > self.p:
+            return
+
+        raw = batch.arrays[self.array]
+
+        assert raw.data.dtype == np.float32 or raw.data.dtype == np.float64, (
+            "Noise augmentation requires float types for the raw array (not "
+            + str(raw.data.dtype)
+            + "). Consider using Normalize before."
+        )
+        if self.clip:
+            assert (
+                raw.data.min() >= -1 and raw.data.max() <= 1
+            ), "Noise augmentation expects raw values in [-1,1] or [0,1]. Consider using Normalize before."
+
+        seed = request.random_seed
+
+        raw.data = random_noise(
+            raw.data, mode=self.mode, rng=seed, clip=self.clip, **self.kwargs
+        ).astype(raw.data.dtype)

@@ -5,8 +5,8 @@ from scipy.ndimage import binary_erosion, binary_dilation, distance_transform_ed
 from skimage.measure import label
 from skimage.morphology import disk, star, ellipse
 from skimage.segmentation import expand_labels, watershed
+from skimage.utils import random_noise
 
-from gunpowder.nodes.add_affinities import seg_to_affgraph
 from lsd.train.gp import AddLocalShapeDescriptor
 from lsd.train import LsdExtractor
 
@@ -123,7 +123,7 @@ class CreateLabels(gp.BatchProvider):
 
 
 
-class SmoothArray(gp.BatchFilter):
+class SmoothAugment(gp.BatchFilter):
     def __init__(self, array, blur_range):
         self.array = array
         self.range = blur_range
@@ -167,92 +167,6 @@ class SmoothArray(gp.BatchFilter):
         batch[self.array].data = array
 
 
-class CustomAffs(gp.BatchFilter):
-    def __init__(
-            self,
-            affinity_neighborhood,
-            labels,
-            affinities,
-            dtype=np.float32):
-
-        self.affinity_neighborhood = np.array(affinity_neighborhood)
-        self.labels = labels
-        self.affinities = affinities
-        self.dtype = dtype
-
-    def setup(self):
-
-        assert self.labels in self.spec, (
-            "Upstream does not provide %s needed by "
-            "AddAffinities"%self.labels)
-
-        voxel_size = self.spec[self.labels].voxel_size
-
-        dims = self.affinity_neighborhood.shape[1]
-        self.padding_neg = gp.Coordinate(
-                min([0] + [a[d] for a in self.affinity_neighborhood])
-                for d in range(dims)
-        )*voxel_size
-
-        self.padding_pos = gp.Coordinate(
-                max([0] + [a[d] for a in self.affinity_neighborhood])
-                for d in range(dims)
-        )*voxel_size
-
-        spec = self.spec[self.labels].copy()
-        if spec.roi is not None:
-            spec.roi = spec.roi.grow(self.padding_neg, -self.padding_pos)
-        spec.dtype = self.dtype
-
-        self.provides(self.affinities, spec)
-        self.enable_autoskip()
-
-    def prepare(self, request):
-
-        deps = gp.BatchRequest()
-
-        # grow labels ROI to accomodate padding
-        labels_roi = request[self.affinities].roi.grow(
-            -self.padding_neg,
-            self.padding_pos)
-        deps[self.labels] = request[self.affinities].copy()
-        deps[self.labels].dtype = None
-        deps[self.labels].roi = labels_roi
-
-        return deps
-
-    def process(self, batch, request):
-        outputs = gp.Batch()
-
-        affinities_roi = request[self.affinities].roi
-
-        affinities = seg_to_affgraph(
-            batch.arrays[self.labels].data.astype(np.uint64),
-            self.affinity_neighborhood
-        ).astype(self.dtype)
-
-        # crop affinities to requested ROI
-        offset = affinities_roi.get_offset()
-        shift = -offset - self.padding_neg
-        crop_roi = affinities_roi.shift(shift)
-        crop_roi /= self.spec[self.labels].voxel_size
-        crop = crop_roi.get_bounding_box()
-
-        affinities = affinities[(slice(None),)+crop]
-
-        # remove z-channel of affinities
-        affinities = affinities[1:3]
-
-        spec = self.spec[self.affinities].copy()
-        spec.roi = affinities_roi
-        outputs.arrays[self.affinities] = gp.Array(affinities, spec)
-
-        # Should probably have a better way of handling arbitrary batch attributes
-        batch.affinity_neighborhood = self.affinity_neighborhood[1:]
-
-        return outputs
-
-
 class CustomLSDs(AddLocalShapeDescriptor):
     def __init__(self, segmentation, descriptor, *args, **kwargs):
 
@@ -261,7 +175,7 @@ class CustomLSDs(AddLocalShapeDescriptor):
         self.extractor = LsdExtractor(
                 self.sigma[1:], self.mode, self.downsample
         )
-    
+
     def process(self, batch, request):
 
         labels = batch[self.segmentation].data
@@ -308,6 +222,7 @@ class CustomLSDs(AddLocalShapeDescriptor):
             unique_ids = unique_ids[unique_ids != label2]
 
         return array
+
 
 class IntensityAugment(gp.BatchFilter):
     """Randomly scale and shift the values of an intensity array.
@@ -517,62 +432,43 @@ class CustomGrowBoundary(gp.BatchFilter):
         background = np.logical_not(foreground)
         gt[background] = self.background
 
-class ObfuscateAffs(gp.BatchFilter):
-    """
-    Modifies 2D affinity arrays by creating random blobs of 
-    positive affinities in areas that were previously negative.
-    Parameters:
-        affinity_array (str): The name of the array in the batch to modify.
-        blob_size_range (tuple): The range of possible blob sizes (min, max) pixels.
-        num_blobs_range (tuple): The range for the number of blobs to create (min, max).
-        probability (float): The probability of applying the modification to a batch.
-    """
 
-    def __init__(self, affinity_array, blob_size_range=(40, 60), num_blobs_range=(5, 20), probability=0.8):
-        self.affinity_array = affinity_array
-        self.blob_size_range = blob_size_range
-        self.num_blobs_range = num_blobs_range
-        self.probability = probability
+class NoiseAugment(gp.BatchFilter):
+    def __init__(self, array, mode="gaussian", p=0.5, clip=True, **kwargs):
+        self.array = array
+        self.mode = mode
+        self.clip = clip
+        self.kwargs = kwargs
+        self.p = p
+
+    def setup(self):
+        self.enable_autoskip()
+        self.updates(self.array, self.spec[self.array])
+
+    def prepare(self, request):
+        deps = gp.BatchRequest()
+        deps[self.array] = request[self.array].copy()
+        return deps
 
     def process(self, batch, request):
 
-        if np.random.random() > self.probability:
+        if np.random.random() > self.p:
             return
 
-        affinities = batch[self.affinity_array].data
-        assert affinities.shape[0] == 2, "Expected 2 channels for 2D affinities"
+        raw = batch.arrays[self.array]
 
-        # Find boundary regions (where both channels are 0)
-        boundary_mask = np.all(affinities == 0, axis=0)
+        assert raw.data.dtype == np.float32 or raw.data.dtype == np.float64, (
+            "Noise augmentation requires float types for the raw array (not "
+            + str(raw.data.dtype)
+            + "). Consider using Normalize before."
+        )
+        if self.clip:
+            assert (
+                raw.data.min() >= -1 and raw.data.max() <= 1
+            ), "Noise augmentation expects raw values in [-1,1] or [0,1]. Consider using Normalize before."
 
-        # Generate random blobs
-        num_blobs = np.random.randint(*self.num_blobs_range)
-        for _ in range(num_blobs):
-            self._create_and_place_blob(affinities, boundary_mask)
+        seed = request.random_seed
 
-        # Update the batch with modified affinities
-        batch[self.affinity_array].data = affinities
-
-    def _create_and_place_blob(self, affinities, boundary_mask):
-
-        blob_size = np.random.randint(*self.blob_size_range)
-
-        # Create a random 2D blob
-        blob = np.ones((1, blob_size, blob_size), dtype=bool)
-        blob = binary_dilation(blob, iterations=2)
-
-        # Find a random position to place the blob
-        valid_positions = np.where(boundary_mask)
-
-        if len(valid_positions[0]) > 0:
-            idx = np.random.randint(len(valid_positions[0]))
-            z, y, x = valid_positions[0][idx], valid_positions[1][idx], valid_positions[2][idx]
-
-            # Place the blob
-            z_start, y_start, x_start = max(0, z - 1), max(0, y - blob_size//2), max(0, x - blob_size//2)
-            z_end, y_end, x_end = min(affinities.shape[1], z_start + 1), min(affinities.shape[2], y_start + blob_size), min(affinities.shape[3], x_start + blob_size)
-            blob_slice = blob[:z_end-z_start, :y_end-y_start, :x_end-x_start]
-
-            # Apply the blob to both channels
-            affinities[0, z_start:z_end, y_start:y_end, x_start:x_end][blob_slice] = 1
-            affinities[1, z_start:z_end, y_start:y_end, x_start:x_end][blob_slice] = 1
+        raw.data = random_noise(
+            raw.data, mode=self.mode, rng=seed, clip=self.clip, **self.kwargs
+        ).astype(raw.data.dtype)

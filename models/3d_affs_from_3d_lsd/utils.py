@@ -5,10 +5,7 @@ from scipy.ndimage import binary_erosion, binary_dilation, distance_transform_ed
 from skimage.measure import label
 from skimage.morphology import disk, star, ellipse
 from skimage.segmentation import expand_labels, watershed
-
-from gunpowder.nodes.add_affinities import seg_to_affgraph
-from lsd.train.gp import AddLocalShapeDescriptor
-from lsd.train import LsdExtractor
+from skimage.utils import random_noise
 
 
 class CreateLabels(gp.BatchProvider):
@@ -123,7 +120,7 @@ class CreateLabels(gp.BatchProvider):
 
 
 
-class SmoothArray(gp.BatchFilter):
+class SmoothAugment(gp.BatchFilter):
     def __init__(self, array, blur_range):
         self.array = array
         self.range = blur_range
@@ -360,9 +357,9 @@ class CustomGrowBoundary(gp.BatchFilter):
             # a masked region the value blob is not shrinking.
             if masked is not None:
                 label_mask = np.logical_or(label_mask, masked)
-
+            
             steps = random.choice(range(self.steps + 1))
-
+            
             if steps > 0:
                 eroded_label_mask = binary_erosion(
                     label_mask, iterations=steps, border_value=1
@@ -374,3 +371,44 @@ class CustomGrowBoundary(gp.BatchFilter):
         # label new background
         background = np.logical_not(foreground)
         gt[background] = self.background
+
+
+class NoiseAugment(gp.BatchFilter):
+    def __init__(self, array, mode="gaussian", p=0.5, clip=True, **kwargs):
+        self.array = array
+        self.mode = mode
+        self.clip = clip
+        self.kwargs = kwargs
+        self.p = p
+
+    def setup(self):
+        self.enable_autoskip()
+        self.updates(self.array, self.spec[self.array])
+
+    def prepare(self, request):
+        deps = gp.BatchRequest()
+        deps[self.array] = request[self.array].copy()
+        return deps
+
+    def process(self, batch, request):
+
+        if np.random.random() > self.p:
+            return
+
+        raw = batch.arrays[self.array]
+
+        assert raw.data.dtype == np.float32 or raw.data.dtype == np.float64, (
+            "Noise augmentation requires float types for the raw array (not "
+            + str(raw.data.dtype)
+            + "). Consider using Normalize before."
+        )
+        if self.clip:
+            assert (
+                raw.data.min() >= -1 and raw.data.max() <= 1
+            ), "Noise augmentation expects raw values in [-1,1] or [0,1]. Consider using Normalize before."
+
+        seed = request.random_seed
+
+        raw.data = random_noise(
+            raw.data, mode=self.mode, rng=seed, clip=self.clip, **self.kwargs
+        ).astype(raw.data.dtype)

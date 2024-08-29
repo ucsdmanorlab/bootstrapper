@@ -1,8 +1,6 @@
 import torch
 import gunpowder as gp
-from model import LsdModel, WeightedMSELoss
-from utils import SmoothAugment, NoiseAugment, calc_max_padding
-from lsd.train.gp import AddLocalShapeDescriptor
+from model import AffsModel, WeightedMSELoss
 
 import sys
 import yaml
@@ -11,6 +9,8 @@ import logging
 import math
 import numpy as np
 import os
+
+from utils import SmoothAugment, NoiseAugment
 
 
 logging.basicConfig(level=logging.INFO)
@@ -37,16 +37,17 @@ def train(
     labels = gp.ArrayKey("LABELS")
     unlabelled = gp.ArrayKey("UNLABELLED")
     
-    gt_lsds = gp.ArrayKey("GT_LSDS")
-    lsds_weights = gp.ArrayKey("LSDS_WEIGHTS")
-    pred_lsds = gp.ArrayKey("PRED_LSDS")
-    
+    gt_affs = gp.ArrayKey("GT_AFFS")
+    affs_weights = gp.ArrayKey("AFFS_WEIGHTS")
+    gt_affs_mask = gp.ArrayKey("AFFS_MASK")
+    pred_affs = gp.ArrayKey("PRED_AFFS")
+
     # model training setup 
-    model = LsdModel()
+    model = AffsModel(stack_infer=True)
     model.train()
     loss = WeightedMSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.5e-4)
-    batch_size = 1
+    optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-4)
+    batch_size = 10
 
     # load net config
     with open(os.path.join(setup_dir, "net_config.json")) as f:
@@ -55,7 +56,10 @@ def train(
         )
         net_config = json.load(f)
 
-    shape_increase = [0,0,0] #net_config["shape_increase"]
+    neighborhood = net_config['neighborhood']
+    neighborhood = [[0,*x] for x in neighborhood] # add z-dimension since pipeline is 3D
+
+    shape_increase = [0,0] #net_config["shape_increase"]
     input_shape = [x + y for x,y in zip(shape_increase,net_config["input_shape"])]
     output_shape = [x + y for x,y in zip(shape_increase,net_config["output_shape"])]
 
@@ -64,25 +68,24 @@ def train(
         samples[i]: {
             'raw': raw_datasets[i],
             'labels': labels_datasets[i],
-            'unlabelled': mask_datasets[i]
+            'mask': mask_datasets[i]
         }
         for i in range(len(samples))
     }
 
     # prepare request
     voxel_size = gp.Coordinate(voxel_size) 
-    input_size = gp.Coordinate(input_shape) * voxel_size
-    output_size = gp.Coordinate(output_shape) * voxel_size
-    #context = (input_size - output_size) / 2
-    context = calc_max_padding(output_size, voxel_size, sigma)
+    input_size = gp.Coordinate((1,*input_shape)) * voxel_size
+    output_size = gp.Coordinate((1,*output_shape)) * voxel_size
+    context = (input_size - output_size) // 2
+
+    print(input_size, output_size, context)
 
     request = gp.BatchRequest()
     request.add(raw, input_size)
-    request.add(labels, output_size)
-    request.add(unlabelled, output_size)
-    request.add(gt_lsds, output_size)
-    request.add(lsds_weights, output_size)
-    request.add(pred_lsds, output_size)
+    request.add(gt_affs, output_size)
+    request.add(affs_weights, output_size)
+    request.add(pred_affs, output_size)
 
     # pipeline
     source = tuple(
@@ -91,7 +94,7 @@ def train(
             {
                 raw: samples[sample]['raw'],
                 labels: samples[sample]['labels'],
-                unlabelled: samples[sample]['unlabelled']
+                unlabelled: samples[sample]['mask']
             },
             {
                 raw: gp.ArraySpec(interpolatable=True),
@@ -100,15 +103,16 @@ def train(
             },
         )
         + gp.Normalize(raw)
-        + gp.Pad(raw, None)
-        + gp.Pad(labels, context)
-        + gp.Pad(unlabelled, context)
-        + gp.RandomLocation()
-        + gp.Reject(mask=unlabelled, min_masked=0.1, reject_probability=0.999)
+        + gp.Pad(raw, None, mode="reflect")
+        + gp.Pad(labels, context, mode="reflect")
+        + gp.Pad(unlabelled, context, mode="reflect")
+        + gp.RandomLocation(mask=unlabelled, min_masked=0.05)
         for sample in samples
     )
     
     pipeline = source + gp.RandomProvider()
+
+    pipeline += gp.SimpleAugment(transpose_only=[1,2])
 
     pipeline += gp.DeformAugment(
         control_point_spacing=(voxel_size[-1] * 10, voxel_size[-1] * 10),
@@ -118,37 +122,36 @@ def train(
         scale_interval=(0.9, 1.1),
         graph_raster_voxel_size=voxel_size[1:],
     )
-
-    pipeline += gp.ShiftAugment(
-        prob_slip=0.1,
-        prob_shift=0.1,
-        sigma=1)
-
-    pipeline += gp.SimpleAugment(transpose_only=[1,2])
- 
-    pipeline += gp.DefectAugment(raw, prob_missing=0.03)
+   
+    pipeline += gp.DefectAugment(
+            raw,
+            prob_missing=0.0,
+    )
 
     pipeline += gp.IntensityAugment(
-        raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1, z_section_wise=True
+        raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1
     )
 
     pipeline += SmoothAugment(raw)
 
-    pipeline += AddLocalShapeDescriptor(
-            labels,
-            gt_lsds,
-            unlabelled=unlabelled,
-            lsds_mask=lsds_weights,
-            sigma=sigma,
-            downsample=2,
+    pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=1, only_xy=True)
+
+    pipeline += gp.AddAffinities(
+        affinity_neighborhood=neighborhood,
+        labels=labels,
+        affinities=gt_affs,
+        unlabelled=unlabelled,
+        affinities_mask=gt_affs_mask,
+        dtype=np.float32,
     )
+
+    pipeline += gp.BalanceLabels(gt_affs, affs_weights, mask=gt_affs_mask)
 
     pipeline += gp.IntensityScaleShift(raw, 2, -1)
 
-    pipeline += gp.Unsqueeze([raw])
     pipeline += gp.Stack(batch_size)
 
-    pipeline += gp.PreCache(num_workers=80,cache_size=80)
+    pipeline += gp.PreCache(num_workers=40,cache_size=80)
 
     pipeline += gp.torch.Train(
         model,
@@ -156,12 +159,12 @@ def train(
         optimizer,
         inputs={"input": raw},
         loss_inputs={
-            0: pred_lsds,
-            1: gt_lsds,
-            2: lsds_weights,
+            0: pred_affs,
+            1: gt_affs,
+            2: affs_weights,
         },
         outputs={
-            0: pred_lsds,
+            0: pred_affs,
         },
         log_dir=os.path.join(out_dir,'log'),
         checkpoint_basename=os.path.join(out_dir,'model'),
@@ -170,14 +173,12 @@ def train(
 
     pipeline += gp.IntensityScaleShift(raw, 0.5, 0.5)
 
-    pipeline += gp.Squeeze([raw,gt_lsds,pred_lsds,lsds_weights])
-
     pipeline += gp.Snapshot(
         dataset_names={
             raw: "raw",
-            gt_lsds: "gt_lsds",
-            pred_lsds: "pred_lsds",
-            lsds_weights: "lsds_weights",
+            gt_affs: "gt_affs",
+            pred_affs: "pred_affs",
+            affs_weights: "affs_weights",
         },
         output_filename="batch_{iteration}.zarr",
         output_dir=os.path.join(out_dir,'snapshots'),
@@ -202,8 +203,7 @@ if __name__ == "__main__":
     config["setup_dir"] = setup_dir
 
     assert len(config["samples"]) == len(config["raw_datasets"]) == \
-        len(config["labels_datasets"]) == \
-        len(config["mask_datasets"]), \
+        len(config["labels_datasets"]) == len(config["mask_datasets"]), \
         "number of samples and datasets do not match"
 
     train(**config)

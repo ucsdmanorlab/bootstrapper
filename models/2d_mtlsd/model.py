@@ -10,12 +10,12 @@ with open(os.path.join(setup_dir, "net_config.json")) as f:
     net_config = json.load(f)
 
 in_channels = net_config['in_channels']
-output_shapes = net_config['output_shapes']
 num_fmaps = net_config['num_fmaps']
 fmap_inc_factor = net_config['fmap_inc_factor']
 downsample_factors = eval(repr(net_config['downsample_factors']).replace('[', '(').replace(']', ')'))
 kernel_size_down = eval(repr(net_config['kernel_size_down']).replace('[', '(').replace(']', ')'))
 kernel_size_up = eval(repr(net_config['kernel_size_up']).replace('[', '(').replace(']', ')'))
+outputs = net_config['outputs']
 
 
 class MtlsdModel(torch.nn.Module):
@@ -45,8 +45,8 @@ class MtlsdModel(torch.nn.Module):
                 constant_upsample=True,
                 padding="valid")
 
-        self.lsd_head = ConvPass(num_fmaps, output_shapes[0], [[1, 1]], activation='Sigmoid')
-        self.aff_head = ConvPass(num_fmaps, output_shapes[1], [[1, 1]], activation='Sigmoid')
+        self.lsd_head = ConvPass(num_fmaps, outputs['2d_lsds']['dims'], [[1, 1]], activation='Sigmoid')
+        self.aff_head = ConvPass(num_fmaps, outputs['2d_affs']['dims'], [[1, 1]], activation='Sigmoid')
 
     def forward(self, input):
 

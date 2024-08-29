@@ -16,8 +16,7 @@ fmap_inc_factor = net_config['fmap_inc_factor']
 downsample_factors = eval(repr(net_config['downsample_factors']).replace('[', '(').replace(']', ')'))
 kernel_size_down = eval(repr(net_config['kernel_size_down']).replace('[', '(').replace(']', ')'))
 kernel_size_up = eval(repr(net_config['kernel_size_up']).replace('[', '(').replace(']', ')'))
-output_shapes = [x['out_dims'] for x in net_config['outputs'].values()]
-
+outputs = net_config['outputs']
 
 class MtlsdModel(torch.nn.Module):
 
@@ -42,9 +41,9 @@ class MtlsdModel(torch.nn.Module):
                 kernel_size_up=kernel_size_up,
                 constant_upsample=True,
                 padding="valid")
-
-        self.lsds_head = ConvPass(num_fmaps, output_shapes[0], [[1, 1, 1]], activation='Sigmoid')
-        self.affs_head = ConvPass(num_fmaps, output_shapes[1], [[1, 1, 1]], activation='Sigmoid')
+        
+        self.affs_head = ConvPass(num_fmaps, outputs['3d_affs']['dims'], [[1, 1, 1]], activation='Sigmoid')
+        self.lsds_head = ConvPass(num_fmaps, outputs['3d_lsds']['dims'], [[1, 1, 1]], activation='Sigmoid')
 
     def forward(self, input):
 

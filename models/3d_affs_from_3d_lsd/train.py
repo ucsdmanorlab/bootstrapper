@@ -12,7 +12,7 @@ import gunpowder as gp
 
 from lsd.train.gp import AddLocalShapeDescriptor
 from model import AffsUNet, WeightedMSELoss
-from utils import CreateLabels, SmoothArray, IntensityAugment, CustomGrowBoundary
+from utils import CreateLabels, SmoothAugment, NoiseAugment, IntensityAugment, CustomGrowBoundary
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -53,7 +53,8 @@ def train(
         )
         net_config = json.load(f)
 
-    neighborhood = net_config["neighborhood"]
+    out_neighborhood = net_config["out_neighborhood"]
+    
     shape_increase = [0,0,0] #net_config["shape_increase"]
     input_shape = [x + y for x,y in zip(shape_increase,net_config["input_shape"])]
     
@@ -99,8 +100,8 @@ def train(
     )
 
     pipeline += gp.ShiftAugment(
-        prob_slip=0.05,
-        prob_shift=0.05,
+        prob_slip=0.1,
+        prob_shift=0.1,
         sigma=1)
 
     pipeline += gp.SimpleAugment(transpose_only=[1,2])
@@ -121,17 +122,17 @@ def train(
 
     pipeline += gp.IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1)
     
-    pipeline += SmoothArray(input_lsds, (0.5,1.5))
+    pipeline += SmoothAugment(input_lsds, (0.5,1.5))
     
     pipeline += IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
 
-    pipeline += SmoothArray(input_lsds, (0.0,1.0))
+    pipeline += SmoothAugment(input_lsds, (0.0,1.0))
     
     # now we erode - we want the gt affs to have a pixel boundary
     pipeline += gp.GrowBoundary(labels, steps=1, only_xy=True)
 
     pipeline += gp.AddAffinities(
-        affinity_neighborhood=neighborhood,
+        affinity_neighborhood=out_neighborhood,
         labels=labels,
         affinities=gt_affs,
         dtype=np.float32,

@@ -1,11 +1,14 @@
 import gunpowder as gp
 import numpy as np
 import random
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import binary_erosion, binary_dilation, distance_transform_edt, gaussian_filter, maximum_filter, generate_binary_structure
+from skimage.measure import label
+from skimage.morphology import disk, star, ellipse
+from skimage.segmentation import expand_labels, watershed
+from skimage.utils import random_noise
 
 
 def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
-
     method_padding = gp.Coordinate((sigma * 3,) * 3)
 
     diag = np.sqrt(output_size[1] ** 2 + output_size[2] ** 2)
@@ -21,8 +24,8 @@ def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
     return max_padding.get_begin()
 
 
-class SmoothArray(gp.BatchFilter):
-    def __init__(self, array, blur_range=[0.0,1.0]):
+class SmoothAugment(gp.BatchFilter):
+    def __init__(self, array, blur_range):
         self.array = array
         self.range = blur_range
 
@@ -64,27 +67,43 @@ class SmoothArray(gp.BatchFilter):
 
         batch[self.array].data = array
 
-class UnmaskBackground(gp.BatchFilter):
 
-    ''' 
+class NoiseAugment(gp.BatchFilter):
+    def __init__(self, array, mode="gaussian", p=0.5, clip=True, **kwargs):
+        self.array = array
+        self.mode = mode
+        self.clip = clip
+        self.kwargs = kwargs
+        self.p = p
 
-    We want to mask out losses for LSDs at the boundary
-    between neurons while not simultaneously masking out
-    losses for LSDs at raw=0. Therefore we should add
-    (1 - background mask) to gt_lsds_scale after we add
-    the LSDs in the AddLocalShapeDescriptor node.
+    def setup(self):
+        self.enable_autoskip()
+        self.updates(self.array, self.spec[self.array])
 
-    '''
+    def prepare(self, request):
+        deps = gp.BatchRequest()
+        deps[self.array] = request[self.array].copy()
+        return deps
 
-    def __init__(self, target_mask, background_mask):
-        self.target_mask = target_mask
-        self.background_mask = background_mask
     def process(self, batch, request):
-        try:
-            batch[self.target_mask].data = np.logical_or(
-                    batch[self.target_mask].data,
-                    np.logical_not(batch[self.background_mask].data[1:,1:,1:])).astype(np.float32)
-        except ValueError:
-            batch[self.target_mask].data = np.logical_or(
-                    batch[self.target_mask].data,
-                    np.logical_not(batch[self.background_mask].data)).astype(np.float32)
+
+        if np.random.random() > self.p:
+            return
+
+        raw = batch.arrays[self.array]
+
+        assert raw.data.dtype == np.float32 or raw.data.dtype == np.float64, (
+            "Noise augmentation requires float types for the raw array (not "
+            + str(raw.data.dtype)
+            + "). Consider using Normalize before."
+        )
+        if self.clip:
+            assert (
+                raw.data.min() >= -1 and raw.data.max() <= 1
+            ), "Noise augmentation expects raw values in [-1,1] or [0,1]. Consider using Normalize before."
+
+        seed = request.random_seed
+
+        raw.data = random_noise(
+            raw.data, mode=self.mode, rng=seed, clip=self.clip, **self.kwargs
+        ).astype(raw.data.dtype)

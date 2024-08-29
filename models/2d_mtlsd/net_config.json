@@ -1,8 +1,8 @@
 {
     "in_channels": 1,
-    "output_shapes": [6,2],
+    "neighborhood": [[1, 0], [0, 1]],
     "num_fmaps": 12,
-    "fmap_inc_factor": 6,
+    "fmap_inc_factor": 5,
     "downsample_factors": [[2, 2], [2, 2], [2, 2]],
     "kernel_size_down": [
         [[3, 3], [3, 3]],
@@ -17,7 +17,7 @@
     "output_shape" : [104, 104],
     "shape_increase": [400,400],
     "outputs": {
-        "2d_lsds": {"out_dtype": "uint8", "out_dims": 6},
-        "2d_affs": {"out_dtype": "uint8", "out_dims": 2}
+        "2d_lsds": {"dtype": "uint8", "dims": 6},
+        "2d_affs": {"dtype": "uint8", "dims": 2}
     }
 }

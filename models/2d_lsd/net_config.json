@@ -1,6 +1,5 @@
 {
-    "in_channels": 3,
-    "neighborhood": [[1, 0], [0, 1]],
+    "in_channels": 1,
     "num_fmaps": 12,
     "fmap_inc_factor": 5,
     "downsample_factors": [[2, 2], [2, 2], [2, 2]],
@@ -17,7 +16,6 @@
     "output_shape" : [104, 104],
     "shape_increase": [400,400],
     "outputs": {
-        "2d_lsds": {"dtype": "uint8", "dims": 6},
-        "2d_affs": {"dtype": "uint8", "dims": 2}
+        "2d_lsds": {"dtype": "uint8", "dims": 6}
     }
 }

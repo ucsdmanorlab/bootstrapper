@@ -32,7 +32,6 @@ def predict(config):
         )
         net_config = json.load(f)
 
-    outputs = net_config["outputs"]
     shape_increase = net_config["shape_increase"]
     input_shape = [1,*[x + y for x,y in zip(shape_increase,net_config["input_shape"])]]
     output_shape = [1,*[x + y for x,y in zip(shape_increase,net_config["output_shape"])]]

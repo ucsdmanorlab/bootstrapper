@@ -11,7 +11,7 @@ import math
 import numpy as np
 import os
 
-from utils import SmoothArray, CustomAffs, CustomLSDs
+from utils import SmoothAugment, NoiseAugment, CustomLSDs
 
 
 logging.basicConfig(level=logging.INFO)
@@ -61,6 +61,9 @@ def train(
         )
         net_config = json.load(f)
 
+    neighborhood = net_config['neighborhood']
+    neighborhood = [[0,*x] for x in neighborhood] # add z-dimension since pipeline is 3D
+    
     shape_increase = [0,0] #net_config["shape_increase"]
     input_shape = [x + y for x,y in zip(shape_increase,net_config["input_shape"])]
     output_shape = [x + y for x,y in zip(shape_increase,net_config["output_shape"])]
@@ -137,7 +140,7 @@ def train(
         raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1
     )
 
-    #pipeline += SmoothArray(raw)
+    pipeline += SmoothAugment(raw)
 
     pipeline += CustomLSDs(
             labels,
@@ -150,8 +153,8 @@ def train(
 
     pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=1, only_xy=True)
 
-    pipeline += CustomAffs(
-        affinity_neighborhood=[[-1, 0, 0], [0, -1, 0], [0, 0, -1]],
+    pipeline += gp.AddAffinities(
+        affinity_neighborhood=neighborhood,
         labels=labels,
         affinities=gt_affs,
         unlabelled=unlabelled,
@@ -163,7 +166,6 @@ def train(
 
     pipeline += gp.IntensityScaleShift(raw, 2, -1)
 
-    #pipeline += gp.Unsqueeze([raw])
     pipeline += gp.Stack(batch_size)
 
     pipeline += gp.PreCache(num_workers=40,cache_size=80)

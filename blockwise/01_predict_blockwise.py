@@ -95,12 +95,12 @@ def predict_blockwise(config: dict):
     iteration = checkpoint.split('_')[-1]
     out_dataset_names = []
     for output_name, val in outputs.items():
-        out_dims = val["out_dims"]
-        out_dtype = val["out_dtype"]
+        out_dims = val["dims"]
+        out_dtype = val["dtype"]
  
         # pred to pred
-        if "_to_" in setup_dir:
-            if "mtlsd_to_" in setup_dir:
+        if "_from_" in setup_dir:
+            if "_from_2d_mtlsd" in setup_dir:
                 assert len(raw_datasets) == 2, f"{setup_dir} takes two inputs: LSDs and Affinities."
             else:
                 assert len(raw_datasets) == 1

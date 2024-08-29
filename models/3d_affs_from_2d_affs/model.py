@@ -11,7 +11,7 @@ with open(os.path.join(setup_dir, "net_config.json")) as f:
     net_config = json.load(f)
 
 in_channels = net_config['in_channels']
-neighborhood = net_config['neighborhood']
+neighborhood = net_config['out_neighborhood']
 num_fmaps = net_config['num_fmaps']
 fmap_inc_factor = net_config['fmap_inc_factor']
 downsample_factors = eval(repr(net_config['downsample_factors']).replace('[', '(').replace(']', ')'))

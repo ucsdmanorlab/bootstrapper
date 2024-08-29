@@ -1,7 +1,7 @@
 import torch
 import gunpowder as gp
 from model import MtlsdModel, WeightedMSELoss
-from utils import SmoothArray, UnmaskBackground, calc_max_padding
+from utils import SmoothAugment, NoiseAugment, calc_max_padding
 from lsd.train.gp import AddLocalShapeDescriptor
 
 import sys
@@ -60,6 +60,7 @@ def train(
         )
         net_config = json.load(f)
 
+    neighborhood = net_config['neighborhood']
     shape_increase = [0,0,0] #net_config["shape_increase"]
     input_shape = [x + y for x,y in zip(shape_increase,net_config["input_shape"])]
     output_shape = [x + y for x,y in zip(shape_increase,net_config["output_shape"])]
@@ -126,8 +127,8 @@ def train(
     )
 
     pipeline += gp.ShiftAugment(
-        prob_slip=0.03,
-        prob_shift=0.03,
+        prob_slip=0.1,
+        prob_shift=0.1,
         sigma=1)
 
     pipeline += gp.SimpleAugment(transpose_only=[1,2])
@@ -138,7 +139,7 @@ def train(
         raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1, z_section_wise=True
     )
 
-    #pipeline += SmoothArray(raw)
+    pipeline += SmoothAugment(raw)
 
     pipeline += AddLocalShapeDescriptor(
             labels,
@@ -151,7 +152,7 @@ def train(
     pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=1, only_xy=True)
 
     pipeline += gp.AddAffinities(
-        affinity_neighborhood=[[-1, 0, 0], [0, -1, 0], [0, 0, -1]],
+        affinity_neighborhood=neighborhood,
         labels=labels,
         affinities=gt_affs,
         unlabelled=unlabelled,

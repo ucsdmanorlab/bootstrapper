@@ -1,27 +1,8 @@
 import gunpowder as gp
 import numpy as np
 import random
-from scipy.ndimage import binary_erosion, binary_dilation, distance_transform_edt, gaussian_filter, maximum_filter, generate_binary_structure
-from skimage.measure import label
-from skimage.morphology import disk, star, ellipse
-from skimage.segmentation import expand_labels, watershed
+from scipy.ndimage import gaussian_filter
 from skimage.utils import random_noise
-
-
-def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
-    method_padding = gp.Coordinate((sigma * 3,) * 3)
-
-    diag = np.sqrt(output_size[1] ** 2 + output_size[2] ** 2)
-
-    max_padding = gp.Roi(
-        (
-            gp.Coordinate([i / 2 for i in [output_size[0], diag, diag]])
-            + method_padding
-        ),
-        (0,) * 3,
-    ).snap_to_grid(voxel_size, mode=mode)
-
-    return max_padding.get_begin()
 
 
 class SmoothAugment(gp.BatchFilter):

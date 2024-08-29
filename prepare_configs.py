@@ -222,9 +222,9 @@ def make_round_configs(base_dir, round_number, round_name=None):
     )
     setup_dir = os.path.abspath(os.path.join(base_dir, f"{round_name}", model_name))
     copy_model_scripts(model_name, setup_dir)
-
+    
+    default_sigma = 10 * voxel_size[-1]
     if "lsd" in model_name.lower():
-        default_sigma = 10 * voxel_size[-1]
         sigma = int(
             input(f"Enter sigma for LSD model (default = {default_sigma}): ")
             or default_sigma
@@ -294,9 +294,7 @@ def make_round_configs(base_dir, round_number, round_name=None):
     make_affs = True if "3d_affs" not in model_outputs else False
     if make_affs:
         affs_setup_dir = (
-            os.path.join(this_dir, "models/2d_mtlsd_to_affs")
-            if ("2d_lsds" in model_outputs and "2d_affs" in model_outputs)
-            else os.path.join(this_dir, "models/3d_lsd_to_affs")
+            os.path.join(this_dir, f"models/3d_affs_from_{model_name}")
         )
         affs_iter = int(
             input(

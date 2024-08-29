@@ -1,8 +1,7 @@
 import torch
 import gunpowder as gp
-from model import LsdModel, WeightedMSELoss
+from model import AffsModel, WeightedMSELoss
 from utils import SmoothAugment, NoiseAugment, calc_max_padding
-from lsd.train.gp import AddLocalShapeDescriptor
 
 import sys
 import yaml
@@ -37,12 +36,13 @@ def train(
     labels = gp.ArrayKey("LABELS")
     unlabelled = gp.ArrayKey("UNLABELLED")
     
-    gt_lsds = gp.ArrayKey("GT_LSDS")
-    lsds_weights = gp.ArrayKey("LSDS_WEIGHTS")
-    pred_lsds = gp.ArrayKey("PRED_LSDS")
-    
+    gt_affs = gp.ArrayKey("GT_AFFS")
+    affs_weights = gp.ArrayKey("AFFS_WEIGHTS")
+    gt_affs_mask = gp.ArrayKey("AFFS_MASK")
+    pred_affs = gp.ArrayKey("PRED_AFFS")
+
     # model training setup 
-    model = LsdModel()
+    model = AffsModel()
     model.train()
     loss = WeightedMSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.5e-4)
@@ -55,6 +55,7 @@ def train(
         )
         net_config = json.load(f)
 
+    neighborhood = net_config['neighborhood']
     shape_increase = [0,0,0] #net_config["shape_increase"]
     input_shape = [x + y for x,y in zip(shape_increase,net_config["input_shape"])]
     output_shape = [x + y for x,y in zip(shape_increase,net_config["output_shape"])]
@@ -78,11 +79,9 @@ def train(
 
     request = gp.BatchRequest()
     request.add(raw, input_size)
-    request.add(labels, output_size)
-    request.add(unlabelled, output_size)
-    request.add(gt_lsds, output_size)
-    request.add(lsds_weights, output_size)
-    request.add(pred_lsds, output_size)
+    request.add(gt_affs, output_size)
+    request.add(affs_weights, output_size)
+    request.add(pred_affs, output_size)
 
     # pipeline
     source = tuple(
@@ -134,14 +133,18 @@ def train(
 
     pipeline += SmoothAugment(raw)
 
-    pipeline += AddLocalShapeDescriptor(
-            labels,
-            gt_lsds,
-            unlabelled=unlabelled,
-            lsds_mask=lsds_weights,
-            sigma=sigma,
-            downsample=2,
+    pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=1, only_xy=True)
+
+    pipeline += gp.AddAffinities(
+        affinity_neighborhood=neighborhood,
+        labels=labels,
+        affinities=gt_affs,
+        unlabelled=unlabelled,
+        affinities_mask=gt_affs_mask,
+        dtype=np.float32,
     )
+
+    pipeline += gp.BalanceLabels(gt_affs, affs_weights, mask=gt_affs_mask)
 
     pipeline += gp.IntensityScaleShift(raw, 2, -1)
 
@@ -156,12 +159,12 @@ def train(
         optimizer,
         inputs={"input": raw},
         loss_inputs={
-            0: pred_lsds,
-            1: gt_lsds,
-            2: lsds_weights,
+            0: pred_affs,
+            1: gt_affs,
+            2: affs_weights,
         },
         outputs={
-            0: pred_lsds,
+            0: pred_affs,
         },
         log_dir=os.path.join(out_dir,'log'),
         checkpoint_basename=os.path.join(out_dir,'model'),
@@ -170,14 +173,14 @@ def train(
 
     pipeline += gp.IntensityScaleShift(raw, 0.5, 0.5)
 
-    pipeline += gp.Squeeze([raw,gt_lsds,pred_lsds,lsds_weights])
+    pipeline += gp.Squeeze([raw,gt_affs,pred_affs,affs_weights])
 
     pipeline += gp.Snapshot(
         dataset_names={
             raw: "raw",
-            gt_lsds: "gt_lsds",
-            pred_lsds: "pred_lsds",
-            lsds_weights: "lsds_weights",
+            gt_affs: "gt_affs",
+            pred_affs: "pred_affs",
+            affs_weights: "affs_weights",
         },
         output_filename="batch_{iteration}.zarr",
         output_dir=os.path.join(out_dir,'snapshots'),

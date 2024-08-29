@@ -1,7 +1,7 @@
 {
     "in_channels": 1,
-    "num_fmaps": 11,
-    "fmap_inc_factor": 6,
+    "num_fmaps": 12,
+    "fmap_inc_factor": 5,
     "downsample_factors": [[1, 2, 2], [1, 2, 2], [1, 2, 2]],
     "kernel_size_down": [
         [[3, 3, 3], [3, 3, 3]],
@@ -16,5 +16,5 @@
     "output_shape": [4, 120, 120],
     "shape_increase": [0, 240, 240],
     "outputs": {
-        "3d_lsds": {"out_dtype": "uint8", "out_dims": 10}}
+        "3d_lsds": {"dtype": "uint8", "dims": 10}}
 }
