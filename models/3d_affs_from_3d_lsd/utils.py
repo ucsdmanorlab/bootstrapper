@@ -5,7 +5,7 @@ from scipy.ndimage import binary_erosion, binary_dilation, distance_transform_ed
 from skimage.measure import label
 from skimage.morphology import disk, star, ellipse
 from skimage.segmentation import expand_labels, watershed
-from skimage.utils import random_noise
+from skimage.util import random_noise
 
 
 class CreateLabels(gp.BatchProvider):
@@ -121,7 +121,7 @@ class CreateLabels(gp.BatchProvider):
 
 
 class SmoothAugment(gp.BatchFilter):
-    def __init__(self, array, blur_range):
+    def __init__(self, array, blur_range=(0.0, 1.0)):
         self.array = array
         self.range = blur_range
 

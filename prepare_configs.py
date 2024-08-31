@@ -294,7 +294,7 @@ def make_round_configs(base_dir, round_number, round_name=None):
     make_affs = True if "3d_affs" not in model_outputs else False
     if make_affs:
         affs_setup_dir = (
-            os.path.join(this_dir, f"models/3d_affs_from_{model_name}")
+            os.path.join(this_dir, f"models/3d_affs_from_{model_name.replace('_3ch','')}")
         )
         affs_iter = int(
             input(
@@ -409,6 +409,7 @@ def make_round_configs(base_dir, round_number, round_name=None):
             pred_affs_config = {}
 
         # get db config
+        print("\n POST-PROCESSING:")
         print(
             f"{round_name}-{model_name} database config for {t_vol['zarr_container']}:"
         )

@@ -126,12 +126,8 @@ def train(
     pipeline += ObfuscateAffs(input_affs)
     
     # add random noise
-    pipeline += gp.NoiseAugment(input_affs, mode='poisson')
-    pipeline += gp.NoiseAugment(input_lsds, mode='gaussian')
-   
-    # add defects
-    pipeline += gp.DefectAugment(input_affs, axis=1)
-    pipeline += gp.DefectAugment(input_lsds, axis=1)
+    pipeline += NoiseAugment(input_affs, mode='poisson')
+    pipeline += NoiseAugment(input_lsds, mode='gaussian')
 
     # intensity
     pipeline += IntensityAugment(input_affs, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
@@ -140,14 +136,21 @@ def train(
     # smooth the batch by different sigmas to simulate noisy predictions
     pipeline += SmoothAugment(input_affs, (0.5,1.5))
     pipeline += SmoothAugment(input_lsds, (0.5,1.5))
-    
-    # intensity
-    pipeline += IntensityAugment(input_affs, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
-    pipeline += IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
 
-    # smooth the batch by different sigmas to simulate noisy predictions
-    pipeline += SmoothAugment(input_affs, (0.0,1.0))
-    pipeline += SmoothAugment(input_lsds, (0.0,1.0))
+    # add defects
+    pipeline += gp.DefectAugment(
+        input_lsds, 
+        prob_missing=0.05,
+        prob_low_contrast=0.05,
+        prob_deform=0.0,
+        axis=1)
+    
+    pipeline += gp.DefectAugment(
+        input_affs, 
+        prob_missing=0.05,
+        prob_low_contrast=0.05,
+        prob_deform=0.0,
+        axis=1)
     
     # now we erode - we want the gt affs to have a pixel boundary
     pipeline += gp.GrowBoundary(labels, steps=1, only_xy=True)

@@ -103,11 +103,13 @@ def train(
         + gp.Pad(labels, context)
         + gp.Pad(unlabelled, context)
         + gp.RandomLocation()
-        + gp.Reject(mask=unlabelled, min_masked=0.1, reject_probability=0.999)
+        + gp.Reject(mask=unlabelled, min_masked=0.05, reject_probability=0.999)
         for sample in samples
     )
     
     pipeline = source + gp.RandomProvider()
+
+    pipeline += gp.SimpleAugment(transpose_only=[1,2])
 
     pipeline += gp.DeformAugment(
         control_point_spacing=(voxel_size[-1] * 10, voxel_size[-1] * 10),
@@ -123,15 +125,20 @@ def train(
         prob_shift=0.1,
         sigma=1)
 
-    pipeline += gp.SimpleAugment(transpose_only=[1,2])
- 
-    pipeline += gp.DefectAugment(raw, prob_missing=0.03)
+    pipeline += NoiseAugment(raw)
 
     pipeline += gp.IntensityAugment(
         raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1, z_section_wise=True
     )
 
     pipeline += SmoothAugment(raw)
+ 
+    pipeline += gp.DefectAugment(
+        raw, 
+        prob_missing=0.05,
+        prob_low_contrast=0.05,
+        prob_deform=0.0
+    )
 
     pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=1, only_xy=True)
 

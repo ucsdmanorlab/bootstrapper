@@ -29,7 +29,7 @@ class AffsModel(torch.nn.Module):
             downsample_factors=downsample_factors,
             kernel_size_down=kernel_size_down,
             kernel_size_up=kernel_size_up,
-            output_shapes=output_shapes):
+            outputs=outputs):
 
         super().__init__()
 

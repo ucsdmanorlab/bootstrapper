@@ -2,11 +2,11 @@ import gunpowder as gp
 import numpy as np
 import random
 from scipy.ndimage import gaussian_filter
-from skimage.utils import random_noise
+from skimage.util import random_noise
 
 
 class SmoothAugment(gp.BatchFilter):
-    def __init__(self, array, blur_range):
+    def __init__(self, array, blur_range=(0.0, 1.0)):
         self.array = array
         self.range = blur_range
 

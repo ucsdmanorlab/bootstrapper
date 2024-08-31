@@ -88,8 +88,6 @@ def train(
             
     pipeline += gp.Pad(labels,None,mode="reflect")
 
-    pipeline += gp.SimpleAugment(transpose_only=[1, 2])
-
     pipeline += gp.DeformAugment(
         control_point_spacing=(voxel_size[0], voxel_size[0]),
         jitter_sigma=(5.0, 5.0),
@@ -104,7 +102,7 @@ def train(
         prob_shift=0.1,
         sigma=1)
 
-    pipeline += gp.SimpleAugment(transpose_only=[1,2])
+    pipeline += gp.SimpleAugment(transpose_only=[1, 2])
 
     # do this on non eroded labels - that is what predicted lsds will look like
     pipeline += AddLocalShapeDescriptor(
@@ -115,18 +113,21 @@ def train(
     )
 
     # add random noise
-    pipeline += gp.NoiseAugment(input_lsds, mode='gaussian')
-   
-    # add defects
-    pipeline += gp.DefectAugment(input_lsds, axis=1)
+    pipeline += NoiseAugment(input_lsds, mode='gaussian')
 
-    pipeline += gp.IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1)
-    
-    pipeline += SmoothAugment(input_lsds, (0.5,1.5))
-    
+    # intensity
     pipeline += IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
 
-    pipeline += SmoothAugment(input_lsds, (0.0,1.0))
+    # smooth the batch by different sigmas to simulate noisy predictions
+    pipeline += SmoothAugment(input_lsds, (0.5,1.5))
+
+    # add defects
+    pipeline += gp.DefectAugment(
+        input_lsds, 
+        prob_missing=0.05,
+        prob_low_contrast=0.05,
+        prob_deform=0.0,
+        axis=1)
     
     # now we erode - we want the gt affs to have a pixel boundary
     pipeline += gp.GrowBoundary(labels, steps=1, only_xy=True)

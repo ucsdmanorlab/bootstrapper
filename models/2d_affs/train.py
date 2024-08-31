@@ -122,17 +122,21 @@ def train(
         scale_interval=(0.9, 1.1),
         graph_raster_voxel_size=voxel_size[1:],
     )
-   
-    pipeline += gp.DefectAugment(
-            raw,
-            prob_missing=0.0,
-    )
+
+    pipeline += NoiseAugment(raw)
 
     pipeline += gp.IntensityAugment(
         raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1
     )
 
     pipeline += SmoothAugment(raw)
+
+    pipeline += gp.DefectAugment(
+            raw,
+            prob_missing=0.0,
+            prob_low_contrast=0.05,
+            prob_deform=0.0
+    )
 
     pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=1, only_xy=True)
 
