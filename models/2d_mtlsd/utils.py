@@ -1,7 +1,6 @@
 import gunpowder as gp
 import numpy as np
 import random
-from skimage.util import random_noise
 from scipy.ndimage import gaussian_filter
 
 from lsd.train.gp import AddLocalShapeDescriptor
@@ -50,9 +49,8 @@ class SmoothAugment(gp.BatchFilter):
             raise AssertionError("array shape is not 2d, 3d, or multi-channel 3d")
 
         batch[self.array].data = array
-
-
-class CustomLSDs(AddLocalShapeDescriptor):
+        
+class Add2DLSDs(AddLocalShapeDescriptor):
     def __init__(self, segmentation, descriptor, *args, **kwargs):
 
         super().__init__(segmentation, descriptor, *args, **kwargs)
@@ -72,10 +70,7 @@ class CustomLSDs(AddLocalShapeDescriptor):
         descriptor = np.zeros(shape=(6, *labels.shape))
 
         for z in range(labels.shape[0]):
-            labels_sec = np.copy(labels[z])
-
-            if np.random.random() > 0.2:
-                labels_sec = self._random_merge(labels_sec)
+            labels_sec = labels[z]
 
             descriptor_sec = self.extractor.get_descriptors(
                 segmentation=labels_sec, voxel_size=spec.voxel_size[1:]
@@ -83,68 +78,47 @@ class CustomLSDs(AddLocalShapeDescriptor):
 
             descriptor[:, z] = descriptor_sec
 
+        old_batch = batch
         batch = gp.Batch()
+        
+        # create lsds mask array
+        if self.lsds_mask and self.lsds_mask in request:
+
+            if self.labels_mask:
+
+                mask = self._create_mask(old_batch, self.labels_mask, descriptor)#, crop)
+
+            else:
+
+                mask = (labels != 0).astype(
+                    np.float32
+                )
+
+                mask_shape = len(mask.shape)
+
+                assert mask.shape[-mask_shape:] == descriptor.shape[-mask_shape:]
+
+                mask = np.array([mask] * descriptor.shape[0])
+
+            if self.unlabelled:
+
+                unlabelled_mask = self._create_mask(
+                    old_batch, self.unlabelled, descriptor
+                )
+
+                mask = mask * unlabelled_mask
+
+            batch[self.lsds_mask] = gp.Array(
+                mask.astype(spec.dtype), spec.copy()
+            )
+
         batch[self.descriptor] = gp.Array(descriptor.astype(spec.dtype), spec)
 
         return batch
 
-    def _random_merge(self, array, num_pairs_to_merge=4):
-        
-        unique_ids = np.unique(array)
+    def _create_mask(self, batch, mask, lsds):
 
-        if len(unique_ids) < 2:
-            raise ValueError("Not enough unique_ids to merge.")
+        mask = batch.arrays[mask].data
+        mask = np.array([mask] * lsds.shape[0])
 
-        np.random.shuffle(unique_ids)
-
-        # Determine the number of pairs we can merge
-        max_pairs = len(unique_ids) // 2
-        pairs_to_merge = min(num_pairs_to_merge, max_pairs)
-
-        for _ in range(random.randrange(pairs_to_merge)):
-            label1, label2 = np.random.choice(unique_ids, 2, replace=False)
-            array[array == label2] = label1
-            unique_ids = unique_ids[unique_ids != label2]
-
-        return array
-
-
-class NoiseAugment(gp.BatchFilter):
-    def __init__(self, array, mode="gaussian", p=0.5, clip=True, **kwargs):
-        self.array = array
-        self.mode = mode
-        self.clip = clip
-        self.kwargs = kwargs
-        self.p = p
-
-    def setup(self):
-        self.enable_autoskip()
-        self.updates(self.array, self.spec[self.array])
-
-    def prepare(self, request):
-        deps = gp.BatchRequest()
-        deps[self.array] = request[self.array].copy()
-        return deps
-
-    def process(self, batch, request):
-
-        if np.random.random() > self.p:
-            return
-
-        raw = batch.arrays[self.array]
-
-        assert raw.data.dtype == np.float32 or raw.data.dtype == np.float64, (
-            "Noise augmentation requires float types for the raw array (not "
-            + str(raw.data.dtype)
-            + "). Consider using Normalize before."
-        )
-        if self.clip:
-            assert (
-                raw.data.min() >= -1 and raw.data.max() <= 1
-            ), "Noise augmentation expects raw values in [-1,1] or [0,1]. Consider using Normalize before."
-
-        seed = request.random_seed
-
-        raw.data = random_noise(
-            raw.data, mode=self.mode, rng=seed, clip=self.clip, **self.kwargs
-        ).astype(raw.data.dtype)
+        return mask

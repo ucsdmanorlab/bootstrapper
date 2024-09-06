@@ -1,17 +1,14 @@
 import torch
 import gunpowder as gp
-from model import LsdModel, WeightedMSELoss
-from lsd.train.gp import AddLocalShapeDescriptor
+from model import Model, WeightedMSELoss
 
 import sys
 import yaml
 import json
 import logging
-import math
-import numpy as np
 import os
 
-from utils import SmoothAugment, NoiseAugment, CustomLSDs
+from utils import SmoothAugment, Add2DLSDs
 
 
 logging.basicConfig(level=logging.INFO)
@@ -43,7 +40,7 @@ def train(
     pred_lsds = gp.ArrayKey("PRED_LSDS")
     
     # model training setup 
-    model = MtlsdModel(stack_infer=True)
+    model = Model(stack_infer=True)
     model.train()
     loss = WeightedMSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-4)
@@ -118,12 +115,13 @@ def train(
         subsample=1,
         scale_interval=(0.9, 1.1),
         graph_raster_voxel_size=voxel_size[1:],
+        p=0.5
     )
 
-    pipeline += NoiseAugment(raw)
+    pipeline += gp.NoiseAugment(raw, p=0.5)
 
     pipeline += gp.IntensityAugment(
-        raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1
+        raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1, p=0.5
     )
 
     pipeline += SmoothAugment(raw)
@@ -135,7 +133,7 @@ def train(
             prob_deform=0.0
     )
 
-    pipeline += CustomLSDs(
+    pipeline += Add2DLSDs(
             labels,
             gt_lsds,
             unlabelled=unlabelled,

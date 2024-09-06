@@ -2,16 +2,11 @@ import logging
 import json
 import zarr
 import gunpowder as gp
-import math
-import numpy as np
 import os
 import sys
-import torch
-import daisy
-from funlib.geometry import Coordinate, Roi
-from funlib.persistence import prepare_ds
+from funlib.geometry import Coordinate
 
-from model import AffsModel
+from model import Model
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -42,7 +37,7 @@ def predict(config):
     output_size = Coordinate(output_shape) * voxel_size
     context = (input_size - output_size) // 2
     
-    model = AffsModel()
+    model = Model()
     model.eval()
 
     raw = gp.ArrayKey('RAW')

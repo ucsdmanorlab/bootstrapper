@@ -3,15 +3,12 @@ import yaml
 import os
 import json
 import logging
-import math
 import numpy as np
-import random
 import torch
-import zarr
 import gunpowder as gp
 
 from model import AffsUNet, WeightedMSELoss
-from utils import CreateLabels, CustomLSDs, SmoothAugment, NoiseAugment, IntensityAugment, CustomGrowBoundary, ObfuscateAffs
+from utils import CreateLabels, CustomLSDs, SmoothAugment, CustomIntensityAugment, CustomGrowBoundary, ObfuscateAffs
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -99,6 +96,7 @@ def train(
         subsample=1,
         scale_interval=(0.9, 1.1),
         graph_raster_voxel_size=voxel_size[1:],
+        p=0.5
     )
 
     pipeline += gp.ShiftAugment(
@@ -126,12 +124,12 @@ def train(
     pipeline += ObfuscateAffs(input_affs)
     
     # add random noise
-    pipeline += NoiseAugment(input_affs, mode='poisson')
-    pipeline += NoiseAugment(input_lsds, mode='gaussian')
+    pipeline += gp.NoiseAugment(input_affs, mode='poisson', p=0.5)
+    pipeline += gp.NoiseAugment(input_lsds, mode='gaussian', p=0.5)
 
     # intensity
-    pipeline += IntensityAugment(input_affs, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
-    pipeline += IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
+    pipeline += CustomIntensityAugment(input_affs, 0.9, 1.1, -0.1, 0.1, z_section_wise=True, p=0.5)
+    pipeline += CustomIntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True, p=0.5)
 
     # smooth the batch by different sigmas to simulate noisy predictions
     pipeline += SmoothAugment(input_affs, (0.5,1.5))

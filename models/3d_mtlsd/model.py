@@ -18,7 +18,7 @@ kernel_size_down = eval(repr(net_config['kernel_size_down']).replace('[', '(').r
 kernel_size_up = eval(repr(net_config['kernel_size_up']).replace('[', '(').replace(']', ')'))
 outputs = net_config['outputs']
 
-class MtlsdModel(torch.nn.Module):
+class Model(torch.nn.Module):
 
     def __init__(
             self,

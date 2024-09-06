@@ -17,7 +17,7 @@ kernel_size_down = eval(repr(net_config['kernel_size_down']).replace('[', '(').r
 kernel_size_up = eval(repr(net_config['kernel_size_up']).replace('[', '(').replace(']', ')'))
 outputs = net_config['outputs']
 
-class AffsModel(torch.nn.Module):
+class Model(torch.nn.Module):
 
     def __init__(
             self,
@@ -52,7 +52,6 @@ class AffsModel(torch.nn.Module):
 
         affs = self.aff_head(z)
         
-
         if self.stack_infer: # add Z dimension during prediction
             affs = torch.unsqueeze(affs,-3)
 

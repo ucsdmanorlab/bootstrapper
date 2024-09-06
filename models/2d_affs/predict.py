@@ -1,14 +1,10 @@
-from model import AffsModel
-from funlib.persistence import prepare_ds
-from funlib.geometry import Roi, Coordinate
+from model import Model
+from funlib.geometry import Coordinate
 import gunpowder as gp
 import json
 import logging
-import math
-import numpy as np
 import os
 import sys
-import torch
 import zarr
 
 logging.basicConfig(level=logging.INFO)
@@ -40,7 +36,7 @@ def predict(config):
     output_size = Coordinate(output_shape) * voxel_size
     context = (input_size - output_size) / 2
 
-    model = AffsModel(stack_infer=True)
+    model = Model(stack_infer=True)
     model.eval()
 
     raw = gp.ArrayKey("RAW")

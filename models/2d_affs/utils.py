@@ -2,7 +2,6 @@ import gunpowder as gp
 import numpy as np
 import random
 from scipy.ndimage import gaussian_filter
-from skimage.util import random_noise
 
 
 class SmoothAugment(gp.BatchFilter):
@@ -47,44 +46,3 @@ class SmoothAugment(gp.BatchFilter):
             raise AssertionError("array shape is not 2d, 3d, or multi-channel 3d")
 
         batch[self.array].data = array
-
-
-class NoiseAugment(gp.BatchFilter):
-    def __init__(self, array, mode="gaussian", p=0.5, clip=True, **kwargs):
-        self.array = array
-        self.mode = mode
-        self.clip = clip
-        self.kwargs = kwargs
-        self.p = p
-
-    def setup(self):
-        self.enable_autoskip()
-        self.updates(self.array, self.spec[self.array])
-
-    def prepare(self, request):
-        deps = gp.BatchRequest()
-        deps[self.array] = request[self.array].copy()
-        return deps
-
-    def process(self, batch, request):
-
-        if np.random.random() > self.p:
-            return
-
-        raw = batch.arrays[self.array]
-
-        assert raw.data.dtype == np.float32 or raw.data.dtype == np.float64, (
-            "Noise augmentation requires float types for the raw array (not "
-            + str(raw.data.dtype)
-            + "). Consider using Normalize before."
-        )
-        if self.clip:
-            assert (
-                raw.data.min() >= -1 and raw.data.max() <= 1
-            ), "Noise augmentation expects raw values in [-1,1] or [0,1]. Consider using Normalize before."
-
-        seed = request.random_seed
-
-        raw.data = random_noise(
-            raw.data, mode=self.mode, rng=seed, clip=self.clip, **self.kwargs
-        ).astype(raw.data.dtype)

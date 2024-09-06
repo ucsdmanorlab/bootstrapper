@@ -3,16 +3,13 @@ import yaml
 import os
 import json
 import logging
-import math
 import numpy as np
-import random
 import torch
-import zarr
 import gunpowder as gp
 
 from lsd.train.gp import AddLocalShapeDescriptor
 from model import AffsUNet, WeightedMSELoss
-from utils import CreateLabels, SmoothAugment, NoiseAugment, IntensityAugment, CustomGrowBoundary
+from utils import CreateLabels, SmoothAugment, CustomIntensityAugment
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -95,6 +92,7 @@ def train(
         subsample=1,
         scale_interval=(0.9, 1.1),
         graph_raster_voxel_size=voxel_size[1:],
+        p=0.5
     )
 
     pipeline += gp.ShiftAugment(
@@ -113,10 +111,10 @@ def train(
     )
 
     # add random noise
-    pipeline += NoiseAugment(input_lsds, mode='gaussian')
+    pipeline += gp.NoiseAugment(input_lsds, mode='gaussian', p=0.5)
 
     # intensity
-    pipeline += IntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True)
+    pipeline += CustomIntensityAugment(input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True, p=0.5)
 
     # smooth the batch by different sigmas to simulate noisy predictions
     pipeline += SmoothAugment(input_lsds, (0.5,1.5))

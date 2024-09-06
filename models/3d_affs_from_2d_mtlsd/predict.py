@@ -1,15 +1,10 @@
 import json
 import gunpowder as gp
-import math
-import numpy as np
 import os
 import sys
-import torch
 import logging
 import zarr
-import daisy
-from funlib.geometry import Roi, Coordinate
-from funlib.persistence import prepare_ds
+from funlib.geometry import Coordinate
 
 from model import AffsUNet
 

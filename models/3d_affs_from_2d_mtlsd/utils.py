@@ -4,8 +4,7 @@ import random
 from scipy.ndimage import binary_erosion, binary_dilation, distance_transform_edt, gaussian_filter, maximum_filter, generate_binary_structure
 from skimage.measure import label
 from skimage.morphology import disk, star, ellipse
-from skimage.segmentation import expand_labels, watershed
-from skimage.util import random_noise
+from skimage.segmentation import watershed
 
 from lsd.train.gp import AddLocalShapeDescriptor
 from lsd.train import LsdExtractor
@@ -121,8 +120,6 @@ class CreateLabels(gp.BatchProvider):
 
         return labels
 
-
-
 class SmoothAugment(gp.BatchFilter):
     def __init__(self, array, blur_range=(0.0, 1.0)):
         self.array = array
@@ -165,7 +162,6 @@ class SmoothAugment(gp.BatchFilter):
             raise AssertionError("array shape is not 2d, 3d, or multi-channel 3d")
 
         batch[self.array].data = array
-
 
 class CustomLSDs(AddLocalShapeDescriptor):
     def __init__(self, segmentation, descriptor, *args, **kwargs):
@@ -223,38 +219,7 @@ class CustomLSDs(AddLocalShapeDescriptor):
 
         return array
 
-
-class IntensityAugment(gp.BatchFilter):
-    """Randomly scale and shift the values of an intensity array.
-
-    Args:
-
-        array (:class:`ArrayKey`):
-
-            The intensity array to modify.
-
-        scale_min (``float``):
-        scale_max (``float``):
-        shift_min (``float``):
-        shift_max (``float``):
-
-            The min and max of the uniformly randomly drawn scaling and
-            shifting values for the intensity augmentation. Intensities are
-            changed as::
-
-                a = a.mean() + (a-a.mean())*scale + shift
-
-        z_section_wise (``bool``):
-
-            Perform the augmentation z-section wise. Requires 3D arrays and
-            assumes that z is the first dimension.
-
-        clip (``bool``):
-
-            Set to False if modified values should not be clipped to [0, 1]
-            Disables range check!
-    """
-
+class CustomIntensityAugment(gp.BatchFilter):
     def __init__(
         self,
         array,
@@ -264,6 +229,7 @@ class IntensityAugment(gp.BatchFilter):
         shift_max,
         z_section_wise=False,
         clip=True,
+        p=1.0,
     ):
         self.array = array
         self.scale_min = scale_min
@@ -272,10 +238,14 @@ class IntensityAugment(gp.BatchFilter):
         self.shift_max = shift_max
         self.z_section_wise = z_section_wise
         self.clip = clip
+        self.p = p
 
     def setup(self):
         self.enable_autoskip()
         self.updates(self.array, self.spec[self.array])
+
+    def skip_node(self, request):
+        return random.random() > self.p
 
     def prepare(self, request):
         deps = gp.BatchRequest()
@@ -312,7 +282,6 @@ class IntensityAugment(gp.BatchFilter):
                         np.random.uniform(low=self.scale_min, high=self.scale_max),
                         np.random.uniform(low=self.shift_min, high=self.shift_max)
                     )
-
         else:
             raw.data = self.__augment(
                 raw.data,
@@ -432,43 +401,62 @@ class CustomGrowBoundary(gp.BatchFilter):
         background = np.logical_not(foreground)
         gt[background] = self.background
 
+class ObfuscateAffs(gp.BatchFilter):
+    """
+    Modifies 2D affinity arrays by creating random blobs of 
+    positive affinities in areas that were previously negative.
+    Parameters:
+        affinity_array (str): The name of the array in the batch to modify.
+        blob_size_range (tuple): The range of possible blob sizes (min, max) pixels.
+        num_blobs_range (tuple): The range for the number of blobs to create (min, max).
+        probability (float): The probability of applying the modification to a batch.
+    """
 
-class NoiseAugment(gp.BatchFilter):
-    def __init__(self, array, mode="gaussian", p=0.5, clip=True, **kwargs):
-        self.array = array
-        self.mode = mode
-        self.clip = clip
-        self.kwargs = kwargs
-        self.p = p
-
-    def setup(self):
-        self.enable_autoskip()
-        self.updates(self.array, self.spec[self.array])
-
-    def prepare(self, request):
-        deps = gp.BatchRequest()
-        deps[self.array] = request[self.array].copy()
-        return deps
+    def __init__(self, affinity_array, blob_size_range=(40, 60), num_blobs_range=(5, 20), probability=0.9):
+        self.affinity_array = affinity_array
+        self.blob_size_range = blob_size_range
+        self.num_blobs_range = num_blobs_range
+        self.probability = probability
 
     def process(self, batch, request):
 
-        if np.random.random() > self.p:
+        if np.random.random() > self.probability:
             return
 
-        raw = batch.arrays[self.array]
+        affinities = batch[self.affinity_array].data
+        assert affinities.shape[0] == 2, "Expected 2 channels for 2D affinities"
 
-        assert raw.data.dtype == np.float32 or raw.data.dtype == np.float64, (
-            "Noise augmentation requires float types for the raw array (not "
-            + str(raw.data.dtype)
-            + "). Consider using Normalize before."
-        )
-        if self.clip:
-            assert (
-                raw.data.min() >= -1 and raw.data.max() <= 1
-            ), "Noise augmentation expects raw values in [-1,1] or [0,1]. Consider using Normalize before."
+        # Find boundary regions (where both channels are 0)
+        boundary_mask = np.all(affinities == 0, axis=0)
 
-        seed = request.random_seed
+        # Generate random blobs
+        num_blobs = np.random.randint(*self.num_blobs_range)
+        for _ in range(num_blobs):
+            self._create_and_place_blob(affinities, boundary_mask)
 
-        raw.data = random_noise(
-            raw.data, mode=self.mode, rng=seed, clip=self.clip, **self.kwargs
-        ).astype(raw.data.dtype)
+        # Update the batch with modified affinities
+        batch[self.affinity_array].data = affinities
+
+    def _create_and_place_blob(self, affinities, boundary_mask):
+
+        blob_size = np.random.randint(*self.blob_size_range)
+
+        # Create a random 2D blob
+        blob = np.ones((1, blob_size, blob_size), dtype=bool)
+        blob = binary_dilation(blob, iterations=2)
+
+        # Find a random position to place the blob
+        valid_positions = np.where(boundary_mask)
+
+        if len(valid_positions[0]) > 0:
+            idx = np.random.randint(len(valid_positions[0]))
+            z, y, x = valid_positions[0][idx], valid_positions[1][idx], valid_positions[2][idx]
+
+            # Place the blob
+            z_start, y_start, x_start = max(0, z - 1), max(0, y - blob_size//2), max(0, x - blob_size//2)
+            z_end, y_end, x_end = min(affinities.shape[1], z_start + 1), min(affinities.shape[2], y_start + blob_size), min(affinities.shape[3], x_start + blob_size)
+            blob_slice = blob[:z_end-z_start, :y_end-y_start, :x_end-x_start]
+
+            # Apply the blob to both channels
+            affinities[0, z_start:z_end, y_start:y_end, x_start:x_end][blob_slice] = 1
+            affinities[1, z_start:z_end, y_start:y_end, x_start:x_end][blob_slice] = 1

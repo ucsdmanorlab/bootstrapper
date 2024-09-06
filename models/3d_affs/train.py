@@ -1,13 +1,12 @@
 import torch
 import gunpowder as gp
-from model import AffsModel, WeightedMSELoss
-from utils import SmoothAugment, NoiseAugment, calc_max_padding
+from model import Model, WeightedMSELoss
+from utils import SmoothAugment, calc_max_padding
 
 import sys
 import yaml
 import json
 import logging
-import math
 import numpy as np
 import os
 
@@ -42,7 +41,7 @@ def train(
     pred_affs = gp.ArrayKey("PRED_AFFS")
 
     # model training setup 
-    model = AffsModel()
+    model = Model()
     model.train()
     loss = WeightedMSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.5e-4)
@@ -118,6 +117,7 @@ def train(
         subsample=1,
         scale_interval=(0.9, 1.1),
         graph_raster_voxel_size=voxel_size[1:],
+        p=0.5
     )
 
     pipeline += gp.ShiftAugment(
@@ -125,10 +125,10 @@ def train(
         prob_shift=0.1,
         sigma=1)
 
-    pipeline += NoiseAugment(raw)
+    pipeline += gp.NoiseAugment(raw, p=0.5)
 
     pipeline += gp.IntensityAugment(
-        raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1, z_section_wise=True
+        raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1, z_section_wise=True, p=0.5
     )
 
     pipeline += SmoothAugment(raw)

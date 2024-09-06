@@ -18,7 +18,7 @@ kernel_size_up = eval(repr(net_config['kernel_size_up']).replace('[', '(').repla
 outputs = net_config['outputs']
 
 
-class MtlsdModel(torch.nn.Module):
+class Model(torch.nn.Module):
 
     def __init__(
             self,
@@ -54,7 +54,6 @@ class MtlsdModel(torch.nn.Module):
 
         lsds = self.lsd_head(z)
         affs = self.aff_head(z)
-        
 
         if self.stack_infer: # add Z dimension during prediction
             lsds = torch.unsqueeze(lsds,-3)

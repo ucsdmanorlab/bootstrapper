@@ -19,7 +19,7 @@ kernel_size_up = eval(repr(net_config['kernel_size_up']).replace('[', '(').repla
 outputs = net_config['outputs']
 
 
-class AffsModel(torch.nn.Module):
+class Model(torch.nn.Module):
 
     def __init__(
             self,

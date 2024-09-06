@@ -4,8 +4,7 @@ import random
 from scipy.ndimage import binary_erosion, binary_dilation, distance_transform_edt, gaussian_filter, maximum_filter, generate_binary_structure
 from skimage.measure import label
 from skimage.morphology import disk, star, ellipse
-from skimage.segmentation import expand_labels, watershed
-from skimage.util import random_noise
+from skimage.segmentation import watershed
 
 
 class CreateLabels(gp.BatchProvider):
@@ -118,8 +117,6 @@ class CreateLabels(gp.BatchProvider):
 
         return labels
 
-
-
 class SmoothAugment(gp.BatchFilter):
     def __init__(self, array, blur_range=(0.0, 1.0)):
         self.array = array
@@ -163,8 +160,84 @@ class SmoothAugment(gp.BatchFilter):
 
         batch[self.array].data = array
 
+class CustomIntensityAugment(gp.BatchFilter):
+    def __init__(
+        self,
+        array,
+        scale_min,
+        scale_max,
+        shift_min,
+        shift_max,
+        z_section_wise=False,
+        clip=True,
+        p=1.0,
+    ):
+        self.array = array
+        self.scale_min = scale_min
+        self.scale_max = scale_max
+        self.shift_min = shift_min
+        self.shift_max = shift_max
+        self.z_section_wise = z_section_wise
+        self.clip = clip
+        self.p = p
 
-class IntensityAugment(gp.BatchFilter):
+    def setup(self):
+        self.enable_autoskip()
+        self.updates(self.array, self.spec[self.array])
+
+    def skip_node(self, request):
+        return random.random() > self.p
+
+    def prepare(self, request):
+        deps = gp.BatchRequest()
+        deps[self.array] = request[self.array].copy()
+        return deps
+
+    def process(self, batch, request):
+        raw = batch.arrays[self.array]
+
+        assert (
+            not self.z_section_wise or raw.spec.roi.dims == 3
+        ), "If you specify 'z_section_wise', I expect 3D data."
+        assert raw.data.dtype == np.float32 or raw.data.dtype == np.float64, (
+            "Intensity augmentation requires float types for the raw array (not "
+            + str(raw.data.dtype)
+            + "). Consider using Normalize before."
+        )
+        if self.clip:
+            assert (
+                raw.data.min() >= 0 and raw.data.max() <= 1
+            ), "Intensity augmentation expects raw values in [0,1]. Consider using Normalize before."
+
+        if self.z_section_wise:
+            for z in range((raw.spec.roi / self.spec[self.array].voxel_size).shape[0]):
+                if len(raw.data.shape) == 3:
+                    raw.data[z] = self.__augment(
+                        raw.data[z],
+                        np.random.uniform(low=self.scale_min, high=self.scale_max),
+                        np.random.uniform(low=self.shift_min, high=self.shift_max)
+                    )
+                else:
+                    raw.data[:, z, :, :] = self.__augment(
+                        raw.data[:, z, :, :],
+                        np.random.uniform(low=self.scale_min, high=self.scale_max),
+                        np.random.uniform(low=self.shift_min, high=self.shift_max)
+                    )
+        else:
+            raw.data = self.__augment(
+                raw.data,
+                np.random.uniform(low=self.scale_min, high=self.scale_max),
+                np.random.uniform(low=self.shift_min, high=self.shift_max),
+            )
+
+        # clip values, we might have pushed them out of [0,1]
+        if self.clip:
+            raw.data[raw.data > 1] = 1
+            raw.data[raw.data < 0] = 0
+
+    def __augment(self, a, scale, shift):
+        return a.mean() + (a - a.mean()) * scale + shift
+
     """Randomly scale and shift the values of an intensity array.
 
     Args:
@@ -371,44 +444,3 @@ class CustomGrowBoundary(gp.BatchFilter):
         # label new background
         background = np.logical_not(foreground)
         gt[background] = self.background
-
-
-class NoiseAugment(gp.BatchFilter):
-    def __init__(self, array, mode="gaussian", p=0.5, clip=True, **kwargs):
-        self.array = array
-        self.mode = mode
-        self.clip = clip
-        self.kwargs = kwargs
-        self.p = p
-
-    def setup(self):
-        self.enable_autoskip()
-        self.updates(self.array, self.spec[self.array])
-
-    def prepare(self, request):
-        deps = gp.BatchRequest()
-        deps[self.array] = request[self.array].copy()
-        return deps
-
-    def process(self, batch, request):
-
-        if np.random.random() > self.p:
-            return
-
-        raw = batch.arrays[self.array]
-
-        assert raw.data.dtype == np.float32 or raw.data.dtype == np.float64, (
-            "Noise augmentation requires float types for the raw array (not "
-            + str(raw.data.dtype)
-            + "). Consider using Normalize before."
-        )
-        if self.clip:
-            assert (
-                raw.data.min() >= -1 and raw.data.max() <= 1
-            ), "Noise augmentation expects raw values in [-1,1] or [0,1]. Consider using Normalize before."
-
-        seed = request.random_seed
-
-        raw.data = random_noise(
-            raw.data, mode=self.mode, rng=seed, clip=self.clip, **self.kwargs
-        ).astype(raw.data.dtype)
