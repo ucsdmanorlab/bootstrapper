@@ -15,8 +15,7 @@ from funlib.persistence.types import Vec
 logging.getLogger().setLevel(logging.INFO)
 
 
-def find_segments(
-        config: dict) -> bool:
+def find_segments(config: dict) -> bool:
     """
     xtract and store fragments from supervoxels and generate segmentation lookup tables.
 
@@ -46,21 +45,21 @@ def find_segments(
         ``bool``:
             True if the operation was successful, False otherwise.
     """
-    fragments_file = config['fragments_file']
-    fragments_dataset = config['fragments_dataset']
+    fragments_file = config["fragments_file"]
+    fragments_dataset = config["fragments_dataset"]
     lut_dir = config["lut_dir"]
-    thresholds_minmax = config['thresholds_minmax']
-    thresholds_step = config['thresholds_step']
-    merge_function = config['merge_function']
+    thresholds_minmax = config["thresholds_minmax"]
+    thresholds_step = config["thresholds_step"]
+    merge_function = config["merge_function"]
 
     logging.info("Reading fragments")
     start: float = time.time()
 
     fragments = open_ds(fragments_file, fragments_dataset)
 
-    if 'roi_offset' in config and 'roi_shape' in config:
-        roi_offset = config['roi_offset']
-        roi_shape = config['roi_shape']
+    if "roi_offset" in config and "roi_shape" in config:
+        roi_offset = config["roi_offset"]
+        roi_shape = config["roi_shape"]
     else:
         roi_offset = None
         roi_shape = None
@@ -71,33 +70,33 @@ def find_segments(
         roi = fragments.roi
 
     logging.info("Opening RAG DB...")
-    
-    if 'db_file' in config:  
+
+    if "db_file" in config:
         # SQLiteGraphDatabase
         graph_provider = SQLiteGraphDataBase(
             position_attribute="center",
-            db_file=Path(config['db_file']),
+            db_file=Path(config["db_file"]),
             mode="r",
-            nodes_table=config['nodes_table'],
-            edges_table=config['edges_table'],
-            node_attrs={"center": Vec(int,3)},
-            edge_attrs={"merge_score": float, "agglomerated": bool}
+            nodes_table=config["nodes_table"],
+            edges_table=config["edges_table"],
+            node_attrs={"center": Vec(int, 3)},
+            edge_attrs={"merge_score": float, "agglomerated": bool},
         )
         logging.info("Using SQLiteGraphDatabase")
     else:
         # PgSQLGraphDatabase
         graph_provider = PgSQLGraphDatabase(
             position_attribute="center",
-            db_name=config['db_name'],
-            db_host=config['db_host'],
-            db_user=config['db_user'],
-            db_password=config['db_password'],
-            db_port=config['db_port'],
+            db_name=config["db_name"],
+            db_host=config["db_host"],
+            db_user=config["db_user"],
+            db_password=config["db_password"],
+            db_port=config["db_port"],
             mode="r",
-            nodes_table=config['nodes_table'],
-            edges_table=config['edges_table'],
-            node_attrs={"center": Vec(int,3)},
-            edge_attrs={"merge_score": float, "agglomerated": bool}
+            nodes_table=config["nodes_table"],
+            edges_table=config["edges_table"],
+            node_attrs={"center": Vec(int, 3)},
+            edge_attrs={"merge_score": float, "agglomerated": bool},
         )
         logging.info("Using PgSQLGraphDatabase")
 
@@ -137,20 +136,19 @@ def find_segments(
     # parallel processing
     start = time.time()
 
-
-    nodes = np.asarray(nodes,dtype=np.uint64)
-    edges = np.asarray(edges,dtype=np.uint64)
+    nodes = np.asarray(nodes, dtype=np.uint64)
+    edges = np.asarray(edges, dtype=np.uint64)
     scores = np.asarray(scores)
 
     for t in thresholds:
         get_connected_components(
-                nodes,
-                edges,
-                scores,
-                t,
-                f"{config['edges_table']}",
-                out_dir,
-            )
+            nodes,
+            edges,
+            scores,
+            t,
+            f"{config['edges_table']}",
+            out_dir,
+        )
 
     logging.info(f"Created and stored lookup tables in {time.time() - start}")
 
@@ -183,7 +181,7 @@ def get_connected_components(
 if __name__ == "__main__":
 
     config_file = sys.argv[1]
-    with open(config_file, 'r') as f:
+    with open(config_file, "r") as f:
         yaml_config = yaml.safe_load(f)
 
     config = yaml_config["hglom_segment"] | yaml_config["db"]
@@ -193,4 +191,4 @@ if __name__ == "__main__":
     end = time.time()
 
     seconds = end - start
-    logging.info(f'Total time to find_segments: {seconds}')
+    logging.info(f"Total time to find_segments: {seconds}")

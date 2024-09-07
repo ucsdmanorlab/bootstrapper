@@ -10,6 +10,7 @@ import zarr
 logging.basicConfig(level=logging.INFO)
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
+
 def predict(config):
     checkpoint = config["checkpoint"]
     raw_file = config["raw_file"]
@@ -17,7 +18,7 @@ def predict(config):
     out_file = config["out_file"]
     out_dataset_names = config["out_dataset_names"]
     num_cache_workers = config["num_cache_workers"]
-    
+
     out_lsds_dataset = out_dataset_names[0]
     out_affs_dataset = out_dataset_names[1]
 
@@ -29,10 +30,16 @@ def predict(config):
         net_config = json.load(f)
 
     shape_increase = net_config["shape_increase"]
-    input_shape = [1,*[x + y for x,y in zip(shape_increase,net_config["input_shape"])]]
-    output_shape = [1,*[x + y for x,y in zip(shape_increase,net_config["output_shape"])]]
+    input_shape = [
+        1,
+        *[x + y for x, y in zip(shape_increase, net_config["input_shape"])],
+    ]
+    output_shape = [
+        1,
+        *[x + y for x, y in zip(shape_increase, net_config["output_shape"])],
+    ]
 
-    voxel_size = Coordinate(zarr.open(raw_file,"r")[raw_dataset].attrs["resolution"])
+    voxel_size = Coordinate(zarr.open(raw_file, "r")[raw_dataset].attrs["resolution"])
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
     context = (input_size - output_size) / 2
@@ -52,7 +59,7 @@ def predict(config):
     source = gp.ZarrSource(
         raw_file, {raw: raw_dataset}, {raw: gp.ArraySpec(interpolatable=True)}
     )
-    
+
     predict = gp.torch.Predict(
         model,
         checkpoint=checkpoint,
@@ -72,13 +79,14 @@ def predict(config):
     )
 
     scan = gp.DaisyRequestBlocks(
-            chunk_request,
-            roi_map={
-                raw: 'read_roi',
-                pred_lsds: 'write_roi',
-                pred_affs: 'write_roi',
-            },
-            num_workers = num_cache_workers)
+        chunk_request,
+        roi_map={
+            raw: "read_roi",
+            pred_lsds: "write_roi",
+            pred_affs: "write_roi",
+        },
+        num_workers=num_cache_workers,
+    )
 
     pipeline = (
         source
@@ -104,10 +112,9 @@ def predict(config):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    
+
     config_file = sys.argv[1]
     with open(config_file, "r") as f:
         run_config = json.load(f)
-        
-    predict(run_config)
 
+    predict(run_config)

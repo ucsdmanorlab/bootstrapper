@@ -1,14 +1,28 @@
 import gunpowder as gp
 import numpy as np
 import random
-from scipy.ndimage import binary_erosion, binary_dilation, distance_transform_edt, gaussian_filter, maximum_filter, generate_binary_structure
+from scipy.ndimage import (
+    binary_erosion,
+    binary_dilation,
+    distance_transform_edt,
+    gaussian_filter,
+    maximum_filter,
+    generate_binary_structure,
+)
 from skimage.measure import label
 from skimage.morphology import disk, star, ellipse
 from skimage.segmentation import watershed
 
 
 class CreateLabels(gp.BatchProvider):
-    def __init__(self, array_key, anisotropy_range=None, shape=(20, 20, 20), dtype=np.uint64, voxel_size=None):
+    def __init__(
+        self,
+        array_key,
+        anisotropy_range=None,
+        shape=(20, 20, 20),
+        dtype=np.uint64,
+        voxel_size=None,
+    ):
         self.array_key = array_key
         self.anisotropy_range = anisotropy_range
         self.shape = shape
@@ -28,7 +42,7 @@ class CreateLabels(gp.BatchProvider):
         self.ndims = len(spec.voxel_size)
 
         if self.anisotropy_range is None:
-            self.anisotropy_range = (4,int(voxel_size[0]/voxel_size[1]))
+            self.anisotropy_range = (4, int(voxel_size[0] / voxel_size[1]))
 
         offset = gp.Coordinate((0,) * self.ndims)
         spec.roi = gp.Roi(offset, gp.Coordinate(self.shape) * spec.voxel_size)
@@ -42,12 +56,14 @@ class CreateLabels(gp.BatchProvider):
 
         request_spec = request.array_specs[self.array_key]
         voxel_size = self.spec[self.array_key].voxel_size
-        
+
         # scale request roi to voxel units
         dataset_roi = request_spec.roi / voxel_size
 
         # shift request roi into dataset
-        dataset_roi = dataset_roi - self.spec[self.array_key].roi.get_offset() / voxel_size
+        dataset_roi = (
+            dataset_roi - self.spec[self.array_key].roi.get_offset() / voxel_size
+        )
 
         # create array spec
         array_spec = self.spec[self.array_key].copy()
@@ -82,7 +98,7 @@ class CreateLabels(gp.BatchProvider):
                     generate_binary_structure(2, 2),
                     disk(random.randint(1, 4)),
                     star(random.randint(2, 4)),
-                    ellipse(random.randint(2, 4), random.randint(2, 4))
+                    ellipse(random.randint(2, 4), random.randint(2, 4)),
                 ]
                 dilated = binary_dilation(
                     labels[z], structure=random.choice(structs), iterations=dilations
@@ -92,10 +108,14 @@ class CreateLabels(gp.BatchProvider):
             labels = label(labels)
 
             distance = labels.shape[0]
-            distances, indices = distance_transform_edt(labels == 0, return_indices=True)
+            distances, indices = distance_transform_edt(
+                labels == 0, return_indices=True
+            )
             expanded_labels = np.zeros_like(labels)
             dilate_mask = distances <= distance
-            masked_indices = [dimension_indices[dilate_mask] for dimension_indices in indices]
+            masked_indices = [
+                dimension_indices[dilate_mask] for dimension_indices in indices
+            ]
             nearest_labels = labels[tuple(masked_indices)]
             expanded_labels[dilate_mask] = nearest_labels
             labels = expanded_labels
@@ -117,6 +137,7 @@ class CreateLabels(gp.BatchProvider):
 
         return labels
 
+
 class SmoothAugment(gp.BatchFilter):
     def __init__(self, array, blur_range=(0.0, 1.0)):
         self.array = array
@@ -133,10 +154,10 @@ class SmoothAugment(gp.BatchFilter):
                 sigma = random.uniform(self.range[0], self.range[1])
                 array_sec = array[z]
 
-                array[z] = np.array(
-                        gaussian_filter(array_sec, sigma=sigma)
-                ).astype(array_sec.dtype)
-        
+                array[z] = np.array(gaussian_filter(array_sec, sigma=sigma)).astype(
+                    array_sec.dtype
+                )
+
         elif len(array.shape) == 4:
             for z in range(array.shape[1]):
                 sigma = random.uniform(self.range[0], self.range[1])
@@ -148,17 +169,16 @@ class SmoothAugment(gp.BatchFilter):
                         for i in range(array_sec.shape[0])
                     ]
                 ).astype(array_sec.dtype)
-        
-        elif len(array.shape) == 2:                
+
+        elif len(array.shape) == 2:
             sigma = random.uniform(self.range[0], self.range[1])
-            array = np.array(
-                        gaussian_filter(array, sigma=sigma)
-            ).astype(array.dtype)
+            array = np.array(gaussian_filter(array, sigma=sigma)).astype(array.dtype)
 
         else:
             raise AssertionError("array shape is not 2d, 3d, or multi-channel 3d")
 
         batch[self.array].data = array
+
 
 class CustomIntensityAugment(gp.BatchFilter):
     def __init__(
@@ -215,13 +235,13 @@ class CustomIntensityAugment(gp.BatchFilter):
                     raw.data[z] = self.__augment(
                         raw.data[z],
                         np.random.uniform(low=self.scale_min, high=self.scale_max),
-                        np.random.uniform(low=self.shift_min, high=self.shift_max)
+                        np.random.uniform(low=self.shift_min, high=self.shift_max),
                     )
                 else:
                     raw.data[:, z, :, :] = self.__augment(
                         raw.data[:, z, :, :],
                         np.random.uniform(low=self.scale_min, high=self.scale_max),
-                        np.random.uniform(low=self.shift_min, high=self.shift_max)
+                        np.random.uniform(low=self.shift_min, high=self.shift_max),
                     )
         else:
             raw.data = self.__augment(
@@ -317,13 +337,13 @@ class CustomIntensityAugment(gp.BatchFilter):
                     raw.data[z] = self.__augment(
                         raw.data[z],
                         np.random.uniform(low=self.scale_min, high=self.scale_max),
-                        np.random.uniform(low=self.shift_min, high=self.shift_max)
+                        np.random.uniform(low=self.shift_min, high=self.shift_max),
                     )
                 else:
                     raw.data[:, z, :, :] = self.__augment(
                         raw.data[:, z, :, :],
                         np.random.uniform(low=self.scale_min, high=self.scale_max),
-                        np.random.uniform(low=self.shift_min, high=self.shift_max)
+                        np.random.uniform(low=self.shift_min, high=self.shift_max),
                     )
 
         else:
@@ -340,6 +360,7 @@ class CustomIntensityAugment(gp.BatchFilter):
 
     def __augment(self, a, scale, shift):
         return a.mean() + (a - a.mean()) * scale + shift
+
 
 class CustomGrowBoundary(gp.BatchFilter):
     """Grow a boundary between regions in a label array. Does not grow at the
@@ -430,9 +451,9 @@ class CustomGrowBoundary(gp.BatchFilter):
             # a masked region the value blob is not shrinking.
             if masked is not None:
                 label_mask = np.logical_or(label_mask, masked)
-            
+
             steps = random.choice(range(self.steps + 1))
-            
+
             if steps > 0:
                 eroded_label_mask = binary_erosion(
                     label_mask, iterations=steps, border_value=1

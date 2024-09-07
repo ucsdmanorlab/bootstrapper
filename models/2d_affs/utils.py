@@ -20,10 +20,10 @@ class SmoothAugment(gp.BatchFilter):
                 sigma = random.uniform(self.range[0], self.range[1])
                 array_sec = array[z]
 
-                array[z] = np.array(
-                        gaussian_filter(array_sec, sigma=sigma)
-                ).astype(array_sec.dtype)
-        
+                array[z] = np.array(gaussian_filter(array_sec, sigma=sigma)).astype(
+                    array_sec.dtype
+                )
+
         elif len(array.shape) == 4:
             for z in range(array.shape[1]):
                 sigma = random.uniform(self.range[0], self.range[1])
@@ -35,12 +35,10 @@ class SmoothAugment(gp.BatchFilter):
                         for i in range(array_sec.shape[0])
                     ]
                 ).astype(array_sec.dtype)
-        
-        elif len(array.shape) == 2:                
+
+        elif len(array.shape) == 2:
             sigma = random.uniform(self.range[0], self.range[1])
-            array = np.array(
-                        gaussian_filter(array, sigma=sigma)
-            ).astype(array.dtype)
+            array = np.array(gaussian_filter(array, sigma=sigma)).astype(array.dtype)
 
         else:
             raise AssertionError("array shape is not 2d, 3d, or multi-channel 3d")

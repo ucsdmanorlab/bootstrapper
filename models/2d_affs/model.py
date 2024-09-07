@@ -9,51 +9,61 @@ setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 with open(os.path.join(setup_dir, "net_config.json")) as f:
     net_config = json.load(f)
 
-in_channels = net_config['in_channels']
-num_fmaps = net_config['num_fmaps']
-fmap_inc_factor = net_config['fmap_inc_factor']
-downsample_factors = eval(repr(net_config['downsample_factors']).replace('[', '(').replace(']', ')'))
-kernel_size_down = eval(repr(net_config['kernel_size_down']).replace('[', '(').replace(']', ')'))
-kernel_size_up = eval(repr(net_config['kernel_size_up']).replace('[', '(').replace(']', ')'))
-outputs = net_config['outputs']
+in_channels = net_config["in_channels"]
+num_fmaps = net_config["num_fmaps"]
+fmap_inc_factor = net_config["fmap_inc_factor"]
+downsample_factors = eval(
+    repr(net_config["downsample_factors"]).replace("[", "(").replace("]", ")")
+)
+kernel_size_down = eval(
+    repr(net_config["kernel_size_down"]).replace("[", "(").replace("]", ")")
+)
+kernel_size_up = eval(
+    repr(net_config["kernel_size_up"]).replace("[", "(").replace("]", ")")
+)
+outputs = net_config["outputs"]
+
 
 class Model(torch.nn.Module):
 
     def __init__(
-            self,
-            stack_infer=False,
-            num_fmaps=num_fmaps,
-            fmap_inc_factor=fmap_inc_factor,
-            downsample_factors=downsample_factors,
-            kernel_size_down=kernel_size_down,
-            kernel_size_up=kernel_size_up,
-            outputs=outputs,
-        ):
+        self,
+        stack_infer=False,
+        num_fmaps=num_fmaps,
+        fmap_inc_factor=fmap_inc_factor,
+        downsample_factors=downsample_factors,
+        kernel_size_down=kernel_size_down,
+        kernel_size_up=kernel_size_up,
+        outputs=outputs,
+    ):
 
         super().__init__()
 
         self.stack_infer = stack_infer
 
         self.unet = UNet(
-                in_channels=in_channels,
-                num_fmaps=num_fmaps,
-                fmap_inc_factor=fmap_inc_factor,
-                downsample_factors=downsample_factors,
-                kernel_size_down=kernel_size_down,
-                kernel_size_up=kernel_size_up,
-                constant_upsample=True,
-                padding="valid")
+            in_channels=in_channels,
+            num_fmaps=num_fmaps,
+            fmap_inc_factor=fmap_inc_factor,
+            downsample_factors=downsample_factors,
+            kernel_size_down=kernel_size_down,
+            kernel_size_up=kernel_size_up,
+            constant_upsample=True,
+            padding="valid",
+        )
 
-        self.aff_head = ConvPass(num_fmaps, outputs['2d_affs']['dims'], [[1, 1]], activation='Sigmoid')
+        self.aff_head = ConvPass(
+            num_fmaps, outputs["2d_affs"]["dims"], [[1, 1]], activation="Sigmoid"
+        )
 
     def forward(self, input):
 
         z = self.unet(input)
 
         affs = self.aff_head(z)
-        
-        if self.stack_infer: # add Z dimension during prediction
-            affs = torch.unsqueeze(affs,-3)
+
+        if self.stack_infer:  # add Z dimension during prediction
+            affs = torch.unsqueeze(affs, -3)
 
         return affs
 
@@ -65,7 +75,7 @@ class WeightedMSELoss(torch.nn.Module):
 
     def _calc_loss(self, pred, target, weights):
 
-        scale = (weights * (pred - target) ** 2)
+        scale = weights * (pred - target) ** 2
 
         if len(torch.nonzero(scale)) != 0:
             mask = torch.masked_select(scale, torch.gt(weights, 0))
@@ -76,11 +86,7 @@ class WeightedMSELoss(torch.nn.Module):
 
         return loss
 
-    def forward(
-            self,
-            affs_prediction,
-            affs_target,
-            affs_weights):
+    def forward(self, affs_prediction, affs_target, affs_weights):
 
         affs_loss = self._calc_loss(affs_prediction, affs_target, affs_weights)
 

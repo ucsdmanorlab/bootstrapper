@@ -10,14 +10,12 @@ def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
     diag = np.sqrt(output_size[1] ** 2 + output_size[2] ** 2)
 
     max_padding = gp.Roi(
-        (
-            gp.Coordinate([i / 2 for i in [output_size[0], diag, diag]])
-            + method_padding
-        ),
+        (gp.Coordinate([i / 2 for i in [output_size[0], diag, diag]]) + method_padding),
         (0,) * 3,
     ).snap_to_grid(voxel_size, mode=mode)
 
     return max_padding.get_begin()
+
 
 class SmoothAugment(gp.BatchFilter):
     def __init__(self, array, blur_range=(0.0, 1.0)):
@@ -35,10 +33,10 @@ class SmoothAugment(gp.BatchFilter):
                 sigma = random.uniform(self.range[0], self.range[1])
                 array_sec = array[z]
 
-                array[z] = np.array(
-                        gaussian_filter(array_sec, sigma=sigma)
-                ).astype(array_sec.dtype)
-        
+                array[z] = np.array(gaussian_filter(array_sec, sigma=sigma)).astype(
+                    array_sec.dtype
+                )
+
         elif len(array.shape) == 4:
             for z in range(array.shape[1]):
                 sigma = random.uniform(self.range[0], self.range[1])
@@ -50,12 +48,10 @@ class SmoothAugment(gp.BatchFilter):
                         for i in range(array_sec.shape[0])
                     ]
                 ).astype(array_sec.dtype)
-        
-        elif len(array.shape) == 2:                
+
+        elif len(array.shape) == 2:
             sigma = random.uniform(self.range[0], self.range[1])
-            array = np.array(
-                        gaussian_filter(array, sigma=sigma)
-            ).astype(array.dtype)
+            array = np.array(gaussian_filter(array, sigma=sigma)).astype(array.dtype)
 
         else:
             raise AssertionError("array shape is not 2d, 3d, or multi-channel 3d")

@@ -19,29 +19,29 @@ torch.backends.cudnn.benchmark = True
 
 
 def train(
-        setup_dir,
-        voxel_size,
-        sigma,
-        max_iterations,
-        samples,
-        raw_datasets,
-        labels_datasets,
-        mask_datasets,
-        out_dir,
-        save_checkpoints_every,
-        save_snapshots_every,
+    setup_dir,
+    voxel_size,
+    sigma,
+    max_iterations,
+    samples,
+    raw_datasets,
+    labels_datasets,
+    mask_datasets,
+    out_dir,
+    save_checkpoints_every,
+    save_snapshots_every,
 ):
     # array keys
     raw = gp.ArrayKey("RAW")
     labels = gp.ArrayKey("LABELS")
     unlabelled = gp.ArrayKey("UNLABELLED")
-    
+
     gt_affs = gp.ArrayKey("GT_AFFS")
     affs_weights = gp.ArrayKey("AFFS_WEIGHTS")
     gt_affs_mask = gp.ArrayKey("AFFS_MASK")
     pred_affs = gp.ArrayKey("PRED_AFFS")
 
-    # model training setup 
+    # model training setup
     model = Model(stack_infer=True)
     model.train()
     loss = WeightedMSELoss()
@@ -55,27 +55,29 @@ def train(
         )
         net_config = json.load(f)
 
-    neighborhood = net_config['neighborhood']
-    neighborhood = [[0,*x] for x in neighborhood] # add z-dimension since pipeline is 3D
+    neighborhood = net_config["neighborhood"]
+    neighborhood = [
+        [0, *x] for x in neighborhood
+    ]  # add z-dimension since pipeline is 3D
 
-    shape_increase = [0,0] #net_config["shape_increase"]
-    input_shape = [x + y for x,y in zip(shape_increase,net_config["input_shape"])]
-    output_shape = [x + y for x,y in zip(shape_increase,net_config["output_shape"])]
+    shape_increase = [0, 0]  # net_config["shape_increase"]
+    input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
+    output_shape = [x + y for x, y in zip(shape_increase, net_config["output_shape"])]
 
     # prepare samples
     samples = {
         samples[i]: {
-            'raw': raw_datasets[i],
-            'labels': labels_datasets[i],
-            'mask': mask_datasets[i]
+            "raw": raw_datasets[i],
+            "labels": labels_datasets[i],
+            "mask": mask_datasets[i],
         }
         for i in range(len(samples))
     }
 
     # prepare request
-    voxel_size = gp.Coordinate(voxel_size) 
-    input_size = gp.Coordinate((1,*input_shape)) * voxel_size
-    output_size = gp.Coordinate((1,*output_shape)) * voxel_size
+    voxel_size = gp.Coordinate(voxel_size)
+    input_size = gp.Coordinate((1, *input_shape)) * voxel_size
+    output_size = gp.Coordinate((1, *output_shape)) * voxel_size
     context = (input_size - output_size) // 2
 
     print(input_size, output_size, context)
@@ -91,9 +93,9 @@ def train(
         gp.ZarrSource(
             sample,
             {
-                raw: samples[sample]['raw'],
-                labels: samples[sample]['labels'],
-                unlabelled: samples[sample]['mask']
+                raw: samples[sample]["raw"],
+                labels: samples[sample]["labels"],
+                unlabelled: samples[sample]["mask"],
             },
             {
                 raw: gp.ArraySpec(interpolatable=True),
@@ -108,10 +110,10 @@ def train(
         + gp.RandomLocation(mask=unlabelled, min_masked=0.05)
         for sample in samples
     )
-    
+
     pipeline = source + gp.RandomProvider()
 
-    pipeline += gp.SimpleAugment(transpose_only=[1,2])
+    pipeline += gp.SimpleAugment(transpose_only=[1, 2])
 
     pipeline += gp.DeformAugment(
         control_point_spacing=(voxel_size[-1] * 10, voxel_size[-1] * 10),
@@ -132,10 +134,7 @@ def train(
     pipeline += SmoothAugment(raw)
 
     pipeline += gp.DefectAugment(
-            raw,
-            prob_missing=0.0,
-            prob_low_contrast=0.05,
-            prob_deform=0.0
+        raw, prob_missing=0.0, prob_low_contrast=0.05, prob_deform=0.0
     )
 
     pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=1, only_xy=True)
@@ -155,7 +154,7 @@ def train(
 
     pipeline += gp.Stack(batch_size)
 
-    pipeline += gp.PreCache(num_workers=40,cache_size=80)
+    pipeline += gp.PreCache(num_workers=40, cache_size=80)
 
     pipeline += gp.torch.Train(
         model,
@@ -170,8 +169,8 @@ def train(
         outputs={
             0: pred_affs,
         },
-        log_dir=os.path.join(out_dir,'log'),
-        checkpoint_basename=os.path.join(out_dir,'model'),
+        log_dir=os.path.join(out_dir, "log"),
+        checkpoint_basename=os.path.join(out_dir, "model"),
         save_every=save_checkpoints_every,
     )
 
@@ -185,11 +184,11 @@ def train(
             affs_weights: "affs_weights",
         },
         output_filename="batch_{iteration}.zarr",
-        output_dir=os.path.join(out_dir,'snapshots'),
+        output_dir=os.path.join(out_dir, "snapshots"),
         every=save_snapshots_every,
     )
 
-    #pipeline += gp.PrintProfilingStats(every=100)
+    # pipeline += gp.PrintProfilingStats(every=100)
 
     with gp.build(pipeline):
         for i in range(max_iterations):
@@ -199,15 +198,17 @@ def train(
 if __name__ == "__main__":
 
     config_file = sys.argv[1]
-    with open(config_file, 'r') as f:
+    with open(config_file, "r") as f:
         config = yaml.safe_load(f)
 
-    assert config["setup_dir"] in setup_dir, \
-        "model directories do not match"
+    assert config["setup_dir"] in setup_dir, "model directories do not match"
     config["setup_dir"] = setup_dir
 
-    assert len(config["samples"]) == len(config["raw_datasets"]) == \
-        len(config["labels_datasets"]) == len(config["mask_datasets"]), \
-        "number of samples and datasets do not match"
+    assert (
+        len(config["samples"])
+        == len(config["raw_datasets"])
+        == len(config["labels_datasets"])
+        == len(config["mask_datasets"])
+    ), "number of samples and datasets do not match"
 
     train(**config)

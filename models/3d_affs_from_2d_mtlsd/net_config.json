@@ -1,6 +1,6 @@
 {
     "in_channels": 8,
-    "out_neighborhood": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+    "out_neighborhood": [[1, 0, 0], [0, 1, 0], [0, 0, 1], [2, 0, 0], [0, 8, 0], [0, 0, 8]],
     "in_neighborhood": [[1, 0], [0, 1]],
     "num_fmaps": 6,
     "fmap_inc_factor": 3,
@@ -29,7 +29,7 @@
     "outputs": {
         "3d_affs": {
             "dtype": "uint8",
-            "dims": 3
+            "dims": 6
         }
     },
     "output_shape": [

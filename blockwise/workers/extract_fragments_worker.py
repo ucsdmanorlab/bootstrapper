@@ -16,7 +16,7 @@ from scipy.ndimage import (
     maximum_filter,
     gaussian_filter,
     distance_transform_edt,
-    binary_erosion
+    binary_erosion,
 )
 from skimage.measure import label
 from funlib.geometry import Coordinate
@@ -28,7 +28,11 @@ logging.basicConfig(level=logging.INFO)
 
 
 def watershed_from_boundary_distance(
-    boundary_distances, boundary_mask, return_seeds=False, id_offset=0, min_seed_distance=10
+    boundary_distances,
+    boundary_mask,
+    return_seeds=False,
+    id_offset=0,
+    min_seed_distance=10,
 ):
 
     max_filtered = maximum_filter(boundary_distances, min_seed_distance)
@@ -51,6 +55,7 @@ def watershed_from_boundary_distance(
 
     return ret
 
+
 def watershed_from_affinities(
     affs,
     max_affinity_value=1.0,
@@ -66,24 +71,21 @@ def watershed_from_affinities(
         (fragments, max_id)
         or
         (fragments, max_id, seeds) if return_seeds == True"""
-   
+
     # add random noise
     random_noise = np.random.randn(*affs.shape) * 0.01
 
     # add smoothed affs, to solve a similar issue to the random noise. We want to bias
     # towards processing the central regions of objects first.
     logging.info("Smoothing affs")
-    smoothed_affs: np.ndarray = (
-            gaussian_filter(affs, sigma=(0, 1, 2, 2))
-            - 0.5
-    ) * 0.05
+    smoothed_affs: np.ndarray = (gaussian_filter(affs, sigma=(0, 1, 2, 2)) - 0.5) * 0.05
 
     affs = (affs + random_noise + smoothed_affs).astype(np.float32)
     affs = np.clip(affs, 0.0, 1.0)
 
     if fragments_in_xy:
 
-        mean_affs = 0.5 * (affs[-1] + affs[-2]) # affs are (c,z,y,x)
+        mean_affs = 0.5 * (affs[-1] + affs[-2])  # affs are (c,z,y,x)
         depth = mean_affs.shape[0]
 
         fragments = np.zeros(mean_affs.shape, dtype=np.uint64)
@@ -126,12 +128,16 @@ def watershed_from_affinities(
             boundary_mask = None
 
         ret = watershed_from_boundary_distance(
-            boundary_distances, boundary_mask, return_seeds, min_seed_distance=min_seed_distance
+            boundary_distances,
+            boundary_mask,
+            return_seeds,
+            min_seed_distance=min_seed_distance,
         )
 
         fragments = ret[0]
 
     return ret
+
 
 def upsample(a, factor):
 
@@ -140,44 +146,47 @@ def upsample(a, factor):
 
     return a
 
+
 def get_mask_data_in_roi(mask, roi, target_voxel_size):
 
-    assert mask.voxel_size.is_multiple_of(target_voxel_size), (
-        "Can not upsample from %s to %s" % (mask.voxel_size, target_voxel_size))
+    assert mask.voxel_size.is_multiple_of(
+        target_voxel_size
+    ), "Can not upsample from %s to %s" % (mask.voxel_size, target_voxel_size)
 
-    aligned_roi = roi.snap_to_grid(mask.voxel_size, mode='grow')
+    aligned_roi = roi.snap_to_grid(mask.voxel_size, mode="grow")
     aligned_data = mask.to_ndarray(aligned_roi, fill_value=0)
 
     if mask.voxel_size == target_voxel_size:
         return aligned_data
 
-    factor = mask.voxel_size/target_voxel_size
+    factor = mask.voxel_size / target_voxel_size
 
     upsampled_aligned_data = upsample(aligned_data, factor)
 
     upsampled_aligned_mask = Array(
-        upsampled_aligned_data,
-        roi=aligned_roi,
-        voxel_size=target_voxel_size)
+        upsampled_aligned_data, roi=aligned_roi, voxel_size=target_voxel_size
+    )
 
     return upsampled_aligned_mask.to_ndarray(roi)
 
+
 def watershed_in_block(
-        affs,
-        block,
-        context,
-        rag_provider,
-        fragments_out,
-        num_voxels_in_block,
-        mask=None,
-        fragments_in_xy=False,
-        background_mask=False,
-        mask_thresh=0.5,
-        min_seed_distance=5,
-        epsilon_agglomerate=0.01,
-        filter_fragments=0.0,
-        replace_sections=None):
-    '''Extract fragments from affinities in block using watershed.
+    affs,
+    block,
+    context,
+    rag_provider,
+    fragments_out,
+    num_voxels_in_block,
+    mask=None,
+    fragments_in_xy=False,
+    background_mask=False,
+    mask_thresh=0.5,
+    min_seed_distance=5,
+    epsilon_agglomerate=0.01,
+    filter_fragments=0.0,
+    replace_sections=None,
+):
+    """Extract fragments from affinities in block using watershed.
 
     Args:
 
@@ -188,7 +197,7 @@ def watershed_in_block(
         context (``tuple`` of ``int``):
 
             The context to consider for fragment extraction, in world units.
-        
+
         rag_provider (`class:RagProvider`):
 
             A RAG provider to write nodes for extracted fragments to. This does
@@ -240,7 +249,7 @@ def watershed_in_block(
 
             Replace fragments data with zero in given sections (useful if large
             artifacts are causing issues). List of section numbers (in voxels)
-    '''
+    """
 
     total_roi = affs.roi
 
@@ -251,7 +260,7 @@ def watershed_in_block(
 
     if affs.dtype == np.uint8:
         logging.info("Assuming affinities are in [0,255]")
-        affs.data = affs.data.astype(np.float32)/255.0
+        affs.data = affs.data.astype(np.float32) / 255.0
         max_affinity_value = 1.0
     else:
         max_affinity_value = 1.0
@@ -279,51 +288,46 @@ def watershed_in_block(
     if filter_fragments > 0:
 
         if fragments_in_xy:
-            average_affs = np.mean(affs.data[-2:]/max_affinity_value, axis=0)
+            average_affs = np.mean(affs.data[-2:] / max_affinity_value, axis=0)
         else:
-            average_affs = np.mean(affs.data/max_affinity_value, axis=0)
+            average_affs = np.mean(affs.data / max_affinity_value, axis=0)
 
         filtered_fragments = []
 
         fragment_ids = np.unique(fragments_data)
 
         for fragment, mean in zip(
-                fragment_ids,
-                measurements.mean(
-                    average_affs,
-                    fragments_data,
-                    fragment_ids)):
+            fragment_ids, measurements.mean(average_affs, fragments_data, fragment_ids)
+        ):
             if mean < filter_fragments:
                 filtered_fragments.append(fragment)
 
-        filtered_fragments = np.array(
-            filtered_fragments,
-            dtype=fragments_data.dtype)
+        filtered_fragments = np.array(filtered_fragments, dtype=fragments_data.dtype)
         replace = np.zeros_like(filtered_fragments)
         replace_values(fragments_data, filtered_fragments, replace, inplace=True)
 
     if epsilon_agglomerate > 0:
 
         logging.info(
-            "Performing initial fragment agglomeration until %f",
-            epsilon_agglomerate)
+            "Performing initial fragment agglomeration until %f", epsilon_agglomerate
+        )
 
         # add fake z-affinity channel if stacked 2D affinities
         if affs.data.shape[0] == 2:
-            affs.data = np.stack([
-                            0.5*np.zeros_like(affs.data[0]),
-                            affs.data[-2],
-                            affs.data[-1]])
+            affs.data = np.stack(
+                [0.5 * np.zeros_like(affs.data[0]), affs.data[-2], affs.data[-1]]
+            )
 
         generator = waterz.agglomerate(
-                affs=affs.data/max_affinity_value,
-                thresholds=[epsilon_agglomerate],
-                fragments=fragments_data,
-                #scoring_function='OneMinus<HistogramQuantileAffinity<RegionGraphType, 25, ScoreValue, 256, false>>',
-                scoring_function='OneMinus<MeanAffinity<RegionGraphType, ScoreValue>>',
-                discretize_queue=256,
-                return_merge_history=False,
-                return_region_graph=False)
+            affs=affs.data / max_affinity_value,
+            thresholds=[epsilon_agglomerate],
+            fragments=fragments_data,
+            # scoring_function='OneMinus<HistogramQuantileAffinity<RegionGraphType, 25, ScoreValue, 256, false>>',
+            scoring_function="OneMinus<MeanAffinity<RegionGraphType, ScoreValue>>",
+            discretize_queue=256,
+            return_merge_history=False,
+            return_region_graph=False,
+        )
         fragments_data[:] = next(generator)
 
         # cleanup generator
@@ -337,30 +341,30 @@ def watershed_in_block(
         block_begin = block.write_roi.get_begin()
         shape = block.write_roi.get_shape()
 
-        z_context = context[0]/affs.voxel_size[0]
-        logging.info("Z context: %i",z_context)
+        z_context = context[0] / affs.voxel_size[0]
+        logging.info("Z context: %i", z_context)
 
         mapping = {}
 
-        voxel_offset = block_begin[0]/affs.voxel_size[0]
+        voxel_offset = block_begin[0] / affs.voxel_size[0]
 
-        for i,j in zip(
-                range(fragments_data.shape[0]),
-                range(shape[0])):
+        for i, j in zip(range(fragments_data.shape[0]), range(shape[0])):
             mapping[i] = i
-            mapping[j] = int(voxel_offset + i) \
-                    if block_begin[0] == total_roi.get_begin()[0] \
-                    else int(voxel_offset + (i - z_context))
+            mapping[j] = (
+                int(voxel_offset + i)
+                if block_begin[0] == total_roi.get_begin()[0]
+                else int(voxel_offset + (i - z_context))
+            )
 
-        logging.info('Mapping: %s', mapping)
+        logging.info("Mapping: %s", mapping)
 
-        replace = [k for k,v in mapping.items() if v in replace_sections]
+        replace = [k for k, v in mapping.items() if v in replace_sections]
 
         for r in replace:
             logging.info("Replacing mapped section %i with zero", r)
             fragments_data[r] = 0
 
-    #todo add key value replacement option
+    # todo add key value replacement option
 
     fragments = Array(fragments_data, affs.roi, affs.voxel_size)
 
@@ -373,16 +377,16 @@ def watershed_in_block(
     # break uniqueness of IDs below)
     if max_id > num_voxels_in_block:
         logging.warning(
-            "fragments in %s have max ID %d, relabelling...",
-            block.write_roi, max_id)
+            "fragments in %s have max ID %d, relabelling...", block.write_roi, max_id
+        )
         fragments.data, max_id = relabel(fragments.data)
 
         assert max_id < num_voxels_in_block
 
     # ensure unique IDs
-    id_bump = block.block_id[1]*num_voxels_in_block
+    id_bump = block.block_id[1] * num_voxels_in_block
     logging.debug("bumping fragment IDs by %i", id_bump)
-    fragments.data[fragments.data>0] += id_bump
+    fragments.data[fragments.data > 0] += id_bump
     fragment_ids = range(id_bump + 1, id_bump + 1 + int(max_id))
 
     # store fragments
@@ -395,104 +399,97 @@ def watershed_in_block(
 
     # get fragment centers
     fragment_centers = {
-        fragment: block.write_roi.get_offset() + affs.voxel_size*Coordinate(center)
+        fragment: block.write_roi.get_offset() + affs.voxel_size * Coordinate(center)
         for fragment, center in zip(
             fragment_ids,
-            measurements.center_of_mass(fragments.data, fragments.data, fragment_ids))
+            measurements.center_of_mass(fragments.data, fragments.data, fragment_ids),
+        )
         if not np.isnan(center[0])
     }
 
     # store nodes
     rag = rag_provider[block.write_roi]
-    rag.add_nodes_from([
-        (node, {
-            'center': c
-            }
-        )
-        for node, c in fragment_centers.items()
-    ])
-    rag_provider.write_graph(rag,block.write_roi)
-    #rag_provider.write_nodes(rag.nodes,block.write_roi)
+    rag.add_nodes_from([(node, {"center": c}) for node, c in fragment_centers.items()])
+    rag_provider.write_graph(rag, block.write_roi)
+    # rag_provider.write_nodes(rag.nodes,block.write_roi)
+
 
 def extract_fragments_worker(input_config):
 
     logging.info(sys.argv)
 
-    with open(input_config, 'r') as f:
+    with open(input_config, "r") as f:
         config = json.load(f)
 
     logging.info(config)
 
-    affs_file = config['affs_file']
-    affs_dataset = config['affs_dataset']
-    fragments_file = config['fragments_file']
-    fragments_dataset = config['fragments_dataset']
+    affs_file = config["affs_file"]
+    affs_dataset = config["affs_dataset"]
+    fragments_file = config["fragments_file"]
+    fragments_dataset = config["fragments_dataset"]
 
-    context = config['context']
-    num_voxels_in_block = config['num_voxels_in_block']
-    fragments_in_xy = config['fragments_in_xy']
-    background_mask = config['background_mask']
-    mask_thresh = config['mask_thresh']
-    min_seed_distance = config['min_seed_distance']
-    epsilon_agglomerate = config['epsilon_agglomerate']
-    filter_fragments = config['filter_fragments']
-    replace_sections = config['replace_sections']
+    context = config["context"]
+    num_voxels_in_block = config["num_voxels_in_block"]
+    fragments_in_xy = config["fragments_in_xy"]
+    background_mask = config["background_mask"]
+    mask_thresh = config["mask_thresh"]
+    min_seed_distance = config["min_seed_distance"]
+    epsilon_agglomerate = config["epsilon_agglomerate"]
+    filter_fragments = config["filter_fragments"]
+    replace_sections = config["replace_sections"]
 
     logging.info(f"Reading affs from {affs_file}")
 
-    affs = open_ds(affs_file, affs_dataset, mode='r')
+    affs = open_ds(affs_file, affs_dataset, mode="r")
 
     logging.info(f"Reading fragments from {fragments_file}")
 
-    fragments = open_ds(
-        fragments_file,
-        fragments_dataset,
-        mode='r+')
+    fragments = open_ds(fragments_file, fragments_dataset, mode="r+")
 
-    if 'mask_file' in config and 'mask_dataset' in config and config['mask_file']:
+    if "mask_file" in config and "mask_dataset" in config and config["mask_file"]:
         logging.info(f"Reading mask from {config['mask_file']}")
-        mask = open_ds(config['mask_file'], config['mask_dataset'])
+        mask = open_ds(config["mask_file"], config["mask_dataset"])
     else:
         mask = None
 
     # open RAG DB
     logging.info("Opening RAG DB...")
 
-    if 'db_file' in config:  
+    if "db_file" in config:
         # SQLiteGraphDatabase
         rag_provider = SQLiteGraphDataBase(
-            db_file=Path(config['db_file']),
+            db_file=Path(config["db_file"]),
             position_attribute="center",
             mode="r+",
-            nodes_table=config['nodes_table'],
-            edges_table=config['edges_table'],
-            node_attrs={"center": Vec(int,affs.roi.dims)},
-            edge_attrs={"merge_score": float, "agglomerated": bool}
+            nodes_table=config["nodes_table"],
+            edges_table=config["edges_table"],
+            node_attrs={"center": Vec(int, affs.roi.dims)},
+            edge_attrs={"merge_score": float, "agglomerated": bool},
         )
         logging.info("Using SQLiteGraphDatabase")
     else:
         # PgSQLGraphDatabase
         rag_provider = PgSQLGraphDatabase(
             position_attribute="center",
-            db_name=config['db_name'],
-            db_host=config['db_host'],
-            db_user=config['db_user'],
-            db_password=config['db_password'],
-            db_port=config['db_port'],
+            db_name=config["db_name"],
+            db_host=config["db_host"],
+            db_user=config["db_user"],
+            db_password=config["db_password"],
+            db_port=config["db_port"],
             mode="r+",
-            nodes_table=config['nodes_table'],
-            edges_table=config['edges_table'],
-            node_attrs={"center": Vec(int,affs.roi.dims)},
-            edge_attrs={"merge_score": float, "agglomerated": bool}
+            nodes_table=config["nodes_table"],
+            edges_table=config["edges_table"],
+            node_attrs={"center": Vec(int, affs.roi.dims)},
+            edge_attrs={"merge_score": float, "agglomerated": bool},
         )
         logging.info("Using PgSQLGraphDatabase")
 
     logging.info("RAG DB opened")
 
-# TODO: open block done DB
-#    client = pymongo.MongoClient(db_host)
-#    db = client[db_name]
-#    blocks_extracted = db['blocks_extracted']
+    # TODO: open block done DB
+    #    client = pymongo.MongoClient(db_host)
+    #    db = client[db_name]
+    #    blocks_extracted = db['blocks_extracted']
 
     client = daisy.Client()
 
@@ -522,6 +519,7 @@ def extract_fragments_worker(input_config):
                 replace_sections=replace_sections,
             )
 
+
 # TODO: block done
 #            document = {
 #                'num_cpus': 5,
@@ -542,6 +540,6 @@ def extract_fragments_worker(input_config):
 #            blocks_extracted.insert(document)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     extract_fragments_worker(sys.argv[1])

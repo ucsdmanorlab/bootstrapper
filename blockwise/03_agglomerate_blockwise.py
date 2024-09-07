@@ -1,119 +1,115 @@
-import multiprocessing
-multiprocessing.set_start_method('fork')
-
 import daisy
 import json
 import yaml
 import logging
 import subprocess
-import numpy as np
 import os
 import sys
 import time
 
 from pathlib import Path
 from funlib.geometry import Coordinate, Roi
-from funlib.persistence import open_ds, prepare_ds
+from funlib.persistence import open_ds
 
 logging.basicConfig(level=logging.INFO)
 scripts_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
-def agglomerate(
-        config: dict) -> bool:
-    '''
 
-    Agglomerate in parallel blocks. Requires that affinities and supervoxels
-    have been generated.
+def agglomerate(config: dict) -> bool:
+    """
 
-    Args:
+        Agglomerate in parallel blocks. Requires that affinities and supervoxels
+        have been generated.
 
-        affs_file (``string``):
+        Args:
 
-            Path to file (zarr/n5) where predictions are stored.
+            affs_file (``string``):
 
-        affs_dataset (``string``):
+                Path to file (zarr/n5) where predictions are stored.
 
-            Predictions dataset to use (e.g 'volumes/affs').
+            affs_dataset (``string``):
 
-        fragments_file (``string``):
+                Predictions dataset to use (e.g 'volumes/affs').
 
-            Path to file (zarr/n5) where fragments (supervoxels) are stored.
+            fragments_file (``string``):
 
-        fragments_dataset (``string``):
+                Path to file (zarr/n5) where fragments (supervoxels) are stored.
 
-            Name of fragments (supervoxels) dataset (e.g 'volumes/fragments').
+            fragments_dataset (``string``):
 
-        rag_path (``string``):
+                Name of fragments (supervoxels) dataset (e.g 'volumes/fragments').
 
-        block_size (``tuple`` of ``int``):
+            rag_path (``string``):
 
-            The size of one block in world units (must be multiple of voxel
-            size).
+            block_size (``tuple`` of ``int``):
 
-        context (``tuple`` of ``int``):
+                The size of one block in world units (must be multiple of voxel
+                size).
 
-            The context to consider for fragment extraction in world units.
+            context (``tuple`` of ``int``):
 
-#        db_host (``string``):
-#
-#            Name of MongoDB client.
-#
-#        db_name (``string``):
-#
-#            Name of MongoDB database to use (for logging successful blocks in
-#            check function and reading nodes from + writing edges to the region
-#            adjacency graph).
-#
-        num_workers (``int``):
+                The context to consider for fragment extraction in world units.
 
-            How many blocks to run in parallel.
+    #        db_host (``string``):
+    #
+    #            Name of MongoDB client.
+    #
+    #        db_name (``string``):
+    #
+    #            Name of MongoDB database to use (for logging successful blocks in
+    #            check function and reading nodes from + writing edges to the region
+    #            adjacency graph).
+    #
+            num_workers (``int``):
 
-        merge_function (``string``):
+                How many blocks to run in parallel.
 
-            Symbolic name of a merge function. See dictionary in worker script
-            (workers/agglomerate_worker.py).
+            merge_function (``string``):
 
-    '''
-    affs_file = config['affs_file']
-    affs_dataset = config['affs_dataset']
-    fragments_file = config['fragments_file']
-    fragments_dataset = config['fragments_dataset']
-    merge_function = config['merge_function']
-    num_workers = config['num_workers']
+                Symbolic name of a merge function. See dictionary in worker script
+                (workers/agglomerate_worker.py).
+
+    """
+    affs_file = config["affs_file"]
+    affs_dataset = config["affs_dataset"]
+    fragments_file = config["fragments_file"]
+    fragments_dataset = config["fragments_dataset"]
+    merge_function = config["merge_function"]
+    num_workers = config["num_workers"]
 
     logging.info(f"Reading affs from {affs_file}")
-    affs = open_ds(affs_file, affs_dataset, mode='r')
+    affs = open_ds(os.path.join(affs_file, affs_dataset), mode="r")
 
     logging.info(f"Reading fragments from {fragments_file}")
-    fragments = open_ds(fragments_file, fragments_dataset, mode='r')
+    fragments = open_ds(fragments_file, fragments_dataset, mode="r")
 
     # ROI
-    if 'block_size' in config and config['block_size'] is not None:
+    if "block_size" in config and config["block_size"] is not None:
         block_size = Coordinate(config["block_size"])
     else:
         block_size = fragments.chunk_shape * fragments.voxel_size
 
-    if 'context' in config and config['context'] is not None:
+    if "context" in config and config["context"] is not None:
         context = Coordinate(config["context"])
     else:
         context = Coordinate(fragments.chunk_shape) / 4
         context *= fragments.voxel_size
 
-    if 'roi_offset' in config and 'roi_shape' in config:
-        roi_offset = config['roi_offset']
-        roi_shape = config['roi_shape']
+    if "roi_offset" in config and "roi_shape" in config:
+        roi_offset = config["roi_offset"]
+        roi_shape = config["roi_shape"]
     else:
         roi_offset = None
         roi_shape = None
 
     if roi_offset is not None:
-        total_roi = Roi(roi_offset, roi_shape).grow(context,context)
+        total_roi = Roi(roi_offset, roi_shape).grow(context, context)
     else:
-        total_roi = fragments.roi.grow(context,context)
+        total_roi = fragments.roi.grow(context, context)
 
-    read_roi = Roi((0,)*affs.roi.dims, block_size).grow(context, context)
-    write_roi = Roi((0,)*affs.roi.dims, block_size)
-    
+    read_roi = Roi((0,) * affs.roi.dims, block_size).grow(context, context)
+    write_roi = Roi((0,) * affs.roi.dims, block_size)
+
     # blockwise watershed
     task = daisy.Task(
         task_id="AgglomerateTask",
@@ -124,13 +120,14 @@ def agglomerate(
         num_workers=num_workers,
         read_write_conflict=True,
         max_retries=20,
-        fit='shrink')
-    
+        fit="shrink",
+    )
+
     done: bool = daisy.run_blockwise(tasks=[task])
 
     if not done:
         raise RuntimeError("At least one block failed!")
-    
+
     return done
 
 
@@ -142,12 +139,12 @@ def start_worker(config: dict):
 
     config_file = Path(config["fragments_file"]) / "agglom_config.json"
 
-    with open(config_file, 'w') as f:
+    with open(config_file, "w") as f:
         json.dump(config, f)
 
-    logging.info('Running block with config %s...'%config_file)
+    logging.info("Running block with config %s..." % config_file)
 
-    worker = os.path.join(scripts_dir,'workers/agglomerate_worker.py')
+    worker = os.path.join(scripts_dir, "workers/agglomerate_worker.py")
 
     subprocess.run(
         [
@@ -161,7 +158,7 @@ def start_worker(config: dict):
 if __name__ == "__main__":
 
     config_file = sys.argv[1]
-    with open(config_file, 'r') as f:
+    with open(config_file, "r") as f:
         yaml_config = yaml.safe_load(f)
 
     config = yaml_config["hglom_segment"] | yaml_config["db"]
@@ -171,4 +168,4 @@ if __name__ == "__main__":
     end = time.time()
 
     seconds = end - start
-    logging.info(f'Total time to agglomerate: {seconds}')
+    logging.info(f"Total time to agglomerate: {seconds}")

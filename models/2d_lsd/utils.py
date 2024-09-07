@@ -23,10 +23,10 @@ class SmoothAugment(gp.BatchFilter):
                 sigma = random.uniform(self.range[0], self.range[1])
                 array_sec = array[z]
 
-                array[z] = np.array(
-                        gaussian_filter(array_sec, sigma=sigma)
-                ).astype(array_sec.dtype)
-        
+                array[z] = np.array(gaussian_filter(array_sec, sigma=sigma)).astype(
+                    array_sec.dtype
+                )
+
         elif len(array.shape) == 4:
             for z in range(array.shape[1]):
                 sigma = random.uniform(self.range[0], self.range[1])
@@ -38,26 +38,23 @@ class SmoothAugment(gp.BatchFilter):
                         for i in range(array_sec.shape[0])
                     ]
                 ).astype(array_sec.dtype)
-        
-        elif len(array.shape) == 2:                
+
+        elif len(array.shape) == 2:
             sigma = random.uniform(self.range[0], self.range[1])
-            array = np.array(
-                        gaussian_filter(array, sigma=sigma)
-            ).astype(array.dtype)
+            array = np.array(gaussian_filter(array, sigma=sigma)).astype(array.dtype)
 
         else:
             raise AssertionError("array shape is not 2d, 3d, or multi-channel 3d")
 
         batch[self.array].data = array
 
+
 class Add2DLSDs(AddLocalShapeDescriptor):
     def __init__(self, segmentation, descriptor, *args, **kwargs):
 
         super().__init__(segmentation, descriptor, *args, **kwargs)
 
-        self.extractor = LsdExtractor(
-                self.sigma[1:], self.mode, self.downsample
-        )
+        self.extractor = LsdExtractor(self.sigma[1:], self.mode, self.downsample)
 
     def process(self, batch, request):
 
@@ -80,19 +77,19 @@ class Add2DLSDs(AddLocalShapeDescriptor):
 
         old_batch = batch
         batch = gp.Batch()
-        
+
         # create lsds mask array
         if self.lsds_mask and self.lsds_mask in request:
 
             if self.labels_mask:
 
-                mask = self._create_mask(old_batch, self.labels_mask, descriptor)#, crop)
+                mask = self._create_mask(
+                    old_batch, self.labels_mask, descriptor
+                )  # , crop)
 
             else:
 
-                mask = (labels != 0).astype(
-                    np.float32
-                )
+                mask = (labels != 0).astype(np.float32)
 
                 mask_shape = len(mask.shape)
 
@@ -108,9 +105,7 @@ class Add2DLSDs(AddLocalShapeDescriptor):
 
                 mask = mask * unlabelled_mask
 
-            batch[self.lsds_mask] = gp.Array(
-                mask.astype(spec.dtype), spec.copy()
-            )
+            batch[self.lsds_mask] = gp.Array(mask.astype(spec.dtype), spec.copy())
 
         batch[self.descriptor] = gp.Array(descriptor.astype(spec.dtype), spec)
 

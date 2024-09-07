@@ -1,21 +1,19 @@
 import daisy
 import sys
 import yaml
-import json
 import logging
 import numpy as np
 import os
 import time
 from funlib.geometry import Coordinate, Roi
 from funlib.segment.arrays import replace_values
-from funlib.persistence import Array, open_ds, prepare_ds
+from funlib.persistence import open_ds, prepare_ds
 
 
 logging.getLogger().setLevel(logging.INFO)
 
 
-def extract_segmentation(
-        config: dict) -> bool:
+def extract_segmentation(config: dict) -> bool:
     """Generate segmentation based on fragments using specified merge function.
 
     Args:
@@ -38,26 +36,26 @@ def extract_segmentation(
         ``bool``:
             True if segmentation generation was successful, False otherwise.
     """
-    fragments_file = config['fragments_file']
-    fragments_dataset = config['fragments_dataset']
+    fragments_file = config["fragments_file"]
+    fragments_dataset = config["fragments_dataset"]
     lut_dir = config["lut_dir"]
-    seg_file = config['seg_file']
-    seg_dataset = config['seg_dataset']
-    thresholds = config['thresholds']
-    merge_function = config['merge_function']
-    num_workers = config['num_workers']
+    seg_file = config["seg_file"]
+    seg_dataset = config["seg_dataset"]
+    thresholds = config["thresholds"]
+    merge_function = config["merge_function"]
+    num_workers = config["num_workers"]
 
     fragments = open_ds(fragments_file, fragments_dataset)
     voxel_size = fragments.voxel_size
 
-    if 'block_size' in config and config['block_size'] is not None:
+    if "block_size" in config and config["block_size"] is not None:
         block_size = Coordinate(config["block_size"])
     else:
         block_size = Coordinate(fragments.chunk_shape) * voxel_size
 
-    if 'roi_offset' in config and 'roi_shape' in config:
-        roi_offset = config['roi_offset']
-        roi_shape = config['roi_shape']
+    if "roi_offset" in config and "roi_shape" in config:
+        roi_offset = config["roi_offset"]
+        roi_shape = config["roi_shape"]
     else:
         roi_offset = None
         roi_shape = None
@@ -67,8 +65,8 @@ def extract_segmentation(
     else:
         total_roi = fragments.roi
 
-    read_roi = Roi((0,)*fragments.roi.dims, block_size)
-    write_roi = Roi((0,)*fragments.roi.dims, block_size)
+    read_roi = Roi((0,) * fragments.roi.dims, block_size)
+    write_roi = Roi((0,) * fragments.roi.dims, block_size)
 
     lut_dir: str = os.path.join(fragments_file, lut_dir, "fragment_segment")
 
@@ -128,9 +126,7 @@ def extract_segmentation(
             msg=f"Took {time.time() - start} seconds to extract segmentation from LUT"
         )
 
-        logging.info(
-            msg=f"{seg_file} {seg_name}"
-        )
+        logging.info(msg=f"{seg_file} {seg_name}")
 
     return True
 
@@ -153,7 +149,7 @@ def segment_in_block(block, segmentation, fragments, lut) -> None:
 if __name__ == "__main__":
 
     config_file = sys.argv[1]
-    with open(config_file, 'r') as f:
+    with open(config_file, "r") as f:
         yaml_config = yaml.safe_load(f)
 
     config = yaml_config["hglom_segment"] | yaml_config["db"]
@@ -163,4 +159,4 @@ if __name__ == "__main__":
     end = time.time()
 
     seconds = end - start
-    logging.info(f'Total time to extract_segmentation: {seconds}')
+    logging.info(f"Total time to extract_segmentation: {seconds}")

@@ -13,6 +13,7 @@ this_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 def get_volumes():
     volumes = []
     num_volumes = int(input("How many volumes for this round? (default = 1)") or 1)
+
     for i in range(num_volumes):
         print(f"Volume {i+1}:")
         vol = {}
@@ -216,13 +217,13 @@ def make_round_configs(base_dir, round_number, round_name=None):
 
     # Training config
     print("\nTRAINING: ")
-    
+
     model_name = input(f"Enter model for {round_name}: ") or (
         "2d_mtlsd" if i == 0 else "3d_lsd"
     )
     setup_dir = os.path.abspath(os.path.join(base_dir, f"{round_name}", model_name))
     copy_model_scripts(model_name, setup_dir)
-    
+
     default_sigma = 10 * voxel_size[-1]
     if "lsd" in model_name.lower():
         sigma = int(
@@ -293,8 +294,8 @@ def make_round_configs(base_dir, round_number, round_name=None):
     # are 3d affs needed ?
     make_affs = True if "3d_affs" not in model_outputs else False
     if make_affs:
-        affs_setup_dir = (
-            os.path.join(this_dir, f"models/3d_affs_from_{model_name.replace('_3ch','')}")
+        affs_setup_dir = os.path.join(
+            this_dir, f"models/3d_affs_from_{model_name.replace('_3ch','')}"
         )
         affs_iter = int(
             input(
@@ -354,7 +355,7 @@ def make_round_configs(base_dir, round_number, round_name=None):
     }
 
     # target volume configs
-    print("\n TARGET VOLUMES:")
+    print("\nTARGET VOLUMES:")
     target_volumes = volumes
     for t_vol in target_volumes:
 
