@@ -32,8 +32,7 @@ def predict_blockwise(config: dict):
     # get ROI of source
     source = open_ds(
         os.path.join(raw_file, raw_datasets[0]), 
-        mode="r",
-        axis_names=['z', 'y', 'x'])
+        mode="r")
     voxel_size = source.voxel_size
     logging.info(
         "Source dataset %s has shape %s, ROI %s, voxel size %s"
@@ -121,17 +120,14 @@ def predict_blockwise(config: dict):
 
         prepare_ds(
             store=os.path.join(out_file, out_dataset),
-            shape=output_roi.shape / voxel_size,
+            shape=(out_dims, *(output_roi.shape / voxel_size)),
             offset=output_roi.offset,
             voxel_size=voxel_size,
-            axis_names=["z", "y", "x"],
+            axis_names=["c^","z", "y", "x"],
             units=["nm", "nm", "nm"],
+            chunk_shape=(out_dims, *output_shape),
             dtype=out_dtype,
             compressor=zarr.get_codec({"id": "blosc"}),
-            # write_size=block_write_roi.shape,
-            # num_channels=out_dims,
-            # force_exact_write_size=True,
-            # delete=True,
         )
 
     # update config
