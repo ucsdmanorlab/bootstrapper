@@ -1,5 +1,6 @@
 import torch
 import gunpowder as gp
+from funlib.persistence import open_ds
 from model import Model, WeightedMSELoss
 
 import sys
@@ -90,24 +91,18 @@ def train(
 
     # pipeline
     source = tuple(
-        gp.ZarrSource(
-            sample,
-            {
-                raw: samples[sample]["raw"],
-                labels: samples[sample]["labels"],
-                unlabelled: samples[sample]["mask"],
-            },
-            {
-                raw: gp.ArraySpec(interpolatable=True),
-                labels: gp.ArraySpec(interpolatable=False),
-                unlabelled: gp.ArraySpec(interpolatable=False),
-            },
+        (
+            gp.ArraySource(raw, open_ds(os.path.join(sample, samples[sample]["raw"])), True),
+            gp.ArraySource(labels, open_ds(os.path.join(sample, samples[sample]["labels"])), False),
+            gp.ArraySource(unlabelled, open_ds(os.path.join(sample, samples[sample]["mask"])), False)
         )
+        + gp.MergeProvider()
         + gp.Normalize(raw)
-        + gp.Pad(raw, None, mode="reflect")
-        + gp.Pad(labels, context, mode="reflect")
-        + gp.Pad(unlabelled, context, mode="reflect")
-        + gp.RandomLocation(mask=unlabelled, min_masked=0.05)
+        + gp.Pad(raw, None)
+        + gp.Pad(labels, context)
+        + gp.Pad(unlabelled, context)
+        + gp.RandomLocation()
+        + gp.Reject(mask=unlabelled, min_masked=0.05)
         for sample in samples
     )
 
@@ -160,7 +155,9 @@ def train(
         model,
         loss,
         optimizer,
-        inputs={"input": raw},
+        inputs={
+            0: raw
+        },
         loss_inputs={
             0: pred_affs,
             1: gt_affs,

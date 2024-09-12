@@ -1,5 +1,6 @@
 import torch
 import gunpowder as gp
+from funlib.persistence import open_ds
 from model import Model, WeightedMSELoss
 
 import sys
@@ -10,7 +11,7 @@ import math
 import numpy as np
 import os
 
-from utils import SmoothAugment, Add2DLSDs
+from utils import SmoothAugment, Add2DLSDs, calc_max_padding
 
 logging.basicConfig(level=logging.INFO)
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
@@ -82,7 +83,7 @@ def train(
     voxel_size = gp.Coordinate(voxel_size)
     input_size = gp.Coordinate((3, *input_shape)) * voxel_size
     output_size = gp.Coordinate((1, *output_shape)) * voxel_size
-    context = (input_size - output_size) / 2
+    context = calc_max_padding(output_size, voxel_size, sigma)
 
     print(input_size, output_size, context)
 
@@ -97,24 +98,18 @@ def train(
 
     # pipeline
     source = tuple(
-        gp.ZarrSource(
-            sample,
-            {
-                raw: samples[sample]["raw"],
-                labels: samples[sample]["labels"],
-                unlabelled: samples[sample]["mask"],
-            },
-            {
-                raw: gp.ArraySpec(interpolatable=True),
-                labels: gp.ArraySpec(interpolatable=False),
-                unlabelled: gp.ArraySpec(interpolatable=False),
-            },
+        (
+            gp.ArraySource(raw, open_ds(os.path.join(sample, samples[sample]["raw"])), True),
+            gp.ArraySource(labels, open_ds(os.path.join(sample, samples[sample]["labels"])), False),
+            gp.ArraySource(unlabelled, open_ds(os.path.join(sample, samples[sample]["mask"])), False)
         )
+        + gp.MergeProvider()
         + gp.Normalize(raw)
         + gp.Pad(raw, None)
         + gp.Pad(labels, context)
         + gp.Pad(unlabelled, context)
-        + gp.RandomLocation(mask=unlabelled, min_masked=0.05)
+        + gp.RandomLocation()
+        + gp.Reject(mask=unlabelled, min_masked=0.05)
         for sample in samples
     )
 
@@ -182,7 +177,9 @@ def train(
         model,
         loss,
         optimizer,
-        inputs={"input": raw},
+        inputs={
+            0: raw
+        },
         loss_inputs={
             0: pred_lsds,
             1: gt_lsds,

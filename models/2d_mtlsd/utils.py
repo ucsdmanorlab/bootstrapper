@@ -7,6 +7,19 @@ from lsd.train.gp import AddLocalShapeDescriptor
 from lsd.train import LsdExtractor
 
 
+def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
+    method_padding = gp.Coordinate((0, sigma * 3, sigma * 3,))
+
+    diag = np.sqrt(output_size[1] ** 2 + output_size[2] ** 2)
+
+    max_padding = gp.Roi(
+        (gp.Coordinate([i / 2 for i in [0, diag, diag]]) + method_padding),
+        (0,) * 3,
+    ).snap_to_grid(voxel_size, mode=mode)
+
+    return max_padding.get_begin()
+
+
 class SmoothAugment(gp.BatchFilter):
     def __init__(self, array, blur_range=(0.0, 1.0)):
         self.array = array

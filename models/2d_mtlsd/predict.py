@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 import zarr
+from funlib.persistence import open_ds
 
 logging.basicConfig(level=logging.INFO)
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
@@ -39,7 +40,7 @@ def predict(config):
         *[x + y for x, y in zip(shape_increase, net_config["output_shape"])],
     ]
 
-    voxel_size = Coordinate(zarr.open(raw_file, "r")[raw_dataset].attrs["resolution"])
+    voxel_size = Coordinate(zarr.open(raw_file, "r")[raw_dataset].attrs["voxel_size"])
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
     context = (input_size - output_size) / 2
@@ -56,8 +57,8 @@ def predict(config):
     chunk_request.add(pred_lsds, output_size)
     chunk_request.add(pred_affs, output_size)
 
-    source = gp.ZarrSource(
-        raw_file, {raw: raw_dataset}, {raw: gp.ArraySpec(interpolatable=True)}
+    source = gp.ArraySource(
+        raw, open_ds(os.path.join(raw_file, raw_dataset)), interpolatable=True
     )
 
     predict = gp.torch.Predict(

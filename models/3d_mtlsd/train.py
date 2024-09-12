@@ -3,6 +3,7 @@ import gunpowder as gp
 from model import Model, WeightedMSELoss
 from utils import SmoothAugment, calc_max_padding
 from lsd.train.gp import AddLocalShapeDescriptor
+from funlib.persistence import open_ds
 
 import sys
 import yaml
@@ -77,7 +78,6 @@ def train(
     voxel_size = gp.Coordinate(voxel_size)
     input_size = gp.Coordinate(input_shape) * voxel_size
     output_size = gp.Coordinate(output_shape) * voxel_size
-    # context = (input_size - output_size) / 2
     context = calc_max_padding(output_size, voxel_size, sigma)
 
     request = gp.BatchRequest()
@@ -91,25 +91,18 @@ def train(
 
     # pipeline
     source = tuple(
-        gp.ZarrSource(
-            sample,
-            {
-                raw: samples[sample]["raw"],
-                labels: samples[sample]["labels"],
-                unlabelled: samples[sample]["unlabelled"],
-            },
-            {
-                raw: gp.ArraySpec(interpolatable=True),
-                labels: gp.ArraySpec(interpolatable=False),
-                unlabelled: gp.ArraySpec(interpolatable=False),
-            },
+        (
+            gp.ArraySource(raw, open_ds(os.path.join(sample, samples[sample]["raw"])), True),
+            gp.ArraySource(labels, open_ds(os.path.join(sample, samples[sample]["labels"])), False),
+            gp.ArraySource(unlabelled, open_ds(os.path.join(sample, samples[sample]["mask"])), False)
         )
+        + gp.MergeProvider()
         + gp.Normalize(raw)
         + gp.Pad(raw, None)
         + gp.Pad(labels, context)
         + gp.Pad(unlabelled, context)
         + gp.RandomLocation()
-        + gp.Reject(mask=unlabelled, min_masked=0.05, reject_probability=0.999)
+        + gp.Reject(mask=unlabelled, min_masked=0.05)
         for sample in samples
     )
 
@@ -179,7 +172,9 @@ def train(
         model,
         loss,
         optimizer,
-        inputs={"input": raw},
+        inputs={
+            0: raw
+        },
         loss_inputs={
             0: pred_lsds,
             1: gt_lsds,

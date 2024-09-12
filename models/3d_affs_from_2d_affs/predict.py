@@ -5,6 +5,7 @@ import sys
 import logging
 import zarr
 from funlib.geometry import Coordinate
+from funlib.persistence import open_ds
 
 from model import AffsUNet
 
@@ -32,7 +33,7 @@ def predict(config):
     output_shape = [x + y for x, y in zip(shape_increase, net_config["output_shape"])]
 
     voxel_size = Coordinate(
-        zarr.open(input_file, "r")[input_datasets[0]].attrs["resolution"]
+        zarr.open(input_file, "r")[input_datasets[0]].attrs["voxel_size"]
     )
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
@@ -48,10 +49,8 @@ def predict(config):
     chunk_request.add(input_affs, input_size)
     chunk_request.add(pred_affs, output_size)
 
-    source = gp.ZarrSource(
-        input_file,
-        {input_affs: input_datasets[0]},
-        {input_affs: gp.ArraySpec(interpolatable=True)},
+    source = gp.ArraySource(
+        input_affs, open_ds(os.path.join(input_file, input_datasets[0])), interpolatable=True
     )
 
     predict = gp.torch.Predict(

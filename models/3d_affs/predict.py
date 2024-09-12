@@ -5,6 +5,7 @@ import gunpowder as gp
 import os
 import sys
 from funlib.geometry import Coordinate
+from funlib.persistence import open_ds
 
 from model import Model
 
@@ -32,7 +33,7 @@ def predict(config):
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
     output_shape = [x + y for x, y in zip(shape_increase, net_config["output_shape"])]
 
-    voxel_size = Coordinate(zarr.open(raw_file, "r")[raw_dataset].attrs["resolution"])
+    voxel_size = Coordinate(zarr.open(raw_file, "r")[raw_dataset].attrs["voxel_size"])
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
     context = (input_size - output_size) // 2
@@ -48,8 +49,8 @@ def predict(config):
     scan_request.add(raw, input_size)
     scan_request.add(pred_affs, output_size)
 
-    source = gp.ZarrSource(
-        raw_file, {raw: raw_dataset}, {raw: gp.ArraySpec(interpolatable=True)}
+    source = gp.ArraySource(
+        raw, open_ds(os.path.join(raw_file, raw_dataset)), interpolatable=True
     )
 
     predict = gp.torch.Predict(

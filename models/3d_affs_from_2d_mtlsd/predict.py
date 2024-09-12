@@ -5,6 +5,7 @@ import sys
 import logging
 import zarr
 from funlib.geometry import Coordinate
+from funlib.persistence import open_ds
 
 from model import AffsUNet
 
@@ -16,6 +17,7 @@ def predict(config):
     input_file = config["raw_file"]
     input_datasets = config["raw_datasets"]  # [stacked_lsds_x, stacked_affs_x]
     out_file = config["out_file"]
+    out_dataset = config["out_dataset_names"][0]
     num_cache_workers = config["num_cache_workers"]
 
     # load net config
@@ -25,39 +27,40 @@ def predict(config):
         )
         net_config = json.load(f)
 
-    out_dataset = config["out_dataset_names"][0]
-
-    shape_increase = net_config["shape_increase"]
-    input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
-    output_shape = [x + y for x, y in zip(shape_increase, net_config["output_shape"])]
-
-    voxel_size = Coordinate(
-        zarr.open(input_file, "r")[input_datasets[0]].attrs["resolution"]
-    )
-    input_size = Coordinate(input_shape) * voxel_size
-    output_size = Coordinate(output_shape) * voxel_size
-    context = (input_size - output_size) / 2
-
     model = AffsUNet()
     model.eval()
 
     input_lsds = gp.ArrayKey("INPUT_LSDS")
     input_affs = gp.ArrayKey("INPUT_AFFS")
     pred_affs = gp.ArrayKey("PRED_AFFS")
+    
+    input_lsds_ds = open_ds(
+        os.path.join(input_file, input_datasets[0]),
+    )
+    
+    input_affs_ds = open_ds(
+        os.path.join(input_file, input_datasets[1]),
+    )
+    
+    shape_increase = net_config["shape_increase"]
+    input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
+    output_shape = [x + y for x, y in zip(shape_increase, net_config["output_shape"])]
+
+    voxel_size = input_lsds_ds.voxel_size
+    input_size = Coordinate(input_shape) * voxel_size
+    output_size = Coordinate(output_shape) * voxel_size
+    context = (input_size - output_size) / 2
+
 
     chunk_request = gp.BatchRequest()
     chunk_request.add(input_lsds, input_size)
     chunk_request.add(input_affs, input_size)
     chunk_request.add(pred_affs, output_size)
-
-    source = gp.ZarrSource(
-        input_file,
-        {input_lsds: input_datasets[0], input_affs: input_datasets[1]},
-        {
-            input_lsds: gp.ArraySpec(interpolatable=True),
-            input_affs: gp.ArraySpec(interpolatable=True),
-        },
-    )
+   
+    source = (
+        gp.ArraySource(input_lsds, input_lsds_ds, True),
+        gp.ArraySource(input_affs, input_affs_ds, True),
+    ) + gp.MergeProvider()
 
     predict = gp.torch.Predict(
         model,
