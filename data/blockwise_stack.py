@@ -72,7 +72,7 @@ def stack_datasets(
         out_ds_roi_offset = None, #list[int] = [0,0,0],
         num_workers: int = 120):
 
-    in_ds = open_ds(zarr_container,input_datasets[0]) 
+    in_ds = open_ds(os.path.join(zarr_container,input_datasets[0]))
 
     # add number of sections to final volume shape
     shape = list(in_ds.shape)
@@ -110,20 +110,20 @@ def stack_datasets(
 
     # prepare output ds
     out_ds = prepare_ds(
-        zarr_container,
-        out_ds_name,
-        total_roi=total_3d_roi,
+        os.path.join(zarr_container, out_ds_name),
+        shape=total_3d_roi / voxel_size_3d,
+        offset=total_3d_roi.offset,
         voxel_size=voxel_size_3d,
-        dtype=np.uint8,
-        num_channels=num_channels,
-        write_size=write_roi.shape,
-        force_exact_write_size=True,
-        delete=True)
+        axis_names=["c","z","y","x"],
+        units=[in_ds.units[0],] * len(shape),
+        dtype=in_ds.dtype,
+        chunk_shape=write_roi.shape / voxel_size_3d
+    )
 
     for i, in_ds_name in enumerate(input_datasets):
         print(f"Copying {in_ds_name} to {out_ds_name}, blockwise={blockwise}")
 
-        in_ds = open_ds(zarr_container, in_ds_name)
+        in_ds = open_ds(os.path.join(zarr_container, in_ds_name))
     
         total_roi = Roi(
                 Coordinate(z_resolution*i,0,0) + Coordinate(out_ds_roi_offset),

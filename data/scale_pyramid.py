@@ -2,8 +2,6 @@ import argparse
 import re
 import daisy
 from funlib.persistence import open_ds, prepare_ds
-import numpy as np
-import skimage.measure
 import zarr
 from functools import partial
 
@@ -90,7 +88,7 @@ def create_scale_pyramid(in_file, in_ds_name, scales, chunk_shape, mode):
 
     # make sure in_ds_name points to a dataset
     try:
-        prev_array = open_ds(in_file, in_ds_name)
+        prev_array = open_ds(os.path.join(in_file, in_ds_name))
     except Exception:
         raise RuntimeError("%s does not seem to be a dataset" % in_ds_name)
 
@@ -129,7 +127,7 @@ def create_scale_pyramid(in_file, in_ds_name, scales, chunk_shape, mode):
         start_scale = int(ds_name[-1])
 
     scale_numbers = [start_scale + (1 if mode == 'down' else -1) * i for i in range(1,1+len(scales))]
-    prev_array = open_ds(in_file, ds_name)
+    prev_array = open_ds(os.path.join(in_file, ds_name))
 
     if prev_array.n_channel_dims == 0:
         num_channels = 1
@@ -159,14 +157,15 @@ def create_scale_pyramid(in_file, in_ds_name, scales, chunk_shape, mode):
         print(f"Preparing {next_ds_name}")
 
         next_array = prepare_ds(
-            in_file,
-            next_ds_name,
-            total_roi=next_total_roi,
+            os.path.join(in_file, next_ds_name),
+            shape=next_total_roi.shape / next_voxel_size,
+            offset=next_total_roi.offset,
             voxel_size=next_voxel_size,
-            write_size=next_write_size,
-            force_exact_write_size=True,
+            axis_names=prev_array.axis_names,
+            units=prev_array.units,
             dtype=prev_array.dtype,
-            compressor=dict(id='blosc'))
+            chunk_shape=chunk_shape,
+        )
 
         scale_array(prev_array, next_array, scale, next_write_size, mode)
 
