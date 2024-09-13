@@ -1,9 +1,10 @@
 from tqdm import tqdm
+import os
 import time
 import sys
 import yaml
 from funlib.persistence import open_ds, prepare_ds
-from funlib.geometry import Roi, Coordinate
+from funlib.geometry import Roi
 import daisy
 import numpy as np
 from functools import partial, reduce
@@ -14,7 +15,6 @@ def filter_in_block(in_labels, out_labels, out_mask, lsd_errors, ids_to_remove, 
     from funlib.persistence import Array
     from skimage.morphology import ball, disk
     from scipy.ndimage import binary_erosion
-    from skimage.measure import label
 
     # Read labels
     labels_array = in_labels.to_ndarray(block.read_roi, fill_value=0)
@@ -123,8 +123,8 @@ def filter_segmentation(
 ):
 
     # Open input dataset
-    in_labels = open_ds(seg_file, seg_dataset)
-
+    in_labels = open_ds(os.path.join(seg_file, seg_dataset)
+)
     # Define block size and ROIs
     if roi_offset is not None:
         total_roi = Roi(roi_offset, roi_shape)
@@ -137,28 +137,31 @@ def filter_segmentation(
         context = in_labels.chunk_shape * in_labels.voxel_size / 4
 
     if lsd_error_file is not None:
-        lsd_errors = open_ds(lsd_error_file, lsd_error_mask_dataset)
+        lsd_errors = open_ds(os.path.join(lsd_error_file, lsd_error_mask_dataset))
     else:
         lsd_errors = None
 
     # Prepare output datasets
     out_labels = prepare_ds(
-        out_file,
-        out_labels_dataset,
-        total_roi,
-        in_labels.voxel_size,
-        in_labels.dtype,
+        os.path.join(out_file, out_labels_dataset),
+        shape=total_roi.shape / in_labels.voxel_size,
+        offset=total_roi.offset,
+        voxel_size=in_labels.voxel_size,
+        axis_names=in_labels.axis_names,
+        units=in_labels.units,
+        dtype=in_labels.dtype,
         write_size=block_size,
-        compressor={"id": "blosc"}
     )
+
     out_mask = prepare_ds(
-        out_file,
-        out_mask_dataset,
-        total_roi,
-        in_labels.voxel_size,
-        np.uint8,
+        os.path.join(out_file, out_mask_dataset),
+        shape=total_roi.shape / in_labels.voxel_size,
+        offset=total_roi.offset,
+        voxel_size=in_labels.voxel_size,
+        axis_names=in_labels.axis_names,
+        units=in_labels.units,
+        dtype=np.uint8,
         write_size=block_size,
-        compressor={"id": "blosc"}
     )
 
     read_roi = Roi((0,)*in_labels.roi.dims, block_size).grow(context, context)

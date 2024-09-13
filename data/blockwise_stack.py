@@ -68,7 +68,7 @@ def stack_datasets(
         zarr_container: str,
         input_datasets: list[str],
         out_ds_name: str,
-        z_resolution: int = 50,
+        z_voxel_size: int = 50,
         out_ds_roi_offset = None, #list[int] = [0,0,0],
         num_workers: int = 120):
 
@@ -92,7 +92,7 @@ def stack_datasets(
 
     # get voxel sizes
     voxel_size = list(in_ds.voxel_size)
-    voxel_size_3d = Coordinate([z_resolution,] + voxel_size)
+    voxel_size_3d = Coordinate([z_voxel_size,] + voxel_size)
 
     # get output roi
     if out_ds_roi_offset is not None:
@@ -126,7 +126,7 @@ def stack_datasets(
         in_ds = open_ds(os.path.join(zarr_container, in_ds_name))
     
         total_roi = Roi(
-                Coordinate(z_resolution*i,0,0) + Coordinate(out_ds_roi_offset),
+                Coordinate(z_voxel_size*i,0,0) + Coordinate(out_ds_roi_offset),
                 Coordinate([1,shape[-2],shape[-1]]) * voxel_size_3d
         )
         
@@ -156,11 +156,11 @@ if __name__ == "__main__":
 
     zarr_container = sys.argv[1]
     out_ds_name = sys.argv[2]
-    z_resolution = int(sys.argv[3]) # nm / px
+    z_voxel_size = int(sys.argv[3]) # nm / px
     input_datasets = sys.argv[4:]
 
     stack_datasets(
             zarr_container,
             input_datasets,
             out_ds_name,
-            z_resolution)
+            z_voxel_size)

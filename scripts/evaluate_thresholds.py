@@ -9,10 +9,7 @@ from funlib.persistence import open_ds
 from funlib.persistence.graphs import PgSQLGraphDatabase
 from funlib.persistence.types import Vec
 
-import daisy
-import glob
 import yaml
-import json
 import logging
 import multiprocessing as mp
 import networkx as nx
@@ -20,7 +17,6 @@ import numpy as np
 import os
 import sys
 import time
-import pprint
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -46,9 +42,9 @@ class EvaluateAnnotations():
             thresholds_step=0.05,
             **kwargs):
 
-        self.labels = open_ds(gt_labels_file, gt_labels_ds)
+        self.labels = open_ds(os.path.join(gt_labels_file, gt_labels_ds))
         self.skeletons_file = gt_skeleton_path
-        self.fragments = open_ds(fragments_file, fragments_dataset) 
+        self.fragments = open_ds(os.path.join(fragments_file, fragments_dataset))
         self.db_config = rag_db_config
         self.lut_dir = os.path.join(fragments_file,lut_dir,"fragment_segment")
         if roi_offset is not None:

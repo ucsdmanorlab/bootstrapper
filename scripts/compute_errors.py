@@ -43,6 +43,7 @@ def compute_errors(
         out_file,
         out_map_dataset,
         out_mask_dataset,
+        sigma=80,
         thresholds=(0.1,1.0),
         return_arrays=False):
 
@@ -53,27 +54,25 @@ def compute_errors(
     error_map = gp.ArrayKey('LSD_ERROR_MAP')
     error_mask = gp.ArrayKey('LSD_ERROR_MASK')
     
-    pred_ds = open_ds(lsds_file,lsds_dataset)
-    pred_roi = pred_ds.roi
-    seg_roi = open_ds(seg_file,seg_dataset).roi
+    pred_ds = open_ds(os.path.join(lsds_file,lsds_dataset))
+    seg_ds = open_ds(os.path.join(seg_file,seg_dataset))
     
     if mask_file is not None:
         mask = gp.ArrayKey('MASK')
-        mask_roi = open_ds(mask_file,mask_dataset).roi
+        mask_ds = open_ds(os.path.join(mask_file,mask_dataset))
+        mask_roi = mask_ds.roi
     else:
         mask = None
-        mask_roi = pred_roi
+        mask_roi = pred_ds.roi
 
     # get rois
-    roi = pred_roi.intersect(seg_roi).intersect(mask_roi)
-    print(f"seg roi: {seg_roi}, pred_roi: {pred_roi}, mask_roi: {mask_roi}, intersection: {roi}")
+    roi = pred_ds.roi.intersect(seg_ds.roi).intersect(mask_roi)
+    print(f"seg roi: {seg_ds.roi}, pred_roi: {pred_ds.roi}, mask_roi: {mask_roi}, intersection: {roi}")
 
     # io shapes
     output_shape = Coordinate(pred_ds.chunk_shape[1:])
     input_shape = Coordinate(pred_ds.chunk_shape[1:]) * 2
-
     voxel_size = pred_ds.voxel_size
-    sigma = 80
  
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
@@ -94,40 +93,32 @@ def compute_errors(
 
     # output datasets
     prepare_ds(
-        out_file,
-        out_map_dataset,
-        total_output_roi,
-        voxel_size,
-        np.uint8,
-        write_size=output_size,
-        delete=True) 
+        os.path.join(out_file,out_map_dataset),
+        shape=total_output_roi.shape / voxel_size,
+        offset=total_output_roi.offset,
+        voxel_size=voxel_size,
+        axis_names=seg_ds.axis_names,
+        units=seg_ds.units,
+        dtype=np.uint8,
+    )
     
     prepare_ds(
-        out_file,
-        out_mask_dataset,
-        total_output_roi,
-        voxel_size,
-        np.uint8,
-        write_size=output_size,
-        delete=True) 
-
+        os.path.join(out_file,out_mask_dataset),
+        shape=total_output_roi.shape / voxel_size,
+        offset=total_output_roi.offset,
+        voxel_size=voxel_size,
+        axis_names=seg_ds.axis_names,
+        units=seg_ds.units,
+        dtype=np.uint8,
+    )
+    
     # pipeline
     sources = (
-        gp.ZarrSource(
-                seg_file,
-                {seg: seg_dataset},
-                {seg: gp.ArraySpec(interpolatable=False)}
-            ),
-        gp.ZarrSource(
-                lsds_file,
-                {pred: lsds_dataset},
-                {pred: gp.ArraySpec(interpolatable=True)}
-            ),)
+        gp.ArraySource(seg, seg_ds, False),
+        gp.ArraySource(pred, pred_ds, True)
+    )
     if mask is not None:
-        sources += (gp.ZarrSource(
-                    mask_file,
-                    {mask: mask_dataset},
-                    {mask: gp.ArraySpec(interpolatable=False)}),)
+        sources += (gp.ArraySource(mask, mask_ds, False),)
 
     pipeline = sources + gp.MergeProvider()
 
@@ -163,7 +154,7 @@ def compute_errors(
             },
             store=out_file
         )
-    pipeline += gp.Scan(chunk_request, num_workers=40)
+    pipeline += gp.Scan(chunk_request)
 
     # request
     predict_request = gp.BatchRequest()
@@ -201,6 +192,10 @@ def compute_stats(array):
 if __name__ == "__main__":
 
     config_file = sys.argv[1]
+    try:
+        scores_out_file = sys.argv[2]
+    except IndexError:  
+        scores_out_file = None
 
     with open(config_file, 'r') as f:
         config = yaml.safe_load(f)
@@ -213,25 +208,23 @@ if __name__ == "__main__":
         seconds = end - start
         logging.info(f'Total time to compute LSD errors: {seconds}')
 
-        # compute LSD error statistics
         ret = {
-            'LSD_ERROR_MAP': (config['out_file'],config['out_map_dataset']),
-            'LSD_ERROR_MASK': (config['out_file'],config['out_mask_dataset'])
+            'LSD_ERROR_MAP': open_ds(os.path.join(config['out_file'],config['out_map_dataset'])),
+            'LSD_ERROR_MASK': open_ds(os.path.join(config['out_file'],config['out_mask_dataset']))
         }
 
         logging.info("Computing LSD Error statistics..")
         stats = {}
 
-        for array_key, val in ret.items():
-            arr = open_ds(val[0],val[1])
-            arr = ret[array_key].data
-            scores = compute_stats(arr[:]) 
+        # compute stats for each array
+        for array_key, arr in ret.items():
+            arr_data = arr.data
+            scores = compute_stats(arr_data[:]) 
             stats[str(array_key)] = scores 
 
-            scores_out_file = os.path.join(val[0],val[1],'.scores')
-            logging.info(f"Writing scores for {array_key} to {scores_out_file}..")
-
-            with open(scores_out_file, 'r+') as f:
-                json.dump(scores, f, indent=4)
+        # save scores to file
+        if scores_out_file is not None:
+            with open(scores_out_file, 'w') as f:
+                json.dump(stats, f)
 
         pprint.pp(stats)
