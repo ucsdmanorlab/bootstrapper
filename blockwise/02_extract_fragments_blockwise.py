@@ -348,9 +348,16 @@ def extract_fragments(config, db_config):
     affs_dataset = config["affs_dataset"] # Name of affinities dataset
     fragments_file = config["fragments_file"] # Path to fragments zarr container
     fragments_dataset = config["fragments_dataset"] # Name of fragments dataset
-    num_workers = config["num_workers"] # Number of workers to use
 
     # Optional parameters
+    roi_offset = config.get("roi_offset", None) # Offset of ROI
+    roi_shape = config.get("roi_shape", None) # Shape of ROI
+    blockwise = config.get("blockwise", False) # Perform blockwise extraction
+    num_workers = config.get("num_workers", 1) # Number of workers to use
+    block_shape = config.get("block_shape", None) # Shape of block
+    context = config.get("context", None) # Context for block
+
+    # optional watershed parameters
     fragments_in_xy = config.get("fragments_in_xy", True) # Extract fragments for each xy-section separately
     background_mask = config.get("background_mask", False) # Mask out boundaries
     mask_thresh = config.get("mask_thresh", 0.5) # Threshold for boundary mask
@@ -364,30 +371,30 @@ def extract_fragments(config, db_config):
     affs = open_ds(os.path.join(affs_file, affs_dataset))
     voxel_size = affs.voxel_size
 
-    # get block size, context, ROIs
-    if "block_shape" in config and config["block_shape"] is not None:
-        block_size = Coordinate(config["block_shape"]) * voxel_size
-    else:
-        block_size = Coordinate(affs.chunk_shape[1:]) * voxel_size
-
-    if "context" in config and config["context"] is not None:
-        context = Coordinate(config["context"]) * voxel_size
-    else:
-        context = Coordinate([0,] * affs.roi.dims)
-
-    if "roi_offset" in config and "roi_shape" in config:
-        roi_offset = config["roi_offset"]
-        roi_shape = config["roi_shape"]
-    else:
-        roi_offset = None
-        roi_shape = None
-
-    # get total ROI, read ROI, write ROI
+    # get total ROI
     if roi_offset is not None:
         total_roi = Roi(roi_offset, roi_shape)
     else:
         total_roi = affs.roi
 
+    # get block size, context
+    if blockwise:
+        if block_shape is not None:
+            block_size = Coordinate(block_shape) * voxel_size
+        else:
+            block_size = Coordinate(affs.chunk_shape[1:]) * voxel_size
+
+        if context is not None:
+            context = Coordinate(context) * voxel_size
+        else:
+            context = Coordinate([0,] * affs.roi.dims)
+    
+    else: # blockwise is False
+        block_size = total_roi.get_shape()
+        context = Coordinate([0,] * affs.roi.dims)
+        num_workers = 1
+
+    # get block read ROI, write ROI
     read_roi = Roi((0,) * affs.roi.dims, block_size).grow(context, context)
     write_roi = Roi((0,) * affs.roi.dims, block_size)
     logging.info(f"Total ROI: {total_roi}, Read ROI: {read_roi}, Write ROI: {write_roi}")
@@ -407,9 +414,10 @@ def extract_fragments(config, db_config):
         voxel_size=voxel_size,
         axis_names=affs.axis_names[1:],
         units=affs.units,
-        chunk_shape=block_size / voxel_size,
+        chunk_shape=block_size / voxel_size if blockwise else None,
         dtype=np.uint64,
         compressor=zarr.get_codec({"id": "blosc"}),
+        mode="w",
     )
 
     # prepare RAG provider

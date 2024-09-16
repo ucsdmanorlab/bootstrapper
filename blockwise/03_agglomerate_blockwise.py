@@ -155,9 +155,16 @@ def agglomerate(config, db_config):
     affs_dataset = config["affs_dataset"] # Name of affinities dataset
     fragments_file = config["fragments_file"] # Path to fragments zarr container
     fragments_dataset = config["fragments_dataset"] # Name of fragments dataset
-    num_workers = config["num_workers"] # Number of workers to use
 
     # Optional parameters
+    blockwise = config.get("blockwise", False)
+    num_workers = config.get("num_workers", 1)
+    roi_offset = config.get("roi_offset", None)
+    roi_shape = config.get("roi_shape", None)
+    block_shape = config.get("block_shape", None)
+    context = config.get("context", None)
+
+    # Optional waterz parameters
     merge_function = config.get("merge_function", "mean")
 
     # get waterz merge function
@@ -182,47 +189,37 @@ def agglomerate(config, db_config):
     fragments = open_ds(os.path.join(fragments_file, fragments_dataset))
     voxel_size = affs.voxel_size
 
-    # get block size, context, ROIs
-    if "block_shape" in config and config["block_shape"] is not None:
-        block_size = Coordinate(config["block_shape"]) * voxel_size
-    else:
-        block_size = Coordinate(affs.chunk_shape[1:]) * voxel_size
-
-    if "context" in config and config["context"] is not None:
-        context = Coordinate(config["context"]) * voxel_size
-    else:
-        context = ((block_size / voxel_size) // 4) * voxel_size
-
-    if "roi_offset" in config and "roi_shape" in config:
-        roi_offset = config["roi_offset"]
-        roi_shape = config["roi_shape"]
-    else:
-        roi_offset = None
-        roi_shape = None
-
-    # get total ROI, read ROI, write ROI
+    # get total ROI
     if roi_offset is not None:
-        total_roi = Roi(roi_offset, roi_shape).grow(context, context)
+        total_roi = Roi(roi_offset, roi_shape)
     else:
-        total_roi = affs.roi.grow(context, context)
+        total_roi = fragments.roi
 
+    # get block size, context
+    if blockwise:
+        if block_shape is not None:
+            block_size = Coordinate(block_shape) * voxel_size
+        else:
+            block_size = Coordinate(affs.chunk_shape[1:]) * voxel_size
+
+        if context is not None:
+            context = Coordinate(context) * voxel_size
+        else:
+            context = Coordinate([10,] * affs.roi.dims) * voxel_size
+    
+    else: # blockwise is False
+        block_size = total_roi.get_shape()
+        context = Coordinate([0,] * affs.roi.dims)
+        num_workers = 1
+
+    # get block read ROI, write ROI
     read_roi = Roi((0,) * affs.roi.dims, block_size).grow(context, context)
     write_roi = Roi((0,) * affs.roi.dims, block_size)
     logging.info(f"Total ROI: {total_roi}, Read ROI: {read_roi}, Write ROI: {write_roi}")
 
-    print("Total ROI: ", total_roi)
-    print("Read ROI: ", read_roi)
-    print("Write ROI: ", write_roi)
-    print("Block size: ", block_size)
-    print("Context: ", context)
-    print("Voxel size: ", voxel_size)
-    print("process_function: ", partial(
-            agglomerate_in_block,
-            affs,
-            fragments,
-            db_config,
-            waterz_merge_function,
-        ))
+    read_roi = Roi((0,) * affs.roi.dims, block_size).grow(context, context)
+    write_roi = Roi((0,) * affs.roi.dims, block_size)
+    logging.info(f"Total ROI: {total_roi}, Read ROI: {read_roi}, Write ROI: {write_roi}")
 
     # prepare blockwise task
     task = daisy.Task(

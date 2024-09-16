@@ -5,17 +5,17 @@ import sys
 import zarr
 
 
-def create_coordinate_space(voxel_size, is_3d):
-    names = ['c^', 'z', 'y', 'x'] if is_3d else ['b', 'c^', 'y', 'x']
-    scales = [1,] + voxel_size if is_3d else [1, 1] + voxel_size[-2:]
+def create_coordinate_space(voxel_size, is_2d):
+    names = ['c^', 'z', 'y', 'x'] if not is_2d else ['b', 'c^', 'y', 'x']
+    scales = [1,] + voxel_size if not is_2d else voxel_size[-2:] + voxel_size[-2:]
     return neuroglancer.CoordinateSpace(names=names, units='nm', scales=scales)
 
-def process_dataset(f, ds, is_3d):
+def process_dataset(f, ds, is_2d):
     data = f[ds][:]
     vs = f[ds].attrs['voxel_size']
     offset = f[ds].attrs['offset']
 
-    if not is_3d:
+    if is_2d:
         if ds != 'raw' and len(data.shape) == 5:
             data = np.squeeze(data, axis=-3)
             offset = offset[1:]
@@ -23,10 +23,14 @@ def process_dataset(f, ds, is_3d):
         elif ds == 'raw' and len(data.shape) == 4 and len(vs) == 3:
             vs = vs[1:]
 
-    offset = [0, 0] + [int(i / j) for i, j in zip(offset, vs)]
+    if is_2d:
+        offset = [0, 0] + [int(i / j) for i, j in zip(offset, vs)]
+    else:
+        offset = [0,] + [int(i / j) for i, j in zip(offset, vs)]
+
     return data, vs, offset
 
-def create_shader(shape):
+def create_shader(shape, is_2d):
     rgb =  """
     void main() {
         emitRGB(
@@ -50,27 +54,9 @@ def create_shader(shape):
         );
     }
     """
-    if len(shape) == 5:
-        return rgb if shape[1] >= 3 else rg
-    elif len(shape) == 4:
-        return rgb if shape[0] == 3 else rg
-    else:
-        return None
+    shader = rg if is_2d else rgb
+    return shader
 
-def add_layer(s, ds, data, offset, dims, is_segmentation=False):
-    if is_segmentation:
-        layer_class = neuroglancer.SegmentationLayer
-    else:
-        layer_class = neuroglancer.ImageLayer
-
-    s.layers[ds] = layer_class(
-        source=neuroglancer.LocalVolume(
-            data=data,
-            voxel_offset=offset,
-            dimensions=dims
-        ),
-        shader=create_shader(data.shape) if not is_segmentation else None
-    )
 
 def main(zarr_path):
     neuroglancer.set_server_bind_address('0.0.0.0')
@@ -80,21 +66,41 @@ def main(zarr_path):
     datasets = [i for i in os.listdir(zarr_path) if '.' not in i]
     
     # Determine if the data is 3D based on the first dataset
-    is_3d = len(f[datasets[0]].shape) == 5
+    try:
+        raw_shape = f["raw"].shape
+    except KeyError:
+        raw_shape = f[datasets[0]].shape
+    shape = f[datasets[0]].shape
+    is_2d = (len(shape) == 5 and shape[-3] == 1) and (len(raw_shape) == 4 and raw_shape[-3] == 1)
 
-    dims = create_coordinate_space(f[datasets[0]].attrs['voxel_size'], is_3d)
+    dims = create_coordinate_space(f[datasets[0]].attrs['voxel_size'], is_2d)
 
     with viewer.txn() as s:
         for ds in datasets:
             try:
-                data, _, offset = process_dataset(f, ds, is_3d)
+                data, _, offset = process_dataset(f, ds, is_2d)
                 is_segmentation = 'label' in ds or 'seg' in ds
-                add_layer(s, ds, data, offset, dims, is_segmentation)
+
+                if is_segmentation:
+                    layer_class = neuroglancer.SegmentationLayer
+                else:
+                    layer_class = neuroglancer.ImageLayer
+
+                s.layers[ds] = layer_class(
+                    source=neuroglancer.LocalVolume(
+                        data=data,
+                        voxel_offset=offset,
+                        dimensions=dims
+                    ),
+                )
+                if not is_segmentation:
+                    s.layers[ds].shader = create_shader(data.shape, is_2d)
+
                 print(f"Added layer: {ds}")
             except Exception as e:
                 print(f"Error processing dataset {ds}: {e}")
 
-        s.layout = 'yx'
+        s.layout = "yz"
 
     print(viewer)
 

@@ -322,9 +322,10 @@ def make_round_configs(base_dir, round_number, round_name=None):
         "mask_dataset": None,
         "roi_offset": None,
         "roi_shape": None,
-        "block_size": None,
+        "block_shape": None,
         "context": None,
-        "num_workers": 20,
+        "blockwise": False,
+        "num_workers": 1,
         "thresholds_minmax": [0, 1],
         "thresholds_step": 0.05,
         "thresholds": [0.2, 0.3, 0.4, 0.5, 0.6],
@@ -409,7 +410,7 @@ def make_round_configs(base_dir, round_number, round_name=None):
             pred_affs_config = {}
 
         # get db config
-        print("\nPOST-PROCESSING:")
+        print(f"\nPOST-PROCESSING for {t_vol['zarr_container']}:")
         print(
             f"{round_name}-{model_name} database config for {t_vol['zarr_container']}:"
         )
@@ -441,9 +442,9 @@ def make_round_configs(base_dir, round_number, round_name=None):
         confirm_blockwise = confirm_blockwise.lower().strip() == "y"
         do_blockwise = do_blockwise if confirm_blockwise else not do_blockwise
 
-        if not do_blockwise:
-            seg_params["num_workers"] = 1
-            seg_params["block_size"] = roi_shape
+        if do_blockwise:
+            seg_params["num_workers"] = 10
+            seg_params["blockwise"] = True
 
         seg_params["roi_offset"] = roi_offset
         seg_params["roi_shape"] = roi_shape

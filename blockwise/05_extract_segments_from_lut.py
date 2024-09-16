@@ -7,6 +7,7 @@ import os
 import time
 import zarr
 from functools import partial
+from pprint import pprint
 
 from funlib.geometry import Coordinate, Roi
 from funlib.persistence import open_ds, prepare_ds
@@ -46,6 +47,7 @@ def extract_segmentation(config):
     thresholds = config["thresholds"]
     merge_function = config["merge_function"]
     num_workers = config["num_workers"]
+    pprint(config)
 
     # load fragments
     fragments = open_ds(os.path.join(fragments_file, fragments_dataset))
@@ -91,6 +93,7 @@ def extract_segmentation(config):
             chunk_shape=write_roi.shape / voxel_size,
             compressor=zarr.get_codec({"id": "blosc"}),
             dtype=np.uint64,
+            mode="w"
         )
 
         # read LUT

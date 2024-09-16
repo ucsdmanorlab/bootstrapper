@@ -4,7 +4,7 @@ import time
 import sys
 import yaml
 from funlib.persistence import open_ds, prepare_ds
-from funlib.geometry import Roi
+from funlib.geometry import Roi, Coordinate
 import daisy
 import numpy as np
 from functools import partial, reduce
@@ -18,6 +18,7 @@ def filter_in_block(in_labels, out_labels, out_mask, lsd_errors, ids_to_remove, 
 
     # Read labels
     labels_array = in_labels.to_ndarray(block.read_roi, fill_value=0)
+    #labels_array = in_labels[block.read_roi]
 
     # Apply filtering
     mask_out = np.isin(labels_array, ids_to_remove)
@@ -37,17 +38,19 @@ def filter_in_block(in_labels, out_labels, out_mask, lsd_errors, ids_to_remove, 
         mask_array = binary_erosion(mask_array, z_struct)
 
     # Write
-    labels_array = Array(labels_array, block.read_roi, in_labels.voxel_size)
-    mask_array = Array(mask_array, block.read_roi, in_labels.voxel_size)
+    labels_array = Array(labels_array, block.read_roi.offset, in_labels.voxel_size)
+    mask_array = Array(mask_array, block.read_roi.offset, in_labels.voxel_size)
+
+    # crop
+    labels_array = Array(labels_array[block.write_roi], block.write_roi.offset, in_labels.voxel_size)
+    mask_array = Array(mask_array[block.write_roi], block.write_roi.offset, in_labels.voxel_size)
     
-    out_labels[block.write_roi] = labels_array.to_ndarray(block.write_roi)
-    out_mask[block.write_roi] = mask_array.to_ndarray(block.write_roi).astype(np.uint8)
+    out_labels[block.write_roi] = labels_array.data
+    out_mask[block.write_roi] = mask_array.data.astype(np.uint8)
 
 
-def compute_ids_to_remove(labels, dust_filter, remove_outliers, remove_z_fragments=1, overlap_filter=0.0):
+def compute_ids_to_remove(labels_array, dust_filter, remove_outliers, remove_z_fragments=1, overlap_filter=0.0):
 
-    print("reading")
-    labels_array = labels.to_ndarray()
     st = time.time()
     all_ids, id_counts = np.unique(labels_array, return_counts=True)
     print(f"reading time: {time.time() - st}, total_ids: {len(all_ids)}")
@@ -117,24 +120,31 @@ def filter_segmentation(
         erode_out_mask=False,
         roi_offset=None,
         roi_shape=None,
-        block_size=None,
+        block_shape=None,
         context=None,
         num_workers=20
 ):
 
     # Open input dataset
-    in_labels = open_ds(os.path.join(seg_file, seg_dataset)
-)
-    # Define block size and ROIs
+    in_labels = open_ds(os.path.join(seg_file, seg_dataset))
+    voxel_size = in_labels.voxel_size
+
+    # get total ROI
     if roi_offset is not None:
         total_roi = Roi(roi_offset, roi_shape)
     else:
         total_roi = in_labels.roi
-    
-    if block_size is None:
-        block_size = in_labels.chunk_shape * in_labels.voxel_size
-    if context is None:
-        context = in_labels.chunk_shape * in_labels.voxel_size / 4
+
+    # get block size, context
+    if block_shape is not None:
+        block_size = Coordinate(block_shape) * voxel_size
+    else:
+        block_size = Coordinate(in_labels.chunk_shape) * voxel_size
+
+    if context is not None:
+        context = Coordinate(context) * voxel_size
+    else:
+        context = Coordinate([2,] * in_labels.roi.dims) * voxel_size
 
     if lsd_error_file is not None:
         lsd_errors = open_ds(os.path.join(lsd_error_file, lsd_error_mask_dataset))
@@ -150,7 +160,7 @@ def filter_segmentation(
         axis_names=in_labels.axis_names,
         units=in_labels.units,
         dtype=in_labels.dtype,
-        write_size=block_size,
+        mode="w",
     )
 
     out_mask = prepare_ds(
@@ -161,7 +171,7 @@ def filter_segmentation(
         axis_names=in_labels.axis_names,
         units=in_labels.units,
         dtype=np.uint8,
-        write_size=block_size,
+        mode="w",
     )
 
     read_roi = Roi((0,)*in_labels.roi.dims, block_size).grow(context, context)
@@ -170,7 +180,7 @@ def filter_segmentation(
     # Pre-compute global statistics
     print("Computing global statistics...")
     start = time.time()
-    to_remove = compute_ids_to_remove(in_labels, dust_filter, remove_outliers, remove_z_fragments, overlap_filter)
+    to_remove = compute_ids_to_remove(in_labels[total_roi], dust_filter, remove_outliers, remove_z_fragments, overlap_filter)
     print(f"Computed global stats in {time.time() - start} \n")
 
     if exclude_ids is not None:
