@@ -2,7 +2,6 @@ import numpy as np
 import json
 import zarr
 import os
-import sys
 from shutil import copytree
 import yaml
 import pprint
@@ -32,7 +31,7 @@ def get_volumes():
                 input("Enter unlabelled mask dataset path (or leave blank if none): ")
                 or None
             )
-            voxel_size = f[vol["raw_dataset"]].attrs["resolution"]
+            voxel_size = f[vol["raw_dataset"]].attrs["voxel_size"]
 
         same_voxel_size = (
             input(
@@ -246,18 +245,18 @@ def make_round_configs(base_dir, round_number, round_name=None):
         or 1000
     )
 
-    training_samples = [
-        v
-        for v in volumes
-        if None not in [v["labels_dataset"], v["unlabelled_mask_dataset"]]
-    ]
+    training_samples = {
+            v["zarr_container"]: {
+                "raw": v["raw_dataset"],
+                "labels": v["labels_dataset"],
+                "mask": v["unlabelled_mask_dataset"],} 
+        for v in volumes if v["labels_dataset"] is not None
+    }
+
     train_config = check_and_update(
         {
             "setup_dir": setup_dir,
-            "samples": [x["zarr_container"] for x in training_samples],
-            "raw_datasets": [x["raw_dataset"] for x in training_samples],
-            "labels_datasets": [x["labels_dataset"] for x in training_samples],
-            "mask_datasets": [x["unlabelled_mask_dataset"] for x in training_samples],
+            "samples": training_samples,
             "voxel_size": voxel_size,
             "sigma": sigma,
             "out_dir": setup_dir,
@@ -410,7 +409,7 @@ def make_round_configs(base_dir, round_number, round_name=None):
             pred_affs_config = {}
 
         # get db config
-        print("\n POST-PROCESSING:")
+        print("\nPOST-PROCESSING:")
         print(
             f"{round_name}-{model_name} database config for {t_vol['zarr_container']}:"
         )

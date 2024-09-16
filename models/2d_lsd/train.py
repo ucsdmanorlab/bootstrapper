@@ -9,7 +9,7 @@ import json
 import logging
 import os
 
-from utils import SmoothAugment, Add2DLSDs, calc_max_padding
+from utils import SmoothAugment, Add2DLSDs, calc_max_padding, CreateMask, Renumber
 
 logging.basicConfig(level=logging.INFO)
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
@@ -23,9 +23,6 @@ def train(
     sigma,
     max_iterations,
     samples,
-    raw_datasets,
-    labels_datasets,
-    mask_datasets,
     out_dir,
     save_checkpoints_every,
     save_snapshots_every,
@@ -57,16 +54,6 @@ def train(
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
     output_shape = [x + y for x, y in zip(shape_increase, net_config["output_shape"])]
 
-    # prepare samples
-    samples = {
-        samples[i]: {
-            "raw": raw_datasets[i],
-            "labels": labels_datasets[i],
-            "mask": mask_datasets[i],
-        }
-        for i in range(len(samples))
-    }
-
     # prepare request
     voxel_size = gp.Coordinate(voxel_size)
     input_size = gp.Coordinate((1, *input_shape)) * voxel_size
@@ -81,22 +68,28 @@ def train(
     request.add(lsds_weights, output_size)
     request.add(pred_lsds, output_size)
 
-    # pipeline
+    # prepare pipeline
     source = tuple(
-        (
-            gp.ArraySource(raw, open_ds(os.path.join(sample, samples[sample]["raw"])), True),
-            gp.ArraySource(labels, open_ds(os.path.join(sample, samples[sample]["labels"])), False),
-            gp.ArraySource(unlabelled, open_ds(os.path.join(sample, samples[sample]["mask"])), False)
-        )
-        + gp.MergeProvider()
-        + gp.Normalize(raw)
-        + gp.Pad(raw, None)
-        + gp.Pad(labels, context)
-        + gp.Pad(unlabelled, context)
-        + gp.RandomLocation()
-        + gp.Reject(mask=unlabelled, min_masked=0.05)
-        for sample in samples
+    (
+        gp.ArraySource(raw, open_ds(os.path.join(sample, ds_names["raw"])), True),
+        gp.ArraySource(labels, open_ds(os.path.join(sample, ds_names["labels"])), False),
     )
+    + gp.MergeProvider()
+    + gp.Normalize(raw)
+    + Renumber(labels)
+    + gp.AsType(labels, "uint32")
+    + gp.Pad(raw, None)
+    + gp.Pad(labels, context)
+    + (
+        gp.ArraySource(unlabelled, open_ds(os.path.join(sample, ds_names["mask"])), False)
+        if "mask" in ds_names and ds_names["mask"] is not None
+        else CreateMask(labels, unlabelled)
+    )
+    + gp.Pad(unlabelled, context)
+    + gp.RandomLocation()
+    + gp.Reject(mask=unlabelled, min_masked=0.05)
+    for sample, ds_names in samples.items()
+)
 
     pipeline = source + gp.RandomProvider()
 
@@ -188,12 +181,5 @@ if __name__ == "__main__":
 
     assert config["setup_dir"] in setup_dir, "model directories do not match"
     config["setup_dir"] = setup_dir
-
-    assert (
-        len(config["samples"])
-        == len(config["raw_datasets"])
-        == len(config["labels_datasets"])
-        == len(config["mask_datasets"])
-    ), "number of samples and datasets do not match"
 
     train(**config)
