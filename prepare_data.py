@@ -45,15 +45,15 @@ def process_dataset(dataset_type, zarr_file):
                 print(f"Copying {path}/{in_ds} to {zarr_file}/{dataset_name}..")
                 out_f[dataset_name] = in_f[in_ds]
                 out_f[dataset_name].attrs['offset'] = in_f[in_ds].attrs['offset']
-                out_f[dataset_name].attrs['resolution'] = in_f[in_ds].attrs['resolution']
+                out_f[dataset_name].attrs['voxel_size'] = in_f[in_ds].attrs['voxel_size']
     else:
-        resolution = [
-            get_input("Enter Z resolution (in world units)", "1"),
-            get_input("Enter YX resolution (in world units)", "1")
+        voxel_size = [
+            get_input("Enter Z voxel size (in world units)", "1"),
+            get_input("Enter YX voxel size (in world units)", "1")
         ]
         
         dataset_name = get_input(f"Enter output {dataset_type} dataset name", f"volumes/{dataset_type}/s0")
-        run_subprocess('data/make_3d_zarr_array.py', path, zarr_file, dataset_name, *resolution)
+        run_subprocess('data/make_3d_zarr_array.py', path, zarr_file, dataset_name, *voxel_size)
     
     return dataset_name
 
