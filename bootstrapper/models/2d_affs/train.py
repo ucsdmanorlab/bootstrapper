@@ -123,11 +123,9 @@ def train(
         raw, scale_min=0.9, scale_max=1.1, shift_min=-0.1, shift_max=0.1, p=0.5
     )
 
-    pipeline += SmoothAugment(raw)
+    pipeline += SmoothAugment(raw, p=0.5)
 
-    pipeline += gp.DefectAugment(
-        raw, prob_missing=0.0, prob_low_contrast=0.05, prob_deform=0.0
-    )
+    pipeline += gp.DefectAugment(raw, prob_missing=0.0)
 
     pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=1, only_xy=True)
 

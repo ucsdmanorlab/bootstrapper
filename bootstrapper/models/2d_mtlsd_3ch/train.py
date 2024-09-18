@@ -137,11 +137,9 @@ def train(
         p=0.5,
     )
 
-    pipeline += SmoothAugment(raw)
+    pipeline += SmoothAugment(raw, p=0.5)
 
-    pipeline += gp.DefectAugment(
-        raw, prob_missing=0.05, prob_low_contrast=0.05, prob_deform=0.0
-    )
+    pipeline += gp.DefectAugment(raw)
 
     pipeline += Add2DLSDs(
         labels,

@@ -110,7 +110,7 @@ def train(
     )
 
     # smooth the batch by different sigmas to simulate noisy predictions
-    pipeline += SmoothAugment(input_lsds, (0.5, 1.5))
+    pipeline += SmoothAugment(input_lsds, p=0.5)
 
     # add defects
     pipeline += gp.DefectAugment(
