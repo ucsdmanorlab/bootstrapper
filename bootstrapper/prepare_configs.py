@@ -537,7 +537,7 @@ def make_round_configs(base_dir, round_number, round_name=None):
 
 
 def main():
-    base_dir = os.path.abspath(input("Enter base directory: ") or "./test")
+    base_dir = os.path.abspath(input("Enter base directory: ") or ".")
 
     existing_rounds = [
         d

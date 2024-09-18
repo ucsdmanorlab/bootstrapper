@@ -11,26 +11,10 @@ import gunpowder as gp
 from funlib.persistence import prepare_ds, open_ds
 from funlib.geometry import Coordinate, Roi
 
-from add_lsd_errors import AddLSDErrors
+from bootstrapper.gp import AddLSDErrors
+from bootstrapper.utils import calc_max_padding
 
 logging.basicConfig(level=logging.INFO)
-
-
-def calc_max_padding(output_size, voxel_size, sigma, mode="grow"):
-
-    method_padding = Coordinate((sigma * 3,) * 3)
-
-    diag = np.sqrt(output_size[1] ** 2 + output_size[2] ** 2)
-
-    max_padding = Roi(
-        (
-            Coordinate([i / 2 for i in [output_size[0], diag, diag]])
-            + method_padding
-        ),
-        (0,) * 3,
-    ).snap_to_grid(voxel_size, mode=mode)
-
-    return max_padding.get_begin()
 
 
 def compute_errors(

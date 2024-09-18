@@ -11,7 +11,8 @@ import math
 import numpy as np
 import os
 
-from utils import SmoothAugment, Add2DLSDs, calc_max_padding, CreateMask, Renumber
+from bootstrapper.gp import SmoothAugment, Add2DLSDs, CreateMask, Renumber
+from bootstrapper.utils import calc_max_padding
 
 logging.basicConfig(level=logging.INFO)
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
@@ -85,26 +86,30 @@ def train(
 
     # prepare pipeline
     source = tuple(
-    (
-        gp.ArraySource(raw, open_ds(os.path.join(sample, ds_names["raw"])), True),
-        gp.ArraySource(labels, open_ds(os.path.join(sample, ds_names["labels"])), False),
+        (
+            gp.ArraySource(raw, open_ds(os.path.join(sample, ds_names["raw"])), True),
+            gp.ArraySource(
+                labels, open_ds(os.path.join(sample, ds_names["labels"])), False
+            ),
+        )
+        + gp.MergeProvider()
+        + gp.Normalize(raw)
+        + Renumber(labels)
+        + gp.AsType(labels, "uint32")
+        + gp.Pad(raw, None)
+        + gp.Pad(labels, context)
+        + (
+            gp.ArraySource(
+                unlabelled, open_ds(os.path.join(sample, ds_names["mask"])), False
+            )
+            if "mask" in ds_names and ds_names["mask"] is not None
+            else CreateMask(labels, unlabelled)
+        )
+        + gp.Pad(unlabelled, context)
+        + gp.RandomLocation()
+        + gp.Reject(mask=unlabelled, min_masked=0.05)
+        for sample, ds_names in samples.items()
     )
-    + gp.MergeProvider()
-    + gp.Normalize(raw)
-    + Renumber(labels)
-    + gp.AsType(labels, "uint32")
-    + gp.Pad(raw, None)
-    + gp.Pad(labels, context)
-    + (
-        gp.ArraySource(unlabelled, open_ds(os.path.join(sample, ds_names["mask"])), False)
-        if "mask" in ds_names and ds_names["mask"] is not None
-        else CreateMask(labels, unlabelled)
-    )
-    + gp.Pad(unlabelled, context)
-    + gp.RandomLocation()
-    + gp.Reject(mask=unlabelled, min_masked=0.05)
-    for sample, ds_names in samples.items()
-)
 
     pipeline = source + gp.RandomProvider()
 
@@ -170,9 +175,7 @@ def train(
         model,
         loss,
         optimizer,
-        inputs={
-            0: raw
-        },
+        inputs={0: raw},
         loss_inputs={
             0: pred_lsds,
             1: gt_lsds,

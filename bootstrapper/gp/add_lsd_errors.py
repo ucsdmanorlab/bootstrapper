@@ -2,7 +2,6 @@ from lsd.train import LsdExtractor
 from gunpowder import BatchFilter, Array, BatchRequest, Batch
 import logging
 import numpy as np
-import time
 
 from scipy.ndimage import binary_erosion, binary_dilation
 from skimage.morphology import ball, disk
@@ -135,7 +134,7 @@ class AddLSDErrors(BatchFilter):
         elif self.mode == "sphere":
             self.context = tuple(self.sigma)
         else:
-            raise RuntimeError("Unkown mode %s" % mode)
+            raise RuntimeError("Unkown mode %s" % self.mode)
 
     def prepare(self, request):
         deps = BatchRequest()
@@ -263,19 +262,3 @@ class AddLSDErrors(BatchFilter):
 
         o_data = o_data.astype(np.uint8)
         return o_data
-
-
-def compute_stats(array):
-
-    total_voxels = int(np.prod(array.shape))
-    num_nonzero_voxels = array[array > 0].size 
-    mean = np.mean(array)
-    std = np.std(array)
-    
-    return {
-        'mean': mean,
-        'std': std,  
-        'num_nonzero_voxels': num_nonzero_voxels,
-        'total_voxels': total_voxels,
-        'nonzero_ratio' : num_nonzero_voxels / total_voxels,
-    }

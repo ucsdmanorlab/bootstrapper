@@ -1,15 +1,16 @@
-import torch
-import gunpowder as gp
-from model import Model, WeightedMSELoss
-from utils import SmoothAugment, CreateMask, Renumber
-from funlib.persistence import open_ds
-
-import sys
-import yaml
 import json
 import logging
-import numpy as np
 import os
+import sys
+import yaml
+
+import numpy as np
+import torch
+import gunpowder as gp
+from funlib.persistence import open_ds
+
+from bootstrapper.gp import SmoothAugment, CreateMask, Renumber
+from model import Model, WeightedMSELoss
 
 logging.basicConfig(level=logging.INFO)
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
@@ -70,26 +71,30 @@ def train(
 
     # prepare pipeline
     source = tuple(
-    (
-        gp.ArraySource(raw, open_ds(os.path.join(sample, ds_names["raw"])), True),
-        gp.ArraySource(labels, open_ds(os.path.join(sample, ds_names["labels"])), False),
+        (
+            gp.ArraySource(raw, open_ds(os.path.join(sample, ds_names["raw"])), True),
+            gp.ArraySource(
+                labels, open_ds(os.path.join(sample, ds_names["labels"])), False
+            ),
+        )
+        + gp.MergeProvider()
+        + gp.Normalize(raw)
+        + Renumber(labels)
+        + gp.AsType(labels, "uint32")
+        + gp.Pad(raw, None)
+        + gp.Pad(labels, context)
+        + (
+            gp.ArraySource(
+                unlabelled, open_ds(os.path.join(sample, ds_names["mask"])), False
+            )
+            if "mask" in ds_names and ds_names["mask"] is not None
+            else CreateMask(labels, unlabelled)
+        )
+        + gp.Pad(unlabelled, context)
+        + gp.RandomLocation()
+        + gp.Reject(mask=unlabelled, min_masked=0.05)
+        for sample, ds_names in samples.items()
     )
-    + gp.MergeProvider()
-    + gp.Normalize(raw)
-    + Renumber(labels)
-    + gp.AsType(labels, "uint32")
-    + gp.Pad(raw, None)
-    + gp.Pad(labels, context)
-    + (
-        gp.ArraySource(unlabelled, open_ds(os.path.join(sample, ds_names["mask"])), False)
-        if "mask" in ds_names and ds_names["mask"] is not None
-        else CreateMask(labels, unlabelled)
-    )
-    + gp.Pad(unlabelled, context)
-    + gp.RandomLocation()
-    + gp.Reject(mask=unlabelled, min_masked=0.05)
-    for sample, ds_names in samples.items()
-)
 
     pipeline = source + gp.RandomProvider()
 
@@ -149,9 +154,7 @@ def train(
         model,
         loss,
         optimizer,
-        inputs={
-            0: raw
-        },
+        inputs={0: raw},
         loss_inputs={
             0: pred_affs,
             1: gt_affs,

@@ -8,7 +8,12 @@ import torch
 import gunpowder as gp
 
 from model import AffsUNet, WeightedMSELoss
-from utils import CreateLabels, CustomLSDs, SmoothAugment, CustomIntensityAugment
+from bootstrapper.gp import (
+    CreateLabels,
+    AddObfuscated2DLSDs,
+    SmoothAugment,
+    CustomIntensityAugment,
+)
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -93,7 +98,7 @@ def train(
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
 
     # that is what predicted lsds will look like
-    pipeline += CustomLSDs(labels, input_lsds, sigma=sigma, downsample=2)
+    pipeline += AddObfuscated2DLSDs(labels, input_lsds, sigma=sigma, downsample=2)
 
     # add random noise
     pipeline += gp.NoiseAugment(input_lsds, mode="gaussian", p=0.5)
@@ -134,14 +139,8 @@ def train(
         inputs={
             0: input_lsds,
         },
-        loss_inputs={
-            0: pred_affs, 
-            1: gt_affs, 
-            2: affs_weights
-        },
-        outputs={
-            0: pred_affs
-        },
+        loss_inputs={0: pred_affs, 1: gt_affs, 2: affs_weights},
+        outputs={0: pred_affs},
         save_every=save_checkpoints_every,
         log_dir=os.path.join(setup_dir, "log"),
         checkpoint_basename=os.path.join(setup_dir, "model"),

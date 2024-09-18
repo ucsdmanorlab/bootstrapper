@@ -8,9 +8,9 @@ import torch
 import gunpowder as gp
 
 from model import AffsUNet, WeightedMSELoss
-from utils import (
+from bootstrapper.gp import (
     CreateLabels,
-    CustomLSDs,
+    AddObfuscated2DLSDs,
     SmoothAugment,
     CustomIntensityAugment,
     CustomGrowBoundary,
@@ -106,7 +106,7 @@ def train(
 
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
 
-    pipeline += CustomLSDs(labels, input_lsds, sigma=sigma, downsample=2)
+    pipeline += AddObfuscated2DLSDs(labels, input_lsds, sigma=sigma, downsample=2)
 
     pipeline += CustomGrowBoundary(labels, max_steps=1, only_xy=True)
 
@@ -170,14 +170,8 @@ def train(
             0: input_lsds,
             1: input_affs,
         },
-        loss_inputs={
-            0: pred_affs, 
-            1: gt_affs, 
-            2: affs_weights
-        },
-        outputs={
-            0: pred_affs
-        },
+        loss_inputs={0: pred_affs, 1: gt_affs, 2: affs_weights},
+        outputs={0: pred_affs},
         save_every=save_checkpoints_every,
         log_dir=os.path.join(setup_dir, "log"),
         checkpoint_basename=os.path.join(setup_dir, "model"),

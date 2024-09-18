@@ -30,7 +30,7 @@ def process_dataset(f, ds, is_2d):
 
     return data, vs, offset
 
-def create_shader(shape, is_2d):
+def create_shader(ds, is_2d):
     rgb =  """
     void main() {
         emitRGB(
@@ -54,7 +54,14 @@ def create_shader(shape, is_2d):
         );
     }
     """
-    shader = rg if is_2d else rgb
+
+    if is_2d:
+        if ds == 'raw':
+            shader = rgb
+        else:
+            shader = rg
+    else:
+        shader = rgb
     return shader
 
 
@@ -71,7 +78,8 @@ def main(zarr_path):
     except KeyError:
         raw_shape = f[datasets[0]].shape
     shape = f[datasets[0]].shape
-    is_2d = (len(shape) == 5 and shape[-3] == 1) and (len(raw_shape) == 4 and raw_shape[-3] == 1)
+    print(raw_shape, shape)
+    is_2d = (len(shape) == 5 and shape[-3] == 1) and (len(raw_shape) == 4)
 
     dims = create_coordinate_space(f[datasets[0]].attrs['voxel_size'], is_2d)
 
@@ -94,7 +102,7 @@ def main(zarr_path):
                     ),
                 )
                 if not is_segmentation:
-                    s.layers[ds].shader = create_shader(data.shape, is_2d)
+                    s.layers[ds].shader = create_shader(ds, is_2d)
 
                 print(f"Added layer: {ds}")
             except Exception as e:
@@ -106,6 +114,6 @@ def main(zarr_path):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python -i view_snapshot.py <path_to_snapshot_zarr>")
+        print("Please supply the path to the snapshot zarr.")
         sys.exit(1)
     main(sys.argv[1])

@@ -9,7 +9,7 @@ import gunpowder as gp
 
 from lsd.train.gp import AddLocalShapeDescriptor
 from model import AffsUNet, WeightedMSELoss
-from utils import CreateLabels, SmoothAugment, CustomIntensityAugment
+from bootstrapper.gp import CreateLabels, SmoothAugment, CustomIntensityAugment
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -140,14 +140,8 @@ def train(
         inputs={
             0: input_lsds,
         },
-        loss_inputs={
-            0: pred_affs, 
-            1: gt_affs, 
-            2: affs_weights
-        },
-        outputs={
-            0: pred_affs
-        },
+        loss_inputs={0: pred_affs, 1: gt_affs, 2: affs_weights},
+        outputs={0: pred_affs},
         save_every=save_checkpoints_every,
         log_dir=os.path.join(setup_dir, "log"),
         checkpoint_basename=os.path.join(setup_dir, "model"),
