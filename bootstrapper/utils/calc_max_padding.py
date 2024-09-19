@@ -1,4 +1,4 @@
-import gunpowder as gp
+from funlib.geometry import Roi, Coordinate
 import numpy as np
 
 
@@ -6,7 +6,7 @@ def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
 
     is_3d = int(output_size[0] / voxel_size[0]) != 1
 
-    method_padding = gp.Coordinate(
+    method_padding = Coordinate(
         (
             sigma * 3 * int(is_3d),
             sigma * 3,
@@ -16,9 +16,9 @@ def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
 
     diag = np.sqrt(output_size[1] ** 2 + output_size[2] ** 2)
 
-    max_padding = gp.Roi(
+    max_padding = Roi(
         (
-            gp.Coordinate([i / 2 for i in [output_size[0] * int(is_3d), diag, diag]])
+            Coordinate([i / 2 for i in [output_size[0] * int(is_3d), diag, diag]])
             + method_padding
         ),
         (0,) * 3,
