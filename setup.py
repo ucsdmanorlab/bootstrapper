@@ -27,12 +27,11 @@ setup(
         'zarr',
         'waterz',
         'neuroglancer'
+        'click'
     ],
     entry_points={
         'console_scripts': [
             'bs=bootstrapper.cli:main',
-            'bs-train=bootstrapper.train:main',
-            'bs-predict=bootstrapper.predict:main',
         ],
     },
 )
