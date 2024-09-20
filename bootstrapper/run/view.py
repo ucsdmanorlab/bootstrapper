@@ -3,7 +3,12 @@ import numpy as np
 import os
 import sys
 import zarr
+import click
 
+@click.command()
+def run():
+    """Run the view command"""
+    click.echo("Running view command...")
 
 def create_coordinate_space(voxel_size, is_2d):
     names = ['c^', 'z', 'y', 'x'] if not is_2d else ['b', 'c^', 'y', 'x']

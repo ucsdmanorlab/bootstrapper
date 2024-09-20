@@ -2,6 +2,7 @@ import argparse
 import yaml
 import subprocess
 import os
+import click
 
 def extract_setup_dir(yaml_file):
     with open(yaml_file, 'r') as file:
@@ -21,12 +22,14 @@ def run_training(yaml_file):
     else:
         print("Training failed.")
 
+@click.command()
+def run():
+    """Run the train command"""
+    click.echo("Running train command...")
+
 def main():
     parser = argparse.ArgumentParser(description="Run training")
     parser.add_argument('yaml_file', type=str, help="Path to the YAML configuration file")
     args = parser.parse_args()
     
     run_training(args.yaml_file)
-
-if __name__ == '__main__':
-    main()

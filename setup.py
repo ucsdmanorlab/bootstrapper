@@ -26,12 +26,12 @@ setup(
         'torch',
         'zarr',
         'waterz',
-        'neuroglancer'
+        'neuroglancer',
         'click'
     ],
     entry_points={
         'console_scripts': [
-            'bs=bootstrapper.cli:main',
+            'bs = bootstrapper.cli:cli',
         ],
     },
 )

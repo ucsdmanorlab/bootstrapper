@@ -9,50 +9,6 @@ import pprint
 this_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
 
-def get_volumes():
-    volumes = []
-    num_volumes = int(input("How many volumes for this round? (default = 1)") or 1)
-
-    for i in range(num_volumes):
-        print(f"Volume {i+1}:")
-        vol = {}
-        vol["zarr_container"] = os.path.abspath(input("Enter Zarr container path: "))
-        with zarr.open(vol["zarr_container"], "r") as f:
-            print(f.tree())
-
-            vol["raw_dataset"] = input("Enter raw dataset path: ")
-            vol["raw_mask_dataset"] = (
-                input("Enter raw mask dataset path (or leave blank if none): ") or None
-            )
-            vol["labels_dataset"] = (
-                input("Enter labels dataset path (or leave blank if none): ") or None
-            )
-            vol["unlabelled_mask_dataset"] = (
-                input("Enter unlabelled mask dataset path (or leave blank if none): ")
-                or None
-            )
-            voxel_size = f[vol["raw_dataset"]].attrs["voxel_size"]
-
-        same_voxel_size = (
-            input(
-                f"Voxel size for this image volume is {voxel_size}. Use this? (y/n, default: y) "
-            )
-            or "y"
-        )
-        same_voxel_size = same_voxel_size.lower().strip() == "y"
-        if same_voxel_size:
-            vol["voxel_size"] = voxel_size
-        else:
-            vol["voxel_size"] = list(
-                map(int, input("Enter voxel size (comma-separated): ").split(","))
-            )
-        print("\n")
-
-        volumes.append(vol)
-
-    return volumes
-
-
 def get_roi(full_shape, voxel_size):
     print("Enter ROI (comma-separated world units, not voxels, leave blank for None):")
 
@@ -536,7 +492,7 @@ def make_round_configs(base_dir, round_number, round_name=None):
         print(f"All configuration files for {round_name} generated successfully!")
 
 
-def main():
+def make_configs():
     base_dir = os.path.abspath(input("Enter base directory: ") or ".")
 
     existing_rounds = [
@@ -560,7 +516,3 @@ def main():
     )
     print(f"Preparing configs for round number {round_number}..")
     make_round_configs(base_dir, round_number, round_name=round_name)
-
-
-if __name__ == "__main__":
-    main()

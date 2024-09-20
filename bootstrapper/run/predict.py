@@ -8,8 +8,9 @@ import os
 import time
 import subprocess
 import pprint
-
+import click
 from pathlib import Path
+
 from funlib.geometry import Roi, Coordinate
 from funlib.persistence import open_ds, prepare_ds
 
@@ -177,22 +178,25 @@ def start_worker(config: dict, worker: str):
     )
 
 
-def main():
-    config_file = sys.argv[1]
-    setup = sys.argv[2]
+@click.command()
+def run():
+    """Run the predict command"""
+    click.echo("Running predict command...")
 
-    with open(config_file, "r") as f:
-        yaml_config = yaml.safe_load(f)
+# def main():
 
-    config = yaml_config[setup]
+#     with open(config_file, "r") as f:
+#         yaml_config = yaml.safe_load(f)
 
-    start = time.time()
-    predict_blockwise(config)
-    end = time.time()
+#     config = yaml_config[setup]
 
-    seconds = end - start
-    logging.info(f"Total time to predict blockwise : {seconds} ")
+#     start = time.time()
+#     predict_blockwise(config)
+#     end = time.time()
+
+#     seconds = end - start
+#     logging.info(f"Total time to predict blockwise : {seconds} ")
 
 
-if __name__ == "__main__":
-        main()
+# if __name__ == "__main__":
+#     main()

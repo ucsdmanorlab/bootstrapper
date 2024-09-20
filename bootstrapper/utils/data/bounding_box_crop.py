@@ -1,12 +1,10 @@
-import sys
 import os
-import numpy as np
-import zarr
 from scipy.ndimage import find_objects
 from funlib.persistence import open_ds, prepare_ds
+import click
 
 
-def crop(zarr_container, dataset, out_container=None, out_dataset=None):
+def bbox_crop(zarr_container, dataset, out_container=None, out_dataset=None):
 
     in_ds = open_ds(os.path.join(zarr_container, dataset))
     arr = in_ds[in_ds.roi]
@@ -37,16 +35,14 @@ def crop(zarr_container, dataset, out_container=None, out_dataset=None):
     out_ds[out_ds.roi] = cropped_arr
 
 
+@click.command()
+@click.argument('in_f', type=click.Path(exists=True))
+@click.argument('in_ds', type=str)
+@click.option('--out_f', default=None, help='Output container')
+@click.option('--out_ds', default=None, help='Output dataset')
+def bbox(in_f, in_ds, out_f, out_ds):
+    bbox_crop(in_f, in_ds, out_f, out_ds)
+
+
 if __name__ == "__main__":
-
-    in_f = sys.argv[1]
-    in_ds = sys.argv[2]
-
-    try:
-        out_f = sys.argv[3]
-        out_ds = sys.argv[4]    
-    except:
-        out_f = None
-        out_ds = None
-
-    crop(in_f,in_ds,out_f,out_ds)
+    bbox()
