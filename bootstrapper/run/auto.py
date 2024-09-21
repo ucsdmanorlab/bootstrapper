@@ -1,6 +1,6 @@
 import click
 
 @click.command()
-def run():
+def auto():
     """Run the auto command"""
     click.echo("Running auto command...")

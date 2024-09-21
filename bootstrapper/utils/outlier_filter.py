@@ -1,18 +1,22 @@
+import click
 from funlib.persistence import open_ds, prepare_ds
 import numpy as np
-import os
 from skimage.measure import regionprops, label
-import sys
 
-def filter_labels(in_f, in_ds, out_f, out_ds, size_threshold):
+
+@click.command()
+@click.option('--in_labels', '-i', required=True, type=str, help='Input labels zarr array')
+@click.option('--out_labels', '-o', type=str, help='Output labels zarr array')
+@click.option('--sigma', '-s', type=float, default=3.0, help='Outlier threshold in standard deviations', show_default=True)
+def outlier_filter(in_labels, out_labels, sigma):
     """
-    Perform a simple size filter on the labels in the input dataset.
+    Perform a simple outlier filter on a label dataset.
     """
 
-    labels = open_ds(os.path.join(in_f, in_ds))
+    labels = open_ds(in_labels)
 
     new_labels = prepare_ds(
-        os.path.join(out_f, out_ds),
+        out_labels,
         shape=labels.shape,
         offset=labels.offset,
         voxel_size=labels.voxel_size,
@@ -27,26 +31,19 @@ def filter_labels(in_f, in_ds, out_f, out_ds, size_threshold):
     regions = regionprops(new_labels_array)
     label_size_dict = {r.label: r.area for r in regions}
 
+    mean, std = np.mean(list(label_size_dict.values())), np.std(list(label_size_dict.values()))
+
     outlier_labels = [
         label
         for label, size in label_size_dict.items()
-        if size <= size_threshold
+        if abs(size - mean) > sigma * std
     ]
+
+    click.echo(f"Found {len(outlier_labels)} outliers out of {len(label_size_dict)} IDs")
 
     new_labels_array[np.isin(new_labels_array, outlier_labels)] = 0
 
     new_labels[new_labels.roi] = label(new_labels_array, connectivity=1).astype(labels.dtype)
 
-
 if __name__ == "__main__":
-    in_f = sys.argv[1]
-    in_ds = sys.argv[2]
-    out_f = sys.argv[3]
-    out_ds = sys.argv[4]
-
-    try:
-        size_threshold = int(sys.argv[5])
-    except:
-        size_threshold = 500
-
-    filter_labels(in_f, in_ds, out_f, out_ds, size_threshold)
+    outlier_filter()

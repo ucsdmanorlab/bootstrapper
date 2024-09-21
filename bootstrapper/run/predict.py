@@ -179,7 +179,7 @@ def start_worker(config: dict, worker: str):
 
 
 @click.command()
-def run():
+def predict():
     """Run the predict command"""
     click.echo("Running predict command...")
 

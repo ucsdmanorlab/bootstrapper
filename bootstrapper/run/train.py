@@ -23,7 +23,7 @@ def run_training(yaml_file):
         print("Training failed.")
 
 @click.command()
-def run():
+def train():
     """Run the train command"""
     click.echo("Running train command...")
 

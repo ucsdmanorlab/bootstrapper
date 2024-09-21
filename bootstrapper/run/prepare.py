@@ -2,26 +2,26 @@ import click
 import os
 import yaml
 
-#from ..utils import get_volumes, make_configs
+from bootstrapper.utils import make_volumes, make_configs
 
 
 @click.group()
 @click.pass_context
-def run(ctx):
+def prepare(ctx):
     """Prepare volumes and configurations"""
     ctx.ensure_object(dict)
     base_dir = click.prompt("Enter the base directory path", default=".", type=click.Path(file_okay=False, dir_okay=True))
     os.makedirs(base_dir, exist_ok=True)
-    ctx.obj['base_dir'] = base_dir
+    ctx.obj['base_dir'] = os.path.abspath(base_dir)
     ctx.obj['volumes'] = []
 
 
-@run.command(name="data")
+@prepare.command(name="data")
 @click.pass_context
 def data(ctx):
-    """Prepare volumes"""
-    click.echo(f"Preparing volumes in {ctx.obj['base_dir']}...")
-    ctx.obj['volumes'] = get_volumes(ctx.obj['base_dir'])
+    """Prepare volumes for bootstrapping"""
+    num_volumes = click.prompt(f"How many volumes to prepare in {ctx.obj['base_dir']}?", default=1, type=int, show_default=True)
+    ctx.obj['volumes'] = make_volumes(ctx.obj['base_dir'], num_volumes)
 
     # Dump volumes to a yaml in the base directory
     volumes_yaml = os.path.join(ctx.obj['base_dir'], 'volumes.yaml')
@@ -30,7 +30,7 @@ def data(ctx):
     click.echo(f"Volumes saved to {volumes_yaml}")
 
 
-@run.command(name="configs")
+@prepare.command(name="configs")
 @click.pass_context
 def configs(ctx):
     """Prepare configuration files"""
@@ -47,5 +47,4 @@ def configs(ctx):
             click.echo(f"Volumes not found. Running data command...")
             ctx.invoke(data)
 
-    make_configs(ctx.obj['volumes'], ctx.obj['base_dir'])
-    
+    make_configs(ctx.obj['base_dir'], ctx.obj['volumes'])

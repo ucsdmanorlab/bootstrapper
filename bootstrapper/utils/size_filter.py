@@ -1,18 +1,22 @@
 from funlib.persistence import open_ds, prepare_ds
 import numpy as np
-import os
+import click
 from skimage.measure import regionprops, label
-import sys
 
-def filter_labels(in_f, in_ds, out_f, out_ds, sigma=3.0):
+
+@click.command()
+@click.option('--in_array', '-i', required=True, type=str, help='Input labels zarr array')
+@click.option('--out_array', '-o', type=str, help='Output labels zarr array')
+@click.option('--size_threshold', '-s', type=int, default=500, help='Size threshold in voxels for filtering', show_default=True)
+def size_filter(in_array, out_array, size_threshold):
     """
-    Perform a simple outlier filter on a label dataset.
+    Perform a simple size filter on the labels in the input dataset.
     """
 
-    labels = open_ds(os.path.join(in_f, in_ds))
+    labels = open_ds(in_array)
 
     new_labels = prepare_ds(
-        os.path.join(out_f, out_ds),
+        out_array,
         shape=labels.shape,
         offset=labels.offset,
         voxel_size=labels.voxel_size,
@@ -27,13 +31,13 @@ def filter_labels(in_f, in_ds, out_f, out_ds, sigma=3.0):
     regions = regionprops(new_labels_array)
     label_size_dict = {r.label: r.area for r in regions}
 
-    mean, std = np.mean(list(label_size_dict.values())), np.std(list(label_size_dict.values()))
-
     outlier_labels = [
         label
         for label, size in label_size_dict.items()
-        if abs(size - mean) > sigma * std
+        if size <= size_threshold
     ]
+
+    click.echo(f"Filtered {len(outlier_labels)} IDs out of {len(label_size_dict)} IDs")
 
     new_labels_array[np.isin(new_labels_array, outlier_labels)] = 0
 
@@ -41,14 +45,4 @@ def filter_labels(in_f, in_ds, out_f, out_ds, sigma=3.0):
 
 
 if __name__ == "__main__":
-    in_f = sys.argv[1]
-    in_ds = sys.argv[2]
-    out_f = sys.argv[3]
-    out_ds = sys.argv[4]
-
-    try:
-        sigma = float(sys.argv[5])
-    except:
-        sigma = 3.0
-
-    filter_labels(in_f, in_ds, out_f, out_ds, sigma)
+    size_filter()

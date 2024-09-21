@@ -6,7 +6,7 @@ import zarr
 import click
 
 @click.command()
-def run():
+def view():
     """Run the view command"""
     click.echo("Running view command...")
 

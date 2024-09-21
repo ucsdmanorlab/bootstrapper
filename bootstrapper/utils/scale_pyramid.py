@@ -1,23 +1,14 @@
-import argparse
+import click
+import os
 import re
 import daisy
 from funlib.persistence import open_ds, prepare_ds
 import zarr
 from functools import partial
 
-# monkey-patch os.mkdirs, due to bug in zarr
-import os
-prev_makedirs = os.makedirs
-
-def makedirs(name, mode=0o777, exist_ok=False):
-    # always ok if exists
-    return prev_makedirs(name, mode, exist_ok=True)
-
-os.makedirs = makedirs
 
 def scale_block(in_array, out_array, factor, mode, block):
     import numpy as np
-    from daisy import Coordinate
     from funlib.persistence import Array
     from skimage.measure import block_reduce
     from skimage.transform import rescale
@@ -25,14 +16,12 @@ def scale_block(in_array, out_array, factor, mode, block):
     dims = len(factor)
     in_data = in_array.to_ndarray(block.read_roi, fill_value=0)
     name = in_array.data.name
-
-    in_shape = Coordinate(in_data.shape[-dims:])
     
     n_channels = len(in_data.shape) - dims
     if n_channels >= 1:
         factor = (1,)*n_channels + factor
 
-    if in_data.dtype == np.uint64 or 'label' in name or 'id' in name or 'mask' in name:
+    if in_data.dtype in [np.uint32, np.uint64] or 'label' in name or 'id' in name or 'mask' in name:
         if mode == 'down':
             slices = tuple(slice(k//2, None, k) for k in factor)
             out_data = in_data[slices]
@@ -47,7 +36,7 @@ def scale_block(in_array, out_array, factor, mode, block):
             out_data = rescale(in_data, factor, order=1, preserve_range=True)
 
     try:
-        out_data_array = Array(out_data,block.read_roi,out_array.voxel_size)
+        out_data_array = Array(out_data,block.read_roi.offset,out_array.voxel_size)
         out_array[block.write_roi] = out_data_array.to_ndarray(block.write_roi)
     except Exception:
         print("Failed to write to %s" % block.write_roi)
@@ -83,7 +72,14 @@ def scale_array(in_array, out_array, factor, write_size, mode):
     else:
         print("Did not run all blocks successfully...")
 
-def create_scale_pyramid(in_file, in_ds_name, scales, chunk_shape, mode):
+@click.command()
+@click.option('--in_file', '-f', type=click.Path(exists=True), required=True, help="The path to the input zarr container")
+@click.option('--in_ds_name', '-ds', type=str, required=True, help="The name of the input dataset")
+@click.option('--scales', '-s', multiple=True, type=(int, int, int), help="The scale factors for each dimension", prompt="Enter the scale factors for each dimension")
+@click.option('--chunk_shape', '-c', type=(int, int, int), default=None, help="The size of a chunk in voxels", prompt="Enter the chunk shape")
+@click.option('--mode', '-m', type=click.Choice(['up', 'down']), required=True, prompt="Specify whether to upscale or downscale")
+def scale_pyramid(in_file, in_ds_name, scales, chunk_shape, mode):
+    """Create a scale pyramid of an array in a zarr container."""
     ds = zarr.open(in_file)
 
     # make sure in_ds_name points to a dataset
@@ -95,11 +91,10 @@ def create_scale_pyramid(in_file, in_ds_name, scales, chunk_shape, mode):
     if chunk_shape is not None:
         chunk_shape = daisy.Coordinate(chunk_shape)
     else:
-        chunk_shape = daisy.Coordinate(prev_array.data.chunks)
+        chunk_shape = daisy.Coordinate(prev_array.chunk_shape)
         print(f"Reusing chunk shape of {chunk_shape} for new datasets")
     
     # get scales 
-    scales = [scales[i:i+len(chunk_shape)] for i in range(0, len(scales), len(chunk_shape))]
     print(f"{mode.capitalize()}scaling by a factor of {scales}")
 
     # get ds_name
@@ -129,9 +124,9 @@ def create_scale_pyramid(in_file, in_ds_name, scales, chunk_shape, mode):
     scale_numbers = [start_scale + (1 if mode == 'down' else -1) * i for i in range(1,1+len(scales))]
     prev_array = open_ds(os.path.join(in_file, ds_name))
 
-    if prev_array.n_channel_dims == 0:
+    if prev_array.channel_dims == 0:
         num_channels = 1
-    elif prev_array.n_channel_dims == 1:
+    elif prev_array.channel_dims == 1:
         num_channels = prev_array.shape[0]
     else:
         raise RuntimeError("more than one channel not yet implemented, sorry...")
@@ -174,23 +169,4 @@ def create_scale_pyramid(in_file, in_ds_name, scales, chunk_shape, mode):
     print("Scale pyramid creation completed.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Create a scale pyramid for a zarr/N5 container.")
-
-    parser.add_argument(
-        '--file', '-f', type=str, help="The input container")
-    parser.add_argument(
-        '--ds', '-d', type=str, help="The name of the dataset")
-    parser.add_argument(
-        '--scales', '-s', nargs='*', type=int, required=True,
-        help="The scaling factor between scales, e.g. 1 2 2 1 2 2")
-    parser.add_argument(
-        '--chunk_shape', '-c', nargs='*', type=int, default=None,
-        help="The size of a chunk in voxels")
-    parser.add_argument(
-        '--mode', '-m', type=str, choices=['up', 'down'], required=True,
-        help="Specify whether to upscale or downscale")
-
-    args = parser.parse_args()
-
-    create_scale_pyramid(args.file, args.ds, args.scales, args.chunk_shape, args.mode)
+    scale_pyramid()
