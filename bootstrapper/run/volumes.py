@@ -49,9 +49,10 @@ def process_zarr(path, output_zarr, type):
 def process_non_zarr(path, output_zarr, type):
 
     dataset_name = click.prompt("Enter output dataset name", default=f"volumes/{type}", type=str, show_default=True)
-    dtype = click.prompt("Enter data type", default="uint32" if type == 'labels' else "uint8", type=str, show_default=True)
-    
     out_array = os.path.join(output_zarr, dataset_name)
+    dtype = click.prompt("Enter data type", default="uint32" if type == 'labels' else "uint8", type=str, show_default=True)
+    # voxel_size = click.prompt()
+
     with click.Context(make_zarr) as ctx:
         _, voxel_size = ctx.invoke(make_zarr, in_path=path, out_array=out_array, dtype=dtype)
 
@@ -132,7 +133,7 @@ def make_volumes(base_dir, num_volumes):
 
     volumes = []
     for i in range(num_volumes):
-        click.echo(f"Processing volume {i+1}:")
+        click.echo(f"Processing volume {i+1}:\n")
         volume_info = prepare_volume(base_dir, i)
         if volume_info:
             volumes.append(volume_info)

@@ -30,7 +30,6 @@ class TestBbox(unittest.TestCase):
         shutil.rmtree(self.temp_dir)
 
     def check_function(self, result, args):
-        print(result)
         padding = int(args[args.index('--padding') + 1]) if '--padding' in args else 0
         output_path = str(result).strip().split("Writing to ")[-1].split("\n")[0]
         output_array = zarr.open(output_path, mode='r')
