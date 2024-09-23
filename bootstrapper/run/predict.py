@@ -31,9 +31,7 @@ def predict_blockwise(config: dict):
 
     # from here on, all values are in world units (unless explicitly mentioned)
     # get ROI of source
-    source = open_ds(
-        os.path.join(raw_file, raw_datasets[0]), 
-        mode="r")
+    source = open_ds(os.path.join(raw_file, raw_datasets[0]), mode="r")
     voxel_size = source.voxel_size
     logging.info(
         "Source dataset %s has shape %s, ROI %s, voxel size %s"
@@ -124,7 +122,7 @@ def predict_blockwise(config: dict):
             shape=(out_dims, *(output_roi.shape / voxel_size)),
             offset=output_roi.offset,
             voxel_size=voxel_size,
-            axis_names=["c^","z", "y", "x"],
+            axis_names=["c^", "z", "y", "x"],
             units=["nm", "nm", "nm"],
             chunk_shape=(out_dims, *output_shape),
             dtype=out_dtype,
@@ -182,6 +180,7 @@ def start_worker(config: dict, worker: str):
 def predict():
     """Run the predict command"""
     click.echo("Running predict command...")
+
 
 # def main():
 

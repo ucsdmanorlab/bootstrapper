@@ -1,6 +1,16 @@
 import click
 
-from bootstrapper.run import prepare, train, predict, segment, evaluate, filter, auto, view, utils
+from bootstrapper.run import (
+    prepare,
+    train,
+    predict,
+    segment,
+    evaluate,
+    filter,
+    auto,
+    view,
+    utils,
+)
 
 
 class OrderedGroup(click.Group):
@@ -23,6 +33,7 @@ class OrderedGroup(click.Group):
 def cli():
     """Bootstrapper CLI"""
     pass
+
 
 cli.add_command(prepare)
 cli.add_command(view)

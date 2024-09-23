@@ -16,8 +16,9 @@ this_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 def check_and_update(config):
-    pprint(config)
+    logger.info(pprint(config))
     if click.confirm("Are these values good?", default=True):
         return config
     else:
@@ -31,12 +32,12 @@ def check_and_update(config):
 def save_config(config, filename):
     with open(filename, "w") as f:
         yaml.dump(config, f)
-    click.echo(f"{filename} saved successfully.")
+    logger.info(f"{filename} saved successfully.")
 
 
 def copy_model_scripts(model_name, setup_dir):
     src = os.path.abspath(os.path.join(this_dir, "..", "models", model_name))
-    click.echo(f"Copying {src} to {setup_dir}")
+    logger.info(f"Copying {src} to {setup_dir}")
     copytree(src, setup_dir, dirs_exist_ok=True)
 
 
@@ -66,7 +67,9 @@ def get_rag_db_config(sqlite_path=None):
         db_port = os.environ.get("RAG_DB_PORT")
 
         if not all([db_host, db_user, db_password, db_port]):
-            click.echo("PgSQL Database credentials not found in environment variables.")
+            logger.info(
+                "PgSQL Database credentials not found in environment variables."
+            )
             db_host = click.prompt("Enter PgSQL RAG database host")
             db_user = click.prompt("Enter PgSQL RAG database user")
             db_password = click.prompt(
@@ -113,7 +116,7 @@ def choose_model(i, name):
 
 
 def create_training_config(round_dir, model_name, volumes):
-    click.echo(f"\nTraining config for {round_dir}/{model_name}:")
+    logger.info(f"\nTraining config for {round_dir}/{model_name}:")
     setup_dir = os.path.abspath(os.path.join(round_dir, model_name))
     copy_model_scripts(model_name, setup_dir)
     os.makedirs(os.path.join(setup_dir, "pipeline"), exist_ok=True)
@@ -170,7 +173,7 @@ def create_prediction_configs(volumes, train_config):
     model_name = os.path.basename(setup_dir)
     round_name = os.path.basename(os.path.dirname(setup_dir))
 
-    click.echo(f"\nPrediction configs for {round_name}/{model_name}:")
+    logger.info(f"\nPrediction configs for {round_name}/{model_name}:")
 
     pred_iter = click.prompt(
         "Enter checkpoint iteration for prediction",
@@ -212,7 +215,7 @@ def create_prediction_configs(volumes, train_config):
         volume_name = os.path.basename(volume["zarr_container"]).split(".zarr")[0]
         raw_array = os.path.join(volume["zarr_container"], volume["raw_dataset"])
 
-        click.echo(f"\nCreating prediction config for {raw_array}:")
+        logger.info(f"\nCreating prediction config for {raw_array}:")
 
         roi_offset, roi_shape, _ = get_roi(in_array=raw_array)
 
@@ -261,7 +264,7 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir):
 
     round_name = os.path.basename(os.path.dirname(setup_dir))
     model_name = os.path.basename(setup_dir)
-    click.echo(f"\nSegmentation configs for {round_name}/{model_name}:")
+    logger.info(f"\nSegmentation configs for {round_name}/{model_name}:")
 
     waterz_defaults = {
         "fragments_in_xy": True,
@@ -285,14 +288,14 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir):
         out_lut_dir = f"post/{round_name}-{model_name}/luts"
         out_seg_ds = f"post/{round_name}-{model_name}/segmentations"
 
-        click.echo(f"\nCreating segmentation config for {affs_array}:")
+        logger.info(f"\nCreating segmentation config for {affs_array}:")
 
         # TODO: find way to get roi from predictions
-        #roi_offset, roi_shape, voxel_size = get_roi(in_array=affs_array)
+        # roi_offset, roi_shape, voxel_size = get_roi(in_array=affs_array)
 
         do_blockwise = True
 
-        # blockwise or not ? 
+        # blockwise or not ?
         # do_blockwise = (
         #     roi_shape[0]
         #     * roi_shape[1]
@@ -385,7 +388,7 @@ def create_evaluation_configs(
 
     round_name = os.path.basename(os.path.dirname(setup_dir))
     model_name = os.path.basename(setup_dir)
-    click.echo(f"\nEvaluation configs for {round_name}/{model_name}:")
+    logger.info(f"\nEvaluation configs for {round_name}/{model_name}:")
 
     out_eval_dir = f"post/{round_name}-{model_name}/evaluations"
     out_map_ds = f"post/{round_name}-{model_name}/evaluations/lsd_error_map"
@@ -394,7 +397,7 @@ def create_evaluation_configs(
     for volume in volumes:
         volume_name = os.path.basename(volume["zarr_container"]).split(".zarr")[0]
 
-        click.echo(f"\nCreating evaluation config for {out_segs}:")
+        logger.info(f"\nCreating evaluation config for {out_segs}:")
 
         # ask if gt labels are available #TODO
         gt_labels_file = None
@@ -467,7 +470,7 @@ def create_filter_configs(
     volumes, out_segs, eval_dir, round_name, model_name, setup_dir
 ):
 
-    click.echo(f"\nFilter configs for {round_name}/{model_name}:")
+    logger.info(f"\nFilter configs for {round_name}/{model_name}:")
 
     out_seg_ds = f"pseudo_gt/{round_name}-{model_name}/ids"
     out_mask_ds = f"pseudo_gt/{round_name}-{model_name}/mask"
@@ -520,27 +523,47 @@ def make_round_configs(round_dir, model_name, volumes):
     """Create all configs for a model with given volumes."""
 
     train_config = create_training_config(round_dir, model_name, volumes)
-    out_affs_ds, out_pred_datasets, out_lsd_errors, setup_dir = create_prediction_configs(volumes, train_config)
+    out_affs_ds, out_pred_datasets, out_lsd_errors, setup_dir = (
+        create_prediction_configs(volumes, train_config)
+    )
     out_segs = create_segmentation_configs(volumes, out_affs_ds, setup_dir)
-    out_eval_dir = create_evaluation_configs(volumes, out_segs, out_lsd_errors, out_pred_datasets, setup_dir)
-    out_volumes = create_filter_configs(volumes, out_segs, out_eval_dir, os.path.basename(round_dir), model_name, setup_dir)
+    out_eval_dir = create_evaluation_configs(
+        volumes, out_segs, out_lsd_errors, out_pred_datasets, setup_dir
+    )
+    out_volumes = create_filter_configs(
+        volumes,
+        out_segs,
+        out_eval_dir,
+        os.path.basename(round_dir),
+        model_name,
+        setup_dir,
+    )
 
     return out_volumes
+
 
 def get_roi(in_array, offset=None, shape=None):
     """Get desired ROI within volume."""
     in_array = open_ds(in_array)
     full_roi = in_array.roi
     voxel_size = in_array.voxel_size
-    full_shape = in_array.roi.shape / voxel_size
+    full_shape = [s // v for s, v in zip(in_array.roi.shape, voxel_size)]
 
     if offset is None:
-        offset = click.prompt(f"Enter voxel offset as space-separated integers in {in_array.axis_names}", type=str, default="0 0 0", show_default=False)
-        offset = tuple(map(int,offset.strip().split()))
+        offset = click.prompt(
+            f"Enter voxel offset as space-separated integers in {in_array.axis_names}",
+            type=str,
+            default="0 0 0",
+            show_default=False,
+        )
+        offset = tuple(map(int, offset.strip().split()))
 
     if shape is None:
-        shape = click.prompt(f"Enter required voxel shape starting from {offset} as space-separated integers in {in_array.axis_names} (skipping will get remaining available shape)", default="0 0 0")
-        shape = shape.strip().split() if shape != "0 0 0" else None
+        shape = click.prompt(
+            f"Enter required voxel shape starting from {offset} as space-separated integers in {in_array.axis_names} (skipping will get remaining available shape)",
+            default="0 0 0",
+        )
+        shape = tuple(map(int, shape.strip().split())) if shape != "0 0 0" else None
 
     roi_offset = [x * y for x, y in zip(offset, voxel_size)]
 
@@ -561,14 +584,27 @@ def get_roi(in_array, offset=None, shape=None):
 
     roi = Roi(roi_offset, roi_shape)
     if not full_roi.contains(roi):
-        click.echo("ROI is not contained within the full volume's ROI. Cropping to..")
+        logger.info("ROI is not contained within the full volume's ROI. Cropping to..")
         roi = roi.intersect(full_roi)
-        click.echo(f"{roi}")
+        logger.info(f"{roi}")
 
     return roi.offset, roi.shape, voxel_size
 
+
 def make_configs(base_dir):
     """Create for multiple rounds with given volumes."""
+
+    logger.info(f"{os.listdir(base_dir)}")
+
+    existing_rounds = [
+        d
+        for d in os.listdir(base_dir)
+        if os.path.isdir((os.path.join(base_dir, d)))
+        and ".zarr" not in d
+        and "round" in d
+    ]
+
+    logger.info(f"Existing rounds: {existing_rounds}")
 
     num_rounds = click.prompt(
         "Enter number of bootstrapping rounds (more can be added later): ",
@@ -593,17 +629,21 @@ def make_configs(base_dir):
             else:
                 with open(os.path.join(round_dir, "volumes.yaml")) as f:
                     volumes = yaml.safe_load(f)
-                
+
                 logger.info(f"Loaded volumes from {round_dir}/volumes.yaml: ")
                 for volume in volumes:
                     logger.info(pprint(volume))
 
-                if click.prompt("Do you want to update the volumes?", default=False, show_default=True):
+                if click.prompt(
+                    "Do you want to update the volumes?",
+                    default=False,
+                    show_default=True,
+                ):
                     volumes = make_volumes(base_dir)
                     save_config(volumes, os.path.join(round_dir, "volumes.yaml"))
         else:
             volumes = out_volumes
-        
+
         model_name = choose_model(i, round_name)
         out_volumes = make_round_configs(round_dir, model_name, volumes)
 
@@ -615,4 +655,4 @@ def make_configs(base_dir):
             )
             if continue_round == "n":
                 break
-    click.echo(f"All configs created successfully!")
+    logger.info(f"All configs created successfully!")

@@ -7,6 +7,7 @@ from funlib.persistence import open_ds, prepare_ds
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def block_fn(in_array, out_array, block):
     from funlib.persistence import Array
     from skimage.exposure import equalize_adapthist
@@ -25,6 +26,7 @@ def block_fn(in_array, out_array, block):
         raise
 
     return 0
+
 
 def run_blockwise(in_array, out_array, block_shape, context):
     dims = in_array.roi.dims
@@ -61,6 +63,7 @@ def run_blockwise(in_array, out_array, block_shape, context):
         logger.info("Ran all blocks successfully!")
     else:
         logger.error("Did not run all blocks successfully...")
+
 
 @click.command()
 @click.option(
@@ -107,7 +110,7 @@ def clahe(in_arr, out_arr, block_shape, context):
         if in_array.roi.dims != 3:
             raise ValueError("Only 3D data is supported.")
         block_shape = (1, *in_array.chunk_shape[1:])
-    
+
     if context is None:
         context = (0, *in_array.chunk_shape[1:])
 
@@ -129,6 +132,7 @@ def clahe(in_arr, out_arr, block_shape, context):
     print(f"Output created at {out_arr}")
 
     return out_arr
+
 
 if __name__ == "__main__":
     clahe()

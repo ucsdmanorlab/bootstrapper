@@ -10,6 +10,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def scale_block(in_array, out_array, factor, mode, block):
     import numpy as np
     from funlib.persistence import Array
@@ -94,11 +95,11 @@ def scale_array(in_array, out_array, factor, write_size, mode):
     help="The path to the input zarr container",
 )
 @click.option(
-    "--in_ds_name", 
-    "-ds", 
-    type=str, 
-    required=True, 
-    help="The name of the input dataset within the container"
+    "--in_ds_name",
+    "-ds",
+    type=str,
+    required=True,
+    help="The name of the input dataset within the container",
 )
 @click.option(
     "--scales",
@@ -147,8 +148,12 @@ def scale_pyramid(in_file, in_ds_name, scales, chunk_shape, mode):
     try:
         prev_array = open_ds(os.path.join(in_file, in_ds_name))
     except Exception:
-        logger.error(f"{os.path.join(in_file, in_ds_name)} does not seem to be a dataset")
-        raise RuntimeError(f"{os.path.join(in_file, in_ds_name)} does not seem to be a dataset")
+        logger.error(
+            f"{os.path.join(in_file, in_ds_name)} does not seem to be a dataset"
+        )
+        raise RuntimeError(
+            f"{os.path.join(in_file, in_ds_name)} does not seem to be a dataset"
+        )
 
     if chunk_shape is not None:
         chunk_shape = daisy.Coordinate(chunk_shape)

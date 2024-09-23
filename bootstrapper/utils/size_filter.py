@@ -7,6 +7,7 @@ from skimage.measure import regionprops, label
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 @click.command()
 @click.option(
     "--in_array", "-i", required=True, type=str, help="Input labels zarr array"

@@ -9,6 +9,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def make_raw_mask(in_ds, out_ds, block):
     import numpy as np
     from funlib.persistence import Array

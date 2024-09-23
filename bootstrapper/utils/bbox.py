@@ -7,6 +7,7 @@ import click
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 @click.command()
 @click.option(
     "--in_array",

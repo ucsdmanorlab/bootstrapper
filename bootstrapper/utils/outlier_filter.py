@@ -8,9 +8,14 @@ from skimage.measure import regionprops, label
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 @click.command()
 @click.option(
-    "--in_labels", "-i", required=True, type=click.Path(exists=True), help="Input labels zarr array"
+    "--in_labels",
+    "-i",
+    required=True,
+    type=click.Path(exists=True),
+    help="Input labels zarr array",
 )
 @click.option("--out_labels", "-o", type=str, help="Output labels zarr array")
 @click.option(
@@ -88,6 +93,7 @@ def outlier_filter(in_labels, out_labels, sigma):
     )
     print(f"Filtered output at {out_labels}")
     return out_labels
+
 
 if __name__ == "__main__":
     outlier_filter()

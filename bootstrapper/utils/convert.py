@@ -12,6 +12,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def read_from(in_path):
     def load_tif_files(paths):
         logger.info(f"Loading {len(paths)} TIFF files")
@@ -38,8 +39,12 @@ def read_from(in_path):
     elif in_path.endswith(".tif"):  # load single tif file
         return load_single_tif(in_path)
     else:
-        logger.error("Unsupported file format. Supported formats are .tif and .tif directories")
-        raise ValueError("Unsupported file format. Supported formats are .tif and .tif directories")
+        logger.error(
+            "Unsupported file format. Supported formats are .tif and .tif directories"
+        )
+        raise ValueError(
+            "Unsupported file format. Supported formats are .tif and .tif directories"
+        )
 
 
 @click.command()
@@ -109,7 +114,9 @@ def convert(
     """Convert a TIFF stack or directory of TIFF files to a Zarr array."""
 
     # load
-    logger.info(f"Loading {'directory' if os.path.isdir(in_path) else 'image'}: {in_path}")
+    logger.info(
+        f"Loading {'directory' if os.path.isdir(in_path) else 'image'}: {in_path}"
+    )
     full_array = read_from(in_path)
 
     shape = full_array.shape
@@ -132,7 +139,9 @@ def convert(
         shape = full_array.shape
         bbox_offset = [x.start for x in bbox]
 
-        logger.info(f"Total voxel shape after bounding box: {shape}, voxel_offset: {bbox_offset}")
+        logger.info(
+            f"Total voxel shape after bounding box: {shape}, voxel_offset: {bbox_offset}"
+        )
     else:
         bbox_offset = [0, 0, 0]
 
