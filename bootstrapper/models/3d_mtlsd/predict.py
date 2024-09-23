@@ -51,7 +51,7 @@ def predict(config):
     scan_request.add(raw, input_size)
     scan_request.add(pred_lsds, output_size)
     scan_request.add(pred_affs, output_size)
-    
+
     source = gp.ArraySource(
         raw, open_ds(os.path.join(raw_file, raw_dataset)), interpolatable=True
     )

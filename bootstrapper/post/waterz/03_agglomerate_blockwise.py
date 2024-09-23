@@ -11,13 +11,8 @@ from funlib.persistence import open_ds
 import daisy
 
 
-def agglomerate_in_block(
-        affs, 
-        fragments,
-        db_config,
-        merge_function,
-        block):
-    
+def agglomerate_in_block(affs, fragments, db_config, merge_function, block):
+
     # import
     from pathlib import Path
     import numpy as np
@@ -34,7 +29,7 @@ def agglomerate_in_block(
     # load array data
     affs_data = affs.to_ndarray(block.read_roi)
     fragments_data = fragments.to_ndarray(block.read_roi)
-    
+
     # load RAG DB
     if "db_file" in db_config:
         # SQLiteGraphDatabase
@@ -62,10 +57,10 @@ def agglomerate_in_block(
             node_attrs={"center": Vec(int, affs.roi.dims)},
             edge_attrs={"merge_score": float, "agglomerated": bool},
         )
-    
+
     # load RAG within block
     rag = rag_provider[block.read_roi]
-    
+
     # waterz uses memory proportional to the max label in fragments, therefore
     # we relabel them here and use those
     fragments_relabelled, n, fragment_relabel_map = relabel(
@@ -80,7 +75,7 @@ def agglomerate_in_block(
 
     # add random noise to affinities to break ties and prevent streaking
     random_noise = np.random.randn(*affs_data.shape) * 0.01
-    
+
     # add smoothed affs, to solve a similar issue to the random noise. We want to bias
     # towards processing the central regions of objects first.
     smoothed_affs = (gaussian_filter(affs_data, sigma=(0, 1, 2, 2)) - 0.5) * 0.05
@@ -96,7 +91,9 @@ def agglomerate_in_block(
 
     # add fake z-affinities if 2D affinities
     if affs_data.shape[0] == 2:
-        affs_data = np.stack([np.zeros_like(affs_data[0]), affs_data[0], affs_data[1]], axis=0)
+        affs_data = np.stack(
+            [np.zeros_like(affs_data[0]), affs_data[0], affs_data[1]], axis=0
+        )
 
     # run waterz with threshold 0 to get the initial RAG edges
     generator = waterz.agglomerate(
@@ -131,7 +128,7 @@ def agglomerate_in_block(
             fragment_relabel_map[b],
             fragment_relabel_map[c],
             score,
-        )       
+        )
 
     # update RAG with new edge scores
     num_merged = 0
@@ -146,15 +143,16 @@ def agglomerate_in_block(
 
     return 0
 
+
 def agglomerate(config, db_config):
 
     logging.info("Agglomerating fragments with config:")
 
     # Extract arguments from config
-    affs_file = config["affs_file"] # Path to affinities zarr container
-    affs_dataset = config["affs_dataset"] # Name of affinities dataset
-    fragments_file = config["fragments_file"] # Path to fragments zarr container
-    fragments_dataset = config["fragments_dataset"] # Name of fragments dataset
+    affs_file = config["affs_file"]  # Path to affinities zarr container
+    affs_dataset = config["affs_dataset"]  # Name of affinities dataset
+    fragments_file = config["fragments_file"]  # Path to fragments zarr container
+    fragments_dataset = config["fragments_dataset"]  # Name of fragments dataset
 
     # Optional parameters
     blockwise = config.get("blockwise", False)
@@ -205,21 +203,38 @@ def agglomerate(config, db_config):
         if context is not None:
             context = Coordinate(context) * voxel_size
         else:
-            context = Coordinate([10,] * affs.roi.dims) * voxel_size
-    
-    else: # blockwise is False
+            context = (
+                Coordinate(
+                    [
+                        10,
+                    ]
+                    * affs.roi.dims
+                )
+                * voxel_size
+            )
+
+    else:  # blockwise is False
         block_size = total_roi.get_shape()
-        context = Coordinate([0,] * affs.roi.dims)
+        context = Coordinate(
+            [
+                0,
+            ]
+            * affs.roi.dims
+        )
         num_workers = 1
 
     # get block read ROI, write ROI
     read_roi = Roi((0,) * affs.roi.dims, block_size).grow(context, context)
     write_roi = Roi((0,) * affs.roi.dims, block_size)
-    logging.info(f"Total ROI: {total_roi}, Read ROI: {read_roi}, Write ROI: {write_roi}")
+    logging.info(
+        f"Total ROI: {total_roi}, Read ROI: {read_roi}, Write ROI: {write_roi}"
+    )
 
     read_roi = Roi((0,) * affs.roi.dims, block_size).grow(context, context)
     write_roi = Roi((0,) * affs.roi.dims, block_size)
-    logging.info(f"Total ROI: {total_roi}, Read ROI: {read_roi}, Write ROI: {write_roi}")
+    logging.info(
+        f"Total ROI: {total_roi}, Read ROI: {read_roi}, Write ROI: {write_roi}"
+    )
 
     # prepare blockwise task
     task = daisy.Task(
@@ -248,9 +263,9 @@ def agglomerate(config, db_config):
     else:
         print("Did not run all blocks successfully...")
 
-    
+
 if __name__ == "__main__":
-    config_file = sys.argv[1] # Path to config file
+    config_file = sys.argv[1]  # Path to config file
 
     # Load config file
     with open(config_file, "r") as f:

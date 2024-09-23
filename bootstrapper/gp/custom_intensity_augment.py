@@ -4,7 +4,7 @@ import random
 
 
 class CustomIntensityAugment(gp.BatchFilter):
-    """Randomly scale and shift the values of an array. 
+    """Randomly scale and shift the values of an array.
     Works on arrays with num_channels > 1.
 
     Args:
@@ -41,6 +41,7 @@ class CustomIntensityAugment(gp.BatchFilter):
             could be useful for computational efficiency and increasing
             augmentation space.
     """
+
     def __init__(
         self,
         array,

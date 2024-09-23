@@ -33,15 +33,15 @@ def predict(config):
     input_lsds = gp.ArrayKey("INPUT_LSDS")
     input_affs = gp.ArrayKey("INPUT_AFFS")
     pred_affs = gp.ArrayKey("PRED_AFFS")
-    
+
     input_lsds_ds = open_ds(
         os.path.join(input_file, input_datasets[0]),
     )
-    
+
     input_affs_ds = open_ds(
         os.path.join(input_file, input_datasets[1]),
     )
-    
+
     shape_increase = net_config["shape_increase"]
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
     output_shape = [x + y for x, y in zip(shape_increase, net_config["output_shape"])]
@@ -51,12 +51,11 @@ def predict(config):
     output_size = Coordinate(output_shape) * voxel_size
     context = (input_size - output_size) / 2
 
-
     chunk_request = gp.BatchRequest()
     chunk_request.add(input_lsds, input_size)
     chunk_request.add(input_affs, input_size)
     chunk_request.add(pred_affs, output_size)
-   
+
     source = (
         gp.ArraySource(input_lsds, input_lsds_ds, True),
         gp.ArraySource(input_affs, input_affs_ds, True),

@@ -50,7 +50,9 @@ def predict(config):
     chunk_request.add(pred_affs, output_size)
 
     source = gp.ArraySource(
-        input_lsds, open_ds(os.path.join(input_file, input_datasets[0])), interpolatable=True
+        input_lsds,
+        open_ds(os.path.join(input_file, input_datasets[0])),
+        interpolatable=True,
     )
 
     predict = gp.torch.Predict(

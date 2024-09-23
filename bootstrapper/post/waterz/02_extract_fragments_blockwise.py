@@ -18,24 +18,23 @@ import daisy
 
 
 def watershed_in_block(
-        affs, 
-        fragments,
-        db_config,
-        mask_array,
-        fragments_in_xy,
-        background_mask,
-        mask_thresh,
-        min_seed_distance,
-        epsilon_agglomerate,
-        filter_fragments,
-        replace_sections, 
-        block):
-    
+    affs,
+    fragments,
+    db_config,
+    mask_array,
+    fragments_in_xy,
+    background_mask,
+    mask_thresh,
+    min_seed_distance,
+    epsilon_agglomerate,
+    filter_fragments,
+    replace_sections,
+    block,
+):
+
     # import
     import numpy as np
-    from scipy.ndimage import \
-        mean, \
-        center_of_mass
+    from scipy.ndimage import mean, center_of_mass
 
     from funlib.persistence import Array
     from funlib.segment.arrays import relabel, replace_values
@@ -46,7 +45,7 @@ def watershed_in_block(
     from bootstrapper.post import watershed_from_affinities
 
     # load data
-    affs_data = affs.to_ndarray(block.read_roi)[:3] # short range affinities only
+    affs_data = affs.to_ndarray(block.read_roi)[:3]  # short range affinities only
 
     # normalize
     if affs_data.dtype == np.uint8:
@@ -121,7 +120,7 @@ def watershed_in_block(
     if replace_sections is not None:
         block_begin = block.write_roi.get_begin()
         shape = block.write_roi.get_shape()
-        context = (block.write_roi.shape -block.read_roi.shape) / 2
+        context = (block.write_roi.shape - block.read_roi.shape) / 2
 
         z_context = context[0] / affs.voxel_size[0]
 
@@ -145,10 +144,10 @@ def watershed_in_block(
     # create fragments array
     fragments_array = Array(
         fragments_data,
-        block.read_roi.offset, 
+        block.read_roi.offset,
         affs.voxel_size,
         fragments.axis_names,
-        fragments.units
+        fragments.units,
     )
 
     # crop fragments array to write ROI
@@ -157,7 +156,7 @@ def watershed_in_block(
         block.write_roi.offset,
         affs.voxel_size,
         fragments.axis_names,
-        fragments.units
+        fragments.units,
     )
     fragments_array.data = fragments_array.data.compute()
 
@@ -179,7 +178,7 @@ def watershed_in_block(
     # exit if no fragments were found
     if max_id == 0:
         return 0
-    
+
     # load RAG DB
     if "db_file" in db_config:
         # SQLiteGraphDatabase
@@ -207,7 +206,7 @@ def watershed_in_block(
             node_attrs={"center": Vec(int, affs.roi.dims)},
             edge_attrs={"merge_score": float, "agglomerated": bool},
         )
-    
+
     # get fragment centers
     fragment_centers = {
         fragment: block.write_roi.get_offset() + affs.voxel_size * Coordinate(center)
@@ -225,33 +224,44 @@ def watershed_in_block(
 
     return 0
 
+
 def extract_fragments(config, db_config):
 
     logging.info("Extracting fragments with config:")
     pprint(config)
 
     # Extract arguments from config
-    affs_file = config["affs_file"] # Path to affinities zarr container
-    affs_dataset = config["affs_dataset"] # Name of affinities dataset
-    fragments_file = config["fragments_file"] # Path to fragments zarr container
-    fragments_dataset = config["fragments_dataset"] # Name of fragments dataset
+    affs_file = config["affs_file"]  # Path to affinities zarr container
+    affs_dataset = config["affs_dataset"]  # Name of affinities dataset
+    fragments_file = config["fragments_file"]  # Path to fragments zarr container
+    fragments_dataset = config["fragments_dataset"]  # Name of fragments dataset
 
     # Optional parameters
-    roi_offset = config.get("roi_offset", None) # Offset of ROI
-    roi_shape = config.get("roi_shape", None) # Shape of ROI
-    blockwise = config.get("blockwise", False) # Perform blockwise extraction
-    num_workers = config.get("num_workers", 1) # Number of workers to use
-    block_shape = config.get("block_shape", None) # Shape of block
-    context = config.get("context", None) # Context for block
+    roi_offset = config.get("roi_offset", None)  # Offset of ROI
+    roi_shape = config.get("roi_shape", None)  # Shape of ROI
+    blockwise = config.get("blockwise", False)  # Perform blockwise extraction
+    num_workers = config.get("num_workers", 1)  # Number of workers to use
+    block_shape = config.get("block_shape", None)  # Shape of block
+    context = config.get("context", None)  # Context for block
 
     # optional watershed parameters
-    fragments_in_xy = config.get("fragments_in_xy", True) # Extract fragments for each xy-section separately
-    background_mask = config.get("background_mask", False) # Mask out boundaries
-    mask_thresh = config.get("mask_thresh", 0.5) # Threshold for boundary mask
-    min_seed_distance = config.get("min_seed_distance", 10) # Minimum distance between seeds for watershed
-    epsilon_agglomerate = config.get("epsilon_agglomerate", 0) # Perform initial waterz agglomeration
-    filter_fragments = config.get("filter_fragments", None) # Filter fragments with average affinity lower than this value
-    replace_sections = config.get("replace_sections", None) # Replace fragments data with zero in given sections
+    fragments_in_xy = config.get(
+        "fragments_in_xy", True
+    )  # Extract fragments for each xy-section separately
+    background_mask = config.get("background_mask", False)  # Mask out boundaries
+    mask_thresh = config.get("mask_thresh", 0.5)  # Threshold for boundary mask
+    min_seed_distance = config.get(
+        "min_seed_distance", 10
+    )  # Minimum distance between seeds for watershed
+    epsilon_agglomerate = config.get(
+        "epsilon_agglomerate", 0
+    )  # Perform initial waterz agglomeration
+    filter_fragments = config.get(
+        "filter_fragments", None
+    )  # Filter fragments with average affinity lower than this value
+    replace_sections = config.get(
+        "replace_sections", None
+    )  # Replace fragments data with zero in given sections
 
     # Read affs
     logging.info(f"Reading affs from {affs_file}/{affs_dataset}")
@@ -274,20 +284,36 @@ def extract_fragments(config, db_config):
         if context is not None:
             context = Coordinate(context) * voxel_size
         else:
-            context = Coordinate([0,] * affs.roi.dims)
-    
-    else: # blockwise is False
+            context = Coordinate(
+                [
+                    0,
+                ]
+                * affs.roi.dims
+            )
+
+    else:  # blockwise is False
         block_size = total_roi.get_shape()
-        context = Coordinate([0,] * affs.roi.dims)
+        context = Coordinate(
+            [
+                0,
+            ]
+            * affs.roi.dims
+        )
         num_workers = 1
 
     # get block read ROI, write ROI
     read_roi = Roi((0,) * affs.roi.dims, block_size).grow(context, context)
     write_roi = Roi((0,) * affs.roi.dims, block_size)
-    logging.info(f"Total ROI: {total_roi}, Read ROI: {read_roi}, Write ROI: {write_roi}")
-    
+    logging.info(
+        f"Total ROI: {total_roi}, Read ROI: {read_roi}, Write ROI: {write_roi}"
+    )
+
     # get mask
-    if "mask_file" in config and "mask_dataset" in config and config["mask_file"] is not None:
+    if (
+        "mask_file" in config
+        and "mask_dataset" in config
+        and config["mask_file"] is not None
+    ):
         mask_array = open_ds(os.path.join(config["mask_file"], config["mask_dataset"]))
     else:
         mask_array = None
@@ -357,7 +383,7 @@ def extract_fragments(config, db_config):
             min_seed_distance,
             epsilon_agglomerate,
             filter_fragments,
-            replace_sections
+            replace_sections,
         ),
         read_write_conflict=False,
         num_workers=num_workers,
@@ -373,9 +399,9 @@ def extract_fragments(config, db_config):
     else:
         print("Did not run all blocks successfully...")
 
-    
+
 if __name__ == "__main__":
-    config_file = sys.argv[1] # Path to config file
+    config_file = sys.argv[1]  # Path to config file
 
     # Load config file
     with open(config_file, "r") as f:

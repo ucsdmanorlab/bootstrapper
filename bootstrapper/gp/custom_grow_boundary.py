@@ -6,7 +6,7 @@ from scipy.ndimage.morphology import binary_erosion
 
 class CustomGrowBoundary(gp.BatchFilter):
     """Grow a boundary between regions in a label array. Does not grow at the
-    border of the batch or an optionally provided mask. Erodes an amount of 
+    border of the batch or an optionally provided mask. Erodes an amount of
     voxels less than or equal to max_steps.
 
     Args:

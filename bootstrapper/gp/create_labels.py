@@ -29,7 +29,6 @@ class CreateLabels(gp.BatchProvider):
         voxel_size (tuple): The voxel size of the labels.
     """
 
-
     def __init__(
         self,
         array_key,

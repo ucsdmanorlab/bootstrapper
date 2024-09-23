@@ -37,6 +37,7 @@ def segment_in_block(fragments, segmentation, lut, block):
     # write to segmentation array
     segmentation[block.write_roi] = relabelled
 
+
 def extract_segmentation(config):
     # read config
     fragments_file = config["fragments_file"]
@@ -93,7 +94,7 @@ def extract_segmentation(config):
             chunk_shape=write_roi.shape / voxel_size,
             compressor=zarr.get_codec({"id": "blosc"}),
             dtype=np.uint64,
-            mode="w"
+            mode="w",
         )
 
         # read LUT
@@ -111,12 +112,7 @@ def extract_segmentation(config):
             total_roi=total_roi,
             read_roi=read_roi,
             write_roi=write_roi,
-            process_function=partial(
-                segment_in_block,
-                fragments,
-                segmentation,
-                lut
-            ),
+            process_function=partial(segment_in_block, fragments, segmentation, lut),
             fit="shrink",
             num_workers=num_workers,
         )

@@ -10,8 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class AddLSDErrors(BatchFilter):
-
-    """Compute a local shape descriptor error map and error mask from segmentation 
+    """Compute a local shape descriptor error map and error mask from segmentation
     and predicted descriptors.
 
     Args:
@@ -21,21 +20,21 @@ class AddLSDErrors(BatchFilter):
 
         seg_descriptor (:class:`ArrayKey`): The array of the shape descriptor to
             generate.
-        
+
         pred_descriptor (:class:`ArrayKey`): The array of the shape descriptor to
             compute errors against.
 
         error_map (:class:`ArrayKey`): The array storing the voxel-wise difference
-            between seg_descriptor and pred_descriptor. 
-        
+            between seg_descriptor and pred_descriptor.
+
         error_mask (:class:`ArrayKey`): The array storing the thresholded and closed
-            error map. Closed refers to binary closing. 
+            error map. Closed refers to binary closing.
 
         thresholds (tuple of float): Floor and ceiling values to use to threshold
             the error map.
 
         labels_mask (:class:`ArrayKey`, optional): The array to use as a mask
-            for the errors. Errors are zero in masked out regions. 
+            for the errors. Errors are zero in masked out regions.
 
         sigma (float or tuple of float): The context to consider to compute
             the shape descriptor in world units. This will be the standard
@@ -76,7 +75,7 @@ class AddLSDErrors(BatchFilter):
         pred_descriptor,
         error_map,
         error_mask,
-        thresholds=(0.1,1.0),
+        thresholds=(0.1, 1.0),
         labels_mask=None,
         sigma=5.0,
         mode="gaussian",
@@ -93,7 +92,7 @@ class AddLSDErrors(BatchFilter):
         self.thresholds = thresholds
         self.labels_mask = labels_mask
         self.components = components
-        self.array_specs = {} if array_specs is None else array_specs 
+        self.array_specs = {} if array_specs is None else array_specs
 
         try:
             self.sigma = tuple(sigma)
@@ -146,7 +145,9 @@ class AddLSDErrors(BatchFilter):
                 self.context = self.context[0:2]
 
             # increase segmentation ROI to fit Gaussian
-            context_roi = request[self.seg_descriptor].roi.grow(self.context, self.context)
+            context_roi = request[self.seg_descriptor].roi.grow(
+                self.context, self.context
+            )
 
             # ensure context roi is multiple of voxel size
             context_roi = context_roi.snap_to_grid(self.voxel_size, mode="shrink")
@@ -155,7 +156,7 @@ class AddLSDErrors(BatchFilter):
 
             deps[self.segmentation] = request[self.seg_descriptor].copy()
             deps[self.segmentation].roi = grown_roi
-            
+
             deps[self.pred_descriptor] = request[self.pred_descriptor].copy()
             deps[self.pred_descriptor].roi = grown_roi
 
@@ -199,20 +200,21 @@ class AddLSDErrors(BatchFilter):
         seg_descriptor_array = Array(seg_descriptor, seg_descriptor_spec)
 
         # load pred_descriptor array and labels_mask array
-        pred_descriptor_array = batch[self.pred_descriptor].crop(seg_descriptor_spec.roi)
+        pred_descriptor_array = batch[self.pred_descriptor].crop(
+            seg_descriptor_spec.roi
+        )
         if self.labels_mask:
             labels_mask_array = batch[self.labels_mask].crop(seg_descriptor_spec.roi)
 
         # create error map array
         error_map_array = self._create_diff(
-                seg_descriptor_array.data,
-                pred_descriptor_array.data,
-                None if not self.labels_mask else labels_mask_array.data)
+            seg_descriptor_array.data,
+            pred_descriptor_array.data,
+            None if not self.labels_mask else labels_mask_array.data,
+        )
 
         # create error mask array
-        error_mask_array = self._create_mask(
-                error_map_array,
-                self.thresholds)
+        error_mask_array = self._create_mask(error_map_array, self.thresholds)
         mask_spec = seg_descriptor_spec.copy()
         mask_spec.dtype = np.uint8
 
@@ -226,7 +228,7 @@ class AddLSDErrors(BatchFilter):
 
     def _create_diff(self, a_data, b_data, mask_data=None):
 
-        diff_data = np.sum((a_data - b_data)**2, axis=0)
+        diff_data = np.sum((a_data - b_data) ** 2, axis=0)
         if mask_data is not None:
             diff_data *= mask_data
 
@@ -241,16 +243,21 @@ class AddLSDErrors(BatchFilter):
         return diff_data
 
     def _create_mask(self, i_data, thresholds):
-       
+
         floor, ceil = thresholds
 
         # threshold
         o_data = (i_data > floor) & (i_data < ceil)
 
-        #TODO: make erode-dilate optional
+        # TODO: make erode-dilate optional
         # dilate/erode
-        z_struct = np.stack([ball(1)[0],]*3)
-        xy_struct = np.stack([np.zeros((3,3)),disk(1),np.zeros((3,3))])
+        z_struct = np.stack(
+            [
+                ball(1)[0],
+            ]
+            * 3
+        )
+        xy_struct = np.stack([np.zeros((3, 3)), disk(1), np.zeros((3, 3))])
 
         # to remove minor pixel-wise differences along xy boundaries
         o_data = binary_erosion(o_data, xy_struct, iterations=4)
