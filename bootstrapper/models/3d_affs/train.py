@@ -21,7 +21,6 @@ torch.backends.cudnn.benchmark = True
 def train(
     setup_dir,
     voxel_size,
-    sigma,
     max_iterations,
     samples,
     out_dir,
