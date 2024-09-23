@@ -48,7 +48,7 @@ class SmoothAugment(gp.BatchFilter):
 
         elif len(array.shape) == 4:
             for z in range(array.shape[1]):
-                sigma = random.uniform(self.range[0], self.range[1])
+                sigma = random.uniform(self.blur_min, self.blur_max)
                 array_sec = array[:, z]
 
                 array[:, z] = np.array(
@@ -59,7 +59,7 @@ class SmoothAugment(gp.BatchFilter):
                 ).astype(array_sec.dtype)
 
         elif len(array.shape) == 2:
-            sigma = random.uniform(self.range[0], self.range[1])
+            sigma = random.uniform(self.blur_min, self.blur_max)
             array = np.array(gaussian_filter(array, sigma=sigma)).astype(array.dtype)
 
         else:

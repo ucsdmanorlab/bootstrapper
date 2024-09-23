@@ -31,7 +31,7 @@ class ObfuscateAffs(gp.BatchFilter):
 
     def setup(self):
         self.enable_autoskip()
-        self.updates(self.array, self.spec[self.array])
+        self.updates(self.affinity_array, self.spec[self.affinity_array])
 
     def skip_node(self, request):
         return random.random() > self.p

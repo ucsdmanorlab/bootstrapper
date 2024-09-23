@@ -135,7 +135,7 @@ class CreateLabels(gp.BatchProvider):
             labels = expanded_labels
 
             labels[labels == 0] = np.max(labels) + 1
-            labels = label(labels)[::anisotropy].astype(np.uint64)
+            labels = label(labels)[::anisotropy].astype(np.uint32)
 
         elif choice == "random":
             np.random.seed()
@@ -144,7 +144,7 @@ class CreateLabels(gp.BatchProvider):
             max_filtered = maximum_filter(peaks, 15)
             maxima = max_filtered == peaks
             seeds = label(maxima, connectivity=1)
-            labels = watershed(1.0 - peaks, seeds)[::anisotropy].astype(np.uint64)
+            labels = watershed(1.0 - peaks, seeds)[::anisotropy].astype(np.uint32)
 
         else:
             raise AssertionError("invalid choice")
