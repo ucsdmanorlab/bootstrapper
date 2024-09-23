@@ -49,8 +49,8 @@ def run_blockwise(in_array, out_array, block_shape, context):
         read_block_roi,
         write_block_roi,
         process_function=partial(block_fn, in_array, out_array),
-        read_write_conflict=False,
-        num_workers=10,
+        read_write_conflict=True,
+        num_workers=20,
         max_retries=0,
         fit="shrink",
     )
@@ -74,18 +74,16 @@ def run_blockwise(in_array, out_array, block_shape, context):
 @click.option(
     "--block-shape",
     "-b",
-    type=(int, int, int),
-    default=(1, 256, 256),
+    nargs=3,
+    type=int,
     help="Block shape in voxels as a tuple of integers.",
-    show_default=True,
 )
 @click.option(
     "--context",
     "-c",
-    type=(int, int, int),
-    default=(0, 128, 128),
+    nargs=3,
+    type=int,
     help="Context in voxels as a tuple of integers.",
-    show_default=True,
 )
 def clahe(in_arr, out_arr, block_shape, context):
     """
@@ -105,6 +103,14 @@ def clahe(in_arr, out_arr, block_shape, context):
 
     # TODO: Add a check for the number of dimensions and handle block_shape and context
 
+    if block_shape is None:
+        if in_array.roi.dims != 3:
+            raise ValueError("Only 3D data is supported.")
+        block_shape = (1, *in_array.chunk_shape[1:])
+    
+    if context is None:
+        context = (0, *in_array.chunk_shape[1:])
+
     if out_arr is None:
         out_arr = in_arr.replace(".zarr", "_clahe.zarr")
 
@@ -115,7 +121,7 @@ def clahe(in_arr, out_arr, block_shape, context):
         in_array.voxel_size,
         in_array.axis_names,
         in_array.units,
-        in_array.chunk_shape,
+        block_shape,
         in_array.dtype,
     )
 

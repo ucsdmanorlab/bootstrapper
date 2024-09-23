@@ -1,7 +1,7 @@
 import unittest
 import click
 from click.testing import CliRunner
-from bootstrapper.utils.mask import make_mask
+from bootstrapper.utils.mask import mask
 import tempfile
 import zarr
 import numpy as np
@@ -41,7 +41,7 @@ class TestMask(unittest.TestCase):
     def test_make_mask_cli(self):
         runner = CliRunner()
         for args in self.arg_combos:
-            result = runner.invoke(make_mask, args)
+            result = runner.invoke(mask, args)
             self.assertEqual(result.exit_code, 0)
             self.assertIn('Writing mask to', result.output)
             self.check_function(result.output, args)
@@ -52,8 +52,8 @@ class TestMask(unittest.TestCase):
             mode = args[args.index('-m') + 1]
             out_array = args[args.index('-o') + 1] if '-o' in args else None
 
-            with click.Context(make_mask) as ctx:
-                result = ctx.invoke(make_mask, in_array=in_array, out_array=out_array, mode=mode)
+            with click.Context(mask) as ctx:
+                result = ctx.invoke(mask, in_array=in_array, out_array=out_array, mode=mode)
 
             self.check_function(result, args)
 

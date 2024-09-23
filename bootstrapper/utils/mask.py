@@ -78,7 +78,7 @@ def make_obj_mask(in_ds, out_ds, block):
     required=True,
     help="Specify whether to mask image or objects",
 )
-def make_mask(in_array, out_array, mode):
+def mask(in_array, out_array, mode):
     """
     Generate a mask of a zarr image or labels array blockwise.
 

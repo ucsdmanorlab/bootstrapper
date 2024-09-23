@@ -1,7 +1,7 @@
 import unittest
 import click
 from click.testing import CliRunner
-from bootstrapper.utils.convert import make_zarr
+from bootstrapper.utils.convert import convert
 import tempfile
 import zarr
 from funlib.persistence import open_ds
@@ -61,7 +61,7 @@ class TestConvert(unittest.TestCase):
     def test_convert_cli(self):
         runner = CliRunner()
         for args in self.arg_combos:
-            result = runner.invoke(make_zarr, args)
+            result = runner.invoke(convert, args)
             self.assertEqual(result.exit_code, 0)
             self.assertIn('Writing ', result.output)
             self.check_output(result.output, args)
@@ -78,8 +78,8 @@ class TestConvert(unittest.TestCase):
             units = tuple(args[args.index('-u')+1:args.index('-u')+4]) if '-u' in args else ('nm', 'nm', 'nm')
             crop = '--crop' in args
 
-            with click.Context(make_zarr) as ctx:
-                result = ctx.invoke(make_zarr, in_path=in_path, out_array=out_array,
+            with click.Context(convert) as ctx:
+                result = ctx.invoke(convert, in_path=in_path, out_array=out_array,
                                     dtype=dtype, voxel_size=voxel_size, voxel_offset=voxel_offset,
                                     axis_names=axis_names, units=units, crop=crop)
             self.check_output(result, args)

@@ -6,3 +6,4 @@ from .segment import segment
 from .evaluate import evaluate
 from .filter import filter
 from .auto import auto
+from .utils import utils

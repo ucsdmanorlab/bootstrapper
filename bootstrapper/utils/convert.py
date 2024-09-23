@@ -103,7 +103,7 @@ def read_from(in_path):
     help="Physical units of the axes (space-separated strings)",
 )
 @click.option("--crop", "-c", is_flag=True, help="Perform bounding box crop")
-def make_zarr(
+def convert(
     in_path, out_array, dtype, voxel_size, voxel_offset, axis_names, units, crop
 ):
     """Convert a TIFF stack or directory of TIFF files to a Zarr array."""
@@ -165,4 +165,4 @@ def make_zarr(
 
 
 if __name__ == "__main__":
-    make_zarr()
+    convert()

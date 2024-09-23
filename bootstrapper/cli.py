@@ -1,6 +1,6 @@
 import click
 
-from bootstrapper.run import prepare, view, train, predict, segment, evaluate, filter, auto
+from bootstrapper.run import prepare, train, predict, segment, evaluate, filter, auto, view, utils
 
 
 class OrderedGroup(click.Group):
@@ -8,13 +8,14 @@ class OrderedGroup(click.Group):
         # Return the commands in the desired order
         return [
             "prepare",
-            "view",
             "train",
             "predict",
             "segment",
             "evaluate",
             "filter",
             "auto",
+            "view",
+            "utils",
         ]
 
 
@@ -31,3 +32,4 @@ cli.add_command(segment)
 cli.add_command(evaluate)
 cli.add_command(filter)
 cli.add_command(auto)
+cli.add_command(utils)

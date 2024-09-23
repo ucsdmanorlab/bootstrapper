@@ -89,12 +89,16 @@ def scale_array(in_array, out_array, factor, write_size, mode):
 @click.option(
     "--in_file",
     "-f",
-    type=click.Path(exists=True),
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
     required=True,
     help="The path to the input zarr container",
 )
 @click.option(
-    "--in_ds_name", "-ds", type=str, required=True, help="The name of the input dataset"
+    "--in_ds_name", 
+    "-ds", 
+    type=str, 
+    required=True, 
+    help="The name of the input dataset within the container"
 )
 @click.option(
     "--scales",
@@ -133,12 +137,18 @@ def scale_pyramid(in_file, in_ds_name, scales, chunk_shape, mode):
     """
     ds = zarr.open(in_file)
 
+    logger.info(f"Creating scale pyramid for {in_file}")
+    logger.info(f"Input dataset: {in_ds_name}")
+    logger.info(f"Chunk shape: {chunk_shape}")
+    logger.info(f"Mode: {mode}")
+    logger.info(f"Scale factors: {scales}")
+
     # make sure in_ds_name points to a dataset
     try:
         prev_array = open_ds(os.path.join(in_file, in_ds_name))
     except Exception:
-        logger.error(f"{in_ds_name} does not seem to be a dataset")
-        raise RuntimeError(f"{in_ds_name} does not seem to be a dataset")
+        logger.error(f"{os.path.join(in_file, in_ds_name)} does not seem to be a dataset")
+        raise RuntimeError(f"{os.path.join(in_file, in_ds_name)} does not seem to be a dataset")
 
     if chunk_shape is not None:
         chunk_shape = daisy.Coordinate(chunk_shape)

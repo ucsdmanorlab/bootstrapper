@@ -1,50 +1,31 @@
 import click
 import os
 import yaml
+import logging
 
-from bootstrapper.utils import make_volumes, make_configs
+from .configs import make_configs
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-@click.group()
-@click.pass_context
-def prepare(ctx):
-    """Prepare volumes and configurations"""
-    ctx.ensure_object(dict)
-    base_dir = click.prompt("Enter the base directory path", default=".", type=click.Path(file_okay=False, dir_okay=True))
+@click.command()
+@click.option(
+    "--base-dir",
+    "-b",
+    required=True,
+    type=click.Path(file_okay=False),
+    help="Base directory for the bootstrapping runs",
+    prompt="Enter the base directory path",
+    default=".",
+    show_default=True
+)
+def prepare(base_dir):
+    """Prepare the volumes and configuration files for bootstrapping."""
+
     os.makedirs(base_dir, exist_ok=True)
-    ctx.obj['base_dir'] = os.path.abspath(base_dir)
-    ctx.obj['volumes'] = []
+    base_dir = os.path.abspath(base_dir)
+    logger.info(f"Base directory: {base_dir}")
 
-
-@prepare.command(name="data")
-@click.pass_context
-def data(ctx):
-    """Prepare volumes for bootstrapping"""
-    num_volumes = click.prompt(f"How many volumes to prepare in {ctx.obj['base_dir']}?", default=1, type=int, show_default=True)
-    ctx.obj['volumes'] = make_volumes(ctx.obj['base_dir'], num_volumes)
-
-    # Dump volumes to a yaml in the base directory
-    volumes_yaml = os.path.join(ctx.obj['base_dir'], 'volumes.yaml')
-    with open(volumes_yaml, 'w') as f:
-        yaml.dump(ctx.obj['volumes'], f)
-    click.echo(f"Volumes saved to {volumes_yaml}")
-
-
-@prepare.command(name="configs")
-@click.pass_context
-def configs(ctx):
-    """Prepare configuration files"""
-    click.echo(f"Preparing configuration files in {ctx.obj['base_dir']}...")
-
-    # get volumes from yaml if not already in context
-    # run data command if volumes yaml does not exist
-    volumes_yaml = os.path.join(ctx.obj['base_dir'], 'volumes.yaml')
-    if not ctx.obj['volumes']:
-        if os.path.exists(volumes_yaml):
-            with open(volumes_yaml, 'r') as f:
-                ctx.obj['volumes'] = yaml.load(f, Loader=yaml.FullLoader)
-        else:
-            click.echo(f"Volumes not found. Running data command...")
-            ctx.invoke(data)
-
-    make_configs(ctx.obj['base_dir'], ctx.obj['volumes'])
+    configs = make_configs(base_dir)
