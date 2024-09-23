@@ -1,6 +1,5 @@
 import pytest
 from unittest.mock import patch, MagicMock
-import os
 import yaml
 import numpy as np
 from bootstrapper.run.configs import (
@@ -18,6 +17,7 @@ from bootstrapper.run.configs import (
     get_roi,
     make_configs,
 )
+from shutil import rmtree
 
 
 @pytest.fixture
@@ -193,6 +193,7 @@ def test_make_round_configs():
                     ):
                         result = make_round_configs("round_dir", "model", [])
     assert isinstance(result, list)
+    rmtree("round_dir")
 
 
 def test_get_roi(mock_click):
@@ -218,6 +219,7 @@ def test_make_configs(mock_click):
                     "bootstrapper.run.configs.make_round_configs", return_value=[]
                 ):
                     make_configs("base_dir")
+    rmtree("base_dir")
 
 
 if __name__ == "__main__":

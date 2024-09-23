@@ -8,17 +8,20 @@ import subprocess
 import logging
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
+
 
 @click.command()
 @click.option(
-    '--snapshot', 
-    '-s', 
-    type=click.Path(exists=True, dir_okay=True, file_okay=False), 
-    help='Path to the Zarr container of a snapshot'
+    "--snapshot",
+    "-s",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    help="Path to the Zarr container of a snapshot",
 )
-@click.argument('datasets', nargs=-1)
+@click.argument("datasets", nargs=-1)
 def view(snapshot, datasets):
     """
     View a snapshot or run neuroglancer -d <args>
@@ -36,7 +39,7 @@ def view(snapshot, datasets):
     """
     logger.info("Starting view command")
     if snapshot:
-        if snapshot.endswith('.zarr') or snapshot.endswith('.zarr/'):
+        if snapshot.endswith(".zarr") or snapshot.endswith(".zarr/"):
             logger.info(f"Viewing snapshot: {snapshot}")
             view_snapshot(snapshot)
             click.pause("Press any key to exit...")
@@ -46,8 +49,9 @@ def view(snapshot, datasets):
             sys.exit(1)
     else:
         logger.info(f"Running neuroglancer with datasets: {datasets}")
-        neuroglancer_args = ['neuroglancer', '-d'] + list(datasets)
+        neuroglancer_args = ["neuroglancer", "-d"] + list(datasets)
         subprocess.run(neuroglancer_args)
+
 
 def create_coordinate_space(voxel_size, is_2d):
     names = ["c^", "z", "y", "x"] if not is_2d else ["b", "c^", "y", "x"]
@@ -83,7 +87,9 @@ def process_dataset(f, ds, is_2d):
             0,
         ] + [int(i / j) for i, j in zip(offset, vs)]
 
-    logger.debug(f"Processed {ds}: shape={data.shape}, voxel_size={vs}, offset={offset}")
+    logger.debug(
+        f"Processed {ds}: shape={data.shape}, voxel_size={vs}, offset={offset}"
+    )
     return data, vs, offset
 
 
