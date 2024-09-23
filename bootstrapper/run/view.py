@@ -1,16 +1,53 @@
+import click
 import neuroglancer
 import numpy as np
 import os
 import sys
 import zarr
-import click
+import subprocess
+import logging
 
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 @click.command()
-def view():
-    """Run the view command"""
-    click.echo("Running view command...")
+@click.option(
+    '--snapshot', 
+    '-s', 
+    type=click.Path(exists=True, dir_okay=True, file_okay=False), 
+    help='Path to the Zarr container of a snapshot'
+)
+@click.argument('datasets', nargs=-1)
+def view(snapshot, datasets):
+    """
+    View a snapshot or run neuroglancer -d <args>
 
+    Parameters
+    ----------
+    snapshot : str
+        Path to the Zarr container of a snapshot.
+    datasets : str
+        Datasets to be viewed with neuroglancer.
+
+    Returns
+    -------
+    None
+    """
+    logger.info("Starting view command")
+    if snapshot:
+        if snapshot.endswith('.zarr') or snapshot.endswith('.zarr/'):
+            logger.info(f"Viewing snapshot: {snapshot}")
+            view_snapshot(snapshot)
+            click.pause("Press any key to exit...")
+        else:
+            logger.error("Snapshot path must end with '.zarr'")
+            click.echo("Error: Snapshot path must end with '.zarr'", err=True)
+            sys.exit(1)
+    else:
+        logger.info(f"Running neuroglancer with datasets: {datasets}")
+        neuroglancer_args = ['neuroglancer', '-d'] + list(datasets)
+        subprocess.run(neuroglancer_args)
 
 def create_coordinate_space(voxel_size, is_2d):
     names = ["c^", "z", "y", "x"] if not is_2d else ["b", "c^", "y", "x"]
@@ -22,6 +59,7 @@ def create_coordinate_space(voxel_size, is_2d):
         if not is_2d
         else voxel_size[-2:] + voxel_size[-2:]
     )
+    logger.debug(f"Creating coordinate space with names: {names}, scales: {scales}")
     return neuroglancer.CoordinateSpace(names=names, units="nm", scales=scales)
 
 
@@ -45,6 +83,7 @@ def process_dataset(f, ds, is_2d):
             0,
         ] + [int(i / j) for i, j in zip(offset, vs)]
 
+    logger.debug(f"Processed {ds}: shape={data.shape}, voxel_size={vs}, offset={offset}")
     return data, vs, offset
 
 
@@ -80,10 +119,11 @@ def create_shader(ds, is_2d):
             shader = rg
     else:
         shader = rgb
+    logger.debug(f"Created shader for dataset: {ds}")
     return shader
 
 
-def main(zarr_path):
+def view_snapshot(zarr_path):
     neuroglancer.set_server_bind_address("0.0.0.0")
     viewer = neuroglancer.Viewer()
 
@@ -96,7 +136,7 @@ def main(zarr_path):
     except KeyError:
         raw_shape = f[datasets[0]].shape
     shape = f[datasets[0]].shape
-    print(raw_shape, shape)
+    logger.info(f"Raw shape: {raw_shape}, First dataset shape: {shape}")
     is_2d = (len(shape) == 5 and shape[-3] == 1) and (len(raw_shape) == 4)
 
     dims = create_coordinate_space(f[datasets[0]].attrs["voxel_size"], is_2d)
@@ -120,17 +160,11 @@ def main(zarr_path):
                 if not is_segmentation:
                     s.layers[ds].shader = create_shader(ds, is_2d)
 
-                print(f"Added layer: {ds}")
+                logger.info(f"Added layer: {ds}")
             except Exception as e:
-                print(f"Error processing dataset {ds}: {e}")
+                logger.error(f"Error processing dataset {ds}: {e}")
 
         s.layout = "yz"
 
+    logger.info("Viewer setup complete")
     print(viewer)
-
-
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Please supply the path to the snapshot zarr.")
-        sys.exit(1)
-    main(sys.argv[1])
