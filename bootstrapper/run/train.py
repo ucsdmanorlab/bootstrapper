@@ -63,12 +63,17 @@ def run_training(yaml_file, **kwargs):
     help="Output directory",
 )
 @click.option(
-    "--save_checkpoints_every", "-ce", type=int, help="Save checkpoints every n iterations"
+    "--save_checkpoints_every",
+    "-ce",
+    type=int,
+    help="Save checkpoints every n iterations",
 )
 @click.option(
     "--save_snapshots_every", "-s", type=int, help="Save snapshots every n iterations"
 )
-@click.option("--voxel_size", "-v", type=str, help="Voxel size (space-separated integers)")
+@click.option(
+    "--voxel_size", "-v", type=str, help="Voxel size (space-separated integers)"
+)
 @click.option("--sigma", "-s", type=int, help="Sigma value for LSD models")
 def train(
     yaml_file,

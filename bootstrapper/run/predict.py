@@ -247,5 +247,6 @@ def predict(yaml_file, model_name, **kwargs):
         args.extend(["-n", str(num_workers)])
         subprocess.run(["python", worker, *args])
 
+
 if __name__ == "__main__":
     predict()

@@ -14,15 +14,56 @@ logger.setLevel(logging.INFO)
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
+
 @click.command()
-@click.option("--checkpoint", "-c", required=True, type=click.Path(exists=True, file_okay=True, dir_okay=False), help="Path to checkpoint file")
-@click.option("--input_datasets", "-i", required=True, multiple=True, type=click.Path(exists=True, file_okay=False, dir_okay=True), help="Path to input zarr datasets")
-@click.option("--output_datasets", "-o", required=True, multiple=True, type=click.Path(), help="Path to output zarr datasets")
-@click.option("--roi_offset", "-ro", type=str, help="Offset of ROI in world units (space separated integers)")
-@click.option("--roi_shape", "-rs", type=str, help="Shape of ROI in world units (space separated integers)")
+@click.option(
+    "--checkpoint",
+    "-c",
+    required=True,
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    help="Path to checkpoint file",
+)
+@click.option(
+    "--input_datasets",
+    "-i",
+    required=True,
+    multiple=True,
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help="Path to input zarr datasets",
+)
+@click.option(
+    "--output_datasets",
+    "-o",
+    required=True,
+    multiple=True,
+    type=click.Path(),
+    help="Path to output zarr datasets",
+)
+@click.option(
+    "--roi_offset",
+    "-ro",
+    type=str,
+    help="Offset of ROI in world units (space separated integers)",
+)
+@click.option(
+    "--roi_shape",
+    "-rs",
+    type=str,
+    help="Shape of ROI in world units (space separated integers)",
+)
 @click.option("--num_workers", "-n", default=1, type=int, help="Number of workers")
-@click.option("--daisy", "-d", default=False, is_flag=True, help="Use daisy for parallelization")
-def predict(checkpoint, input_datasets, output_datasets, roi_offset, roi_shape, num_workers, daisy):
+@click.option(
+    "--daisy", "-d", default=False, is_flag=True, help="Use daisy for parallelization"
+)
+def predict(
+    checkpoint,
+    input_datasets,
+    output_datasets,
+    roi_offset,
+    roi_shape,
+    num_workers,
+    daisy,
+):
 
     input_dataset = input_datasets[0]
     out_lsds_dataset = output_datasets[0]
@@ -62,9 +103,7 @@ def predict(checkpoint, input_datasets, output_datasets, roi_offset, roi_shape, 
     chunk_request.add(raw, input_size)
     chunk_request.add(pred_lsds, output_size)
 
-    source = gp.ArraySource(
-        raw, in_ds, interpolatable=True
-    )
+    source = gp.ArraySource(raw, in_ds, interpolatable=True)
 
     predict = gp.torch.Predict(
         model,
@@ -73,25 +112,25 @@ def predict(checkpoint, input_datasets, output_datasets, roi_offset, roi_shape, 
         outputs={
             0: pred_lsds,
         },
-        array_specs={
-            pred_lsds: gp.ArraySpec(roi=roi)
-        } if not daisy else None,
+        array_specs={pred_lsds: gp.ArraySpec(roi=roi)} if not daisy else None,
     )
 
     write = gp.ZarrWrite(
-        dataset_names={
-            pred_lsds: out_lsds_dataset.split(".zarr")[-1]
-        },
+        dataset_names={pred_lsds: out_lsds_dataset.split(".zarr")[-1]},
         store=out_lsds_dataset.split(".zarr")[0] + ".zarr",
     )
 
-    scan = gp.DaisyRequestBlocks(
-        chunk_request,
-        roi_map={
-            raw: "read_roi",
-            pred_lsds: "write_roi",
-        },
-    ) if daisy else gp.Scan(chunk_request, num_workers=num_workers)
+    scan = (
+        gp.DaisyRequestBlocks(
+            chunk_request,
+            roi_map={
+                raw: "read_roi",
+                pred_lsds: "write_roi",
+            },
+        )
+        if daisy
+        else gp.Scan(chunk_request, num_workers=num_workers)
+    )
 
     pipeline = (
         source
