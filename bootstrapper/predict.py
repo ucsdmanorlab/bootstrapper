@@ -101,7 +101,7 @@ def call_predict(worker: str, args: list, num_gpus: int = 1):
 @click.option("--num_gpus", "-gpu", type=int, help="Number of GPUs to use")
 def predict(yaml_file, model_name, **kwargs):
     """
-    Run prediction with the specified YAML configuration file and model name
+    Run prediction with the specified config file and model name
 
     Overrides the values in the YAML file with the values provided on the command line.
     """

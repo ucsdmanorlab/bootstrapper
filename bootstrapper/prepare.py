@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 )
 def prepare(base_dir):
     """
-    Prepare and configure a multi-round bootstrapping pipeline
+    Prepare volumes and config files for bootstrapping
 
     This command sets up a pipeline for training, prediction, post-processing,
     evaluation, and filtering segmentations across multiple rounds. It handles:

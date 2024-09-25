@@ -9,7 +9,7 @@ from pprint import pprint
 from funlib.geometry import Roi
 from funlib.persistence import open_ds
 
-from .volumes import make_volumes
+from .data.volumes import make_volumes
 
 this_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -36,7 +36,7 @@ def save_config(config, filename):
 
 
 def copy_model_scripts(model_name, setup_dir):
-    src = os.path.abspath(os.path.join(this_dir, "..", "models", model_name))
+    src = os.path.abspath(os.path.join(this_dir, "models", model_name))
     logger.info(f"Copying {src} to {setup_dir}")
     copytree(src, setup_dir, dirs_exist_ok=True)
 
@@ -99,8 +99,8 @@ def choose_model(i, name):
     models = sorted(
         [
             d
-            for d in os.listdir(os.path.join(os.path.dirname(__file__), "..", "models"))
-            if os.path.isdir(os.path.join(os.path.dirname(__file__), "..", "models", d))
+            for d in os.listdir(os.path.join(os.path.dirname(__file__), "models"))
+            if os.path.isdir(os.path.join(os.path.dirname(__file__), "models", d))
             and "_from_" not in d
         ]
     )
@@ -195,7 +195,7 @@ def create_prediction_configs(volumes, train_config):
     if make_affs:
         affs_setup_dir = os.path.abspath(
             os.path.join(
-                this_dir, "..", f"models/3d_affs_from_{model_name.replace('_3ch','')}"
+                this_dir, f"models/3d_affs_from_{model_name.replace('_3ch','')}"
             )
         )
         affs_iter = click.prompt(
@@ -212,8 +212,9 @@ def create_prediction_configs(volumes, train_config):
 
     for volume in volumes:
         pred_config = {}
-        volume_name = os.path.basename(volume["zarr_container"]).split(".zarr")[0]
-        raw_array = os.path.join(volume["zarr_container"], volume["raw_dataset"])
+        container = volume["zarr_container"]
+        volume_name = os.path.basename(container).split(".zarr")[0]
+        raw_array = os.path.join(container, volume["raw_dataset"])
 
         logger.info(f"\nCreating prediction config for {raw_array}:")
 
@@ -221,15 +222,12 @@ def create_prediction_configs(volumes, train_config):
 
         pred_config[model_name] = {
             "setup_dir": setup_dir,
-            "raw_file": volume["zarr_container"],
-            "raw_datasets": [
-                volume["raw_dataset"],
-            ],
+            "input_datasets": [raw_array],
             "roi_offset": list(roi_offset),
             "roi_shape": list(roi_shape),
             "checkpoint": os.path.join(setup_dir, f"model_checkpoint_{pred_iter}"),
-            "out_file": volume["zarr_container"],
-            "out_prefix": f"predictions/{round_name}-{model_name}",
+            "output_container": container,
+            "output_datasets_prefix": f"predictions/{round_name}-{model_name}",
             "num_workers": 4,
             "num_gpus": 4,
             "num_cache_workers": 1,
@@ -238,15 +236,14 @@ def create_prediction_configs(volumes, train_config):
         if make_affs:
             pred_config["affs"] = {
                 "setup_dir": affs_setup_dir,
-                "raw_file": volume["zarr_container"],
-                "raw_datasets": pred_datasets,
+                "input_datasets": [os.path.join(container, ds) for ds in pred_datasets],
                 "roi_offset": list(roi_offset),
                 "roi_shape": list(roi_shape),
                 "checkpoint": os.path.join(
                     affs_setup_dir, f"model_checkpoint_{affs_iter}"
                 ),
-                "out_file": volume["zarr_container"],
-                "out_prefix": f"predictions/{round_name}-{model_name}",
+                "output_container": container,
+                "output_datasets_prefix": f"predictions/{round_name}-{model_name}",
                 "num_workers": 4,
                 "num_gpus": 4,
                 "num_cache_workers": 1,
@@ -268,8 +265,6 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir):
 
     waterz_defaults = {
         "fragments_in_xy": True,
-        "background_mask": False,
-        "mask_thresh": 0.5,
         "min_seed_distance": 10,
         "epsilon_agglomerate": 0.0,
         "filter_fragments": 0.05,
@@ -356,7 +351,7 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir):
             mask_file = None
             mask_dataset = None
 
-        seg_config = {
+        waterz_config = {
             "affs_file": volume["zarr_container"],
             "affs_dataset": out_affs_ds,
             "fragments_file": volume["zarr_container"],
@@ -373,6 +368,11 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir):
             "blockwise": do_blockwise,
             "num_workers": num_workers,
         } | waterz_defaults
+
+        seg_config = {
+            "db": db_config,
+            "waterz": waterz_config
+        }
 
         save_config(
             check_and_update(seg_config),
@@ -523,13 +523,17 @@ def make_round_configs(round_dir, model_name, volumes):
     """Create all configs for a model with given volumes."""
 
     train_config = create_training_config(round_dir, model_name, volumes)
+
     out_affs_ds, out_pred_datasets, out_lsd_errors, setup_dir = (
         create_prediction_configs(volumes, train_config)
     )
+
     out_segs = create_segmentation_configs(volumes, out_affs_ds, setup_dir)
+
     out_eval_dir = create_evaluation_configs(
         volumes, out_segs, out_lsd_errors, out_pred_datasets, setup_dir
     )
+    
     out_volumes = create_filter_configs(
         volumes,
         out_segs,

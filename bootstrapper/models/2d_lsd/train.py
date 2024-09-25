@@ -9,8 +9,7 @@ import json
 import logging
 import os
 
-from bootstrapper.gp import SmoothAugment, Add2DLSDs, CreateMask, Renumber
-from bootstrapper.utils import calc_max_padding
+from bootstrapper.gp import SmoothAugment, Add2DLSDs, CreateMask, Renumber, calc_max_padding
 
 logging.basicConfig(level=logging.INFO)
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))

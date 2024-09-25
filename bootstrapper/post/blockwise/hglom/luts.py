@@ -1,4 +1,4 @@
-import sys
+import click
 import yaml
 import os
 import time
@@ -140,13 +140,17 @@ def get_connected_components(
     np.savez_compressed(out_file, fragment_segment_lut=lut)
 
 
-if __name__ == "__main__":
+@click.command()
+@click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+def luts(config_file):
+    """
+    Find connected components of region graph and store lookup tables.
+    """
 
-    config_file = sys.argv[1]
     with open(config_file, "r") as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["hglom_segment"]
+    config = yaml_config["waterz"]
     db_config = yaml_config["db"]
 
     start = time.time()

@@ -7,3 +7,4 @@ from .custom_intensity_augment import CustomIntensityAugment
 from .add_2d_lsds import Add2DLSDs
 from .obfuscate_affs import ObfuscateAffs
 from .add_obfuscated_2d_lsds import AddObfuscated2DLSDs
+from .calc_max_padding import calc_max_padding

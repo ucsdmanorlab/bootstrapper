@@ -1,5 +1,5 @@
 import os
-import sys
+import click
 import time
 import logging
 import yaml
@@ -10,6 +10,7 @@ from funlib.geometry import Coordinate, Roi
 from funlib.persistence import open_ds
 import daisy
 
+logging.basicConfig(level=logging.INFO)
 
 def agglomerate_in_block(affs, fragments, db_config, merge_function, block):
 
@@ -146,7 +147,7 @@ def agglomerate_in_block(affs, fragments, db_config, merge_function, block):
 
 def agglomerate(config, db_config):
 
-    logging.info("Agglomerating fragments with config:")
+    logging.info(f"Agglomerating fragments with config: {pprint(config)}")
 
     # Extract arguments from config
     affs_file = config["affs_file"]  # Path to affinities zarr container
@@ -264,18 +265,19 @@ def agglomerate(config, db_config):
         print("Did not run all blocks successfully...")
 
 
-if __name__ == "__main__":
-    config_file = sys.argv[1]  # Path to config file
+@click.command()
+@click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+def agglom(config_file):
+    """
+    Agglomerate fragments using waterz and daisy.
+    """
 
     # Load config file
     with open(config_file, "r") as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["hglom_segment"]
+    config = yaml_config["waterz"]
     db_config = yaml_config["db"]
-
-    # Set up logging
-    logging.basicConfig(level=logging.INFO)
 
     start = time.time()
     agglomerate(config, db_config)

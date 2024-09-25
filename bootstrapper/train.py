@@ -85,7 +85,7 @@ def train(
     sigma,
 ):
     """
-    Run training with the specified YAML configuration file.
+    Run training with the specified config file.
 
     Optional parameters will override the corresponding values in the config file.
     """

@@ -1,5 +1,5 @@
 import os
-import sys
+import click
 import time
 import logging
 import yaml
@@ -16,6 +16,8 @@ from funlib.persistence.graphs import SQLiteGraphDataBase, PgSQLGraphDatabase
 from funlib.persistence.types import Vec
 import daisy
 
+logging.basicConfig(level=logging.INFO)
+
 
 def watershed_in_block(
     affs,
@@ -23,8 +25,6 @@ def watershed_in_block(
     db_config,
     mask_array,
     fragments_in_xy,
-    background_mask,
-    mask_thresh,
     min_seed_distance,
     epsilon_agglomerate,
     filter_fragments,
@@ -63,8 +63,6 @@ def watershed_in_block(
     fragments_data, _ = watershed_from_affinities(
         affs_data,
         fragments_in_xy=fragments_in_xy,
-        background_mask=background_mask,
-        mask_thresh=mask_thresh,
         return_seeds=False,
         min_seed_distance=min_seed_distance,
     )
@@ -248,8 +246,6 @@ def extract_fragments(config, db_config):
     fragments_in_xy = config.get(
         "fragments_in_xy", True
     )  # Extract fragments for each xy-section separately
-    background_mask = config.get("background_mask", False)  # Mask out boundaries
-    mask_thresh = config.get("mask_thresh", 0.5)  # Threshold for boundary mask
     min_seed_distance = config.get(
         "min_seed_distance", 10
     )  # Minimum distance between seeds for watershed
@@ -378,8 +374,6 @@ def extract_fragments(config, db_config):
             db_config,
             mask_array,
             fragments_in_xy,
-            background_mask,
-            mask_thresh,
             min_seed_distance,
             epsilon_agglomerate,
             filter_fragments,
@@ -400,18 +394,19 @@ def extract_fragments(config, db_config):
         print("Did not run all blocks successfully...")
 
 
-if __name__ == "__main__":
-    config_file = sys.argv[1]  # Path to config file
+@click.command()
+@click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+def frags(config_file):
+    """
+    Extract fragments from affinities using daisy.
+    """
 
     # Load config file
     with open(config_file, "r") as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["hglom_segment"]
+    config = yaml_config["waterz"]
     db_config = yaml_config["db"]
-
-    # Set up logging
-    logging.basicConfig(level=logging.INFO)
 
     start = time.time()
     extract_fragments(config, db_config)

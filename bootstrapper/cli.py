@@ -1,6 +1,6 @@
 import click
 
-from bootstrapper.run import (
+from . import (
     prepare,
     train,
     predict,

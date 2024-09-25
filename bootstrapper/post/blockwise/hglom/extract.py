@@ -1,5 +1,5 @@
 import daisy
-import sys
+import click
 import yaml
 import logging
 import numpy as np
@@ -38,7 +38,7 @@ def segment_in_block(fragments, segmentation, lut, block):
     segmentation[block.write_roi] = relabelled
 
 
-def extract_segmentation(config):
+def extract_segmentations(config):
     # read config
     fragments_file = config["fragments_file"]
     fragments_dataset = config["fragments_dataset"]
@@ -127,16 +127,20 @@ def extract_segmentation(config):
     return True
 
 
-if __name__ == "__main__":
+@click.command()
+@click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+def extract(config_file, **kwargs):
+    """
+    Extracts segmentations from fragments using LUTs
+    """
 
-    config_file = sys.argv[1]
     with open(config_file, "r") as f:
         yaml_config = yaml.safe_load(f)
 
-    config = yaml_config["hglom_segment"] | yaml_config["db"]
+    config = yaml_config["waterz"] | yaml_config["db"]
 
     start = time.time()
-    extract_segmentation(config)
+    extract_segmentations(config)
     end = time.time()
 
     seconds = end - start

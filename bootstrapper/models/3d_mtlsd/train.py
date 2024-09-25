@@ -10,8 +10,7 @@ import gunpowder as gp
 from funlib.persistence import open_ds
 from lsd.train.gp import AddLocalShapeDescriptor
 
-from bootstrapper.gp import SmoothAugment, CreateMask, Renumber
-from bootstrapper.utils import calc_max_padding
+from bootstrapper.gp import SmoothAugment, CreateMask, Renumber, calc_max_padding
 from model import Model, WeightedMSELoss
 
 logging.basicConfig(level=logging.INFO)
