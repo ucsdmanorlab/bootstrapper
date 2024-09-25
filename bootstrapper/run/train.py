@@ -84,6 +84,7 @@ def train(
 
     Optional parameters will override the corresponding values in the config file.
     """
+
     if voxel_size:
         voxel_size = [int(v) for v in voxel_size.strip().split()]
 

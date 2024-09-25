@@ -1,28 +1,32 @@
-from model import Model
-from funlib.geometry import Coordinate
 import gunpowder as gp
 import json
 import logging
 import os
-import sys
-import zarr
+import click
 
+from funlib.geometry import Coordinate, Roi
 from funlib.persistence import open_ds
 
-logging.basicConfig(level=logging.INFO)
+from model import Model
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
+@click.command()
+@click.option("--checkpoint", "-c", required=True, type=click.Path(exists=True, file_okay=True, dir_okay=False), help="Path to checkpoint file")
+@click.option("--input_datasets", "-i", required=True, multiple=True, type=click.Path(exists=True, file_okay=False, dir_okay=True), help="Path to input zarr datasets")
+@click.option("--output_datasets", "-o", required=True, multiple=True, type=click.Path(), help="Path to output zarr datasets")
+@click.option("--roi_offset", "-ro", type=str, help="Offset of ROI in world units (space separated integers)")
+@click.option("--roi_shape", "-rs", type=str, help="Shape of ROI in world units (space separated integers)")
+@click.option("--num_workers", "-n", default=1, type=int, help="Number of workers")
+@click.option("--daisy", "-d", default=False, is_flag=True, help="Use daisy for parallelization")
+def predict(checkpoint, input_datasets, output_datasets, roi_offset, roi_shape, num_workers, daisy):
 
-def predict(config):
-    checkpoint = config["checkpoint"]
-    raw_file = config["raw_file"]
-    raw_dataset = config["raw_datasets"][0]
-    out_file = config["out_file"]
-    out_dataset_names = config["out_dataset_names"]
-    num_cache_workers = config["num_cache_workers"]
-
-    out_lsds_dataset = out_dataset_names[0]
-    out_affs_dataset = out_dataset_names[1]
+    input_dataset = input_datasets[0]
+    out_lsds_dataset = output_datasets[0]
+    out_affs_dataset = output_datasets[1]
 
     # load net config
     with open(os.path.join(setup_dir, "net_config.json")) as f:
@@ -41,10 +45,19 @@ def predict(config):
         *[x + y for x, y in zip(shape_increase, net_config["output_shape"])],
     ]
 
-    voxel_size = Coordinate(zarr.open(raw_file, "r")[raw_dataset].attrs["voxel_size"])
+    in_ds = open_ds(input_dataset, "r")
+    voxel_size = in_ds.voxel_size
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
-    context = (input_size - output_size) // 2
+
+    if not daisy:
+        logging.info("Using Scan node with %d workers" % num_workers)
+        if roi_offset is not None:
+            roi_offset = Coordinate(roi_offset.split(" "))
+            roi_shape = Coordinate(roi_shape.split(" "))
+            roi = Roi(roi_offset, roi_shape).snap_to_grid(voxel_size, mode="grow")
+        else:
+            roi = in_ds.roi
 
     model = Model(stack_infer=True)
     model.eval()
@@ -59,7 +72,7 @@ def predict(config):
     chunk_request.add(pred_affs, output_size)
 
     source = gp.ArraySource(
-        raw, open_ds(os.path.join(raw_file, raw_dataset)), interpolatable=True
+        raw, in_ds, interpolatable=True
     )
 
     predict = gp.torch.Predict(
@@ -70,14 +83,22 @@ def predict(config):
             0: pred_lsds,
             1: pred_affs,
         },
+        array_specs={
+            pred_affs: gp.ArraySpec(roi=roi),
+            pred_lsds: gp.ArraySpec(roi=roi),
+        } if not daisy else None,
     )
 
     write = gp.ZarrWrite(
         dataset_names={
-            pred_lsds: out_lsds_dataset,
-            pred_affs: out_affs_dataset,
+            pred_affs: out_affs_dataset.split(".zarr")[-1],
         },
-        store=out_file,
+        store=out_affs_dataset.split(".zarr")[0] + ".zarr",
+    ) + gp.ZarrWrite(
+        dataset_names={
+            pred_lsds: out_lsds_dataset.split(".zarr")[-1],
+        },
+        store=out_lsds_dataset.split(".zarr")[0] + ".zarr",
     )
 
     scan = gp.DaisyRequestBlocks(
@@ -87,8 +108,7 @@ def predict(config):
             pred_lsds: "write_roi",
             pred_affs: "write_roi",
         },
-        num_workers=num_cache_workers,
-    )
+    ) if daisy else gp.Scan(chunk_request, num_workers=num_workers)
 
     pipeline = (
         source
@@ -113,10 +133,4 @@ def predict(config):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-
-    config_file = sys.argv[1]
-    with open(config_file, "r") as f:
-        run_config = json.load(f)
-
-    predict(run_config)
+    predict()

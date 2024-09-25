@@ -1,23 +1,31 @@
-import json
 import gunpowder as gp
-import os
-import sys
+import json
 import logging
-import zarr
-from funlib.geometry import Coordinate
+import os
+import click
+
+from funlib.geometry import Coordinate, Roi
 from funlib.persistence import open_ds
 
 from model import AffsUNet
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
 
-def predict(config):
-    checkpoint = config["checkpoint"]
-    input_file = config["raw_file"]
-    input_datasets = config["raw_datasets"]
-    out_file = config["out_file"]
-    num_cache_workers = config["num_cache_workers"]
+@click.command()
+@click.option("--checkpoint", "-c", required=True, type=click.Path(exists=True, file_okay=True, dir_okay=False), help="Path to checkpoint file")
+@click.option("--input_datasets", "-i", required=True, multiple=True, type=click.Path(exists=True, file_okay=False, dir_okay=True), help="Path to input zarr datasets")
+@click.option("--output_datasets", "-o", required=True, multiple=True, type=click.Path(), help="Path to output zarr datasets")
+@click.option("--roi_offset", "-ro", type=str, help="Offset of ROI in world units (space separated integers)")
+@click.option("--roi_shape", "-rs", type=str, help="Shape of ROI in world units (space separated integers)")
+@click.option("--num_workers", "-n", default=1, type=int, help="Number of workers")
+@click.option("--daisy", "-d", default=False, is_flag=True, help="Use daisy for parallelization")
+def predict(checkpoint, input_datasets, output_datasets, roi_offset, roi_shape, num_workers, daisy):
+    input_dataset = input_datasets[0]
+    output_dataset = output_datasets[0]
 
     # load net config
     with open(os.path.join(setup_dir, "net_config.json")) as f:
@@ -26,18 +34,23 @@ def predict(config):
         )
         net_config = json.load(f)
 
-    out_dataset = config["out_dataset_names"][0]
-
     shape_increase = net_config["shape_increase"]
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
     output_shape = [x + y for x, y in zip(shape_increase, net_config["output_shape"])]
 
-    voxel_size = Coordinate(
-        zarr.open(input_file, "r")[input_datasets[0]].attrs["voxel_size"]
-    )
+    in_ds = open_ds(input_dataset, "r")
+    voxel_size = in_ds.voxel_size
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
-    context = (input_size - output_size) / 2
+
+    if not daisy:
+        logging.info("Using Scan node with %d workers" % num_workers)
+        if roi_offset is not None:
+            roi_offset = Coordinate(roi_offset.split(" "))
+            roi_shape = Coordinate(roi_shape.split(" "))
+            roi = Roi(roi_offset, roi_shape).snap_to_grid(voxel_size, mode="grow")
+        else:
+            roi = in_ds.roi
 
     model = AffsUNet()
     model.eval()
@@ -51,7 +64,7 @@ def predict(config):
 
     source = gp.ArraySource(
         input_lsds,
-        open_ds(os.path.join(input_file, input_datasets[0])),
+        in_ds,
         interpolatable=True,
     )
 
@@ -64,19 +77,24 @@ def predict(config):
         outputs={
             0: pred_affs,
         },
+        array_specs={
+            pred_affs: gp.ArraySpec(roi=roi)
+        } if not daisy else None,
     )
 
-    scan = gp.DaisyRequestBlocks(
-        chunk_request,
-        roi_map={input_lsds: "read_roi", pred_affs: "write_roi"},
-        num_workers=num_cache_workers,
-    )
+    if daisy:
+        scan = gp.DaisyRequestBlocks(
+            chunk_request,
+            roi_map={input_lsds: "read_roi", pred_affs: "write_roi"},
+        )
+    else:
+        scan = gp.Scan(chunk_request, num_workers=num_workers)
 
     write = gp.ZarrWrite(
         dataset_names={
-            pred_affs: out_dataset,
+            pred_affs: output_dataset.split(".zarr")[-1]
         },
-        store=out_file,
+        store=output_dataset.split(".zarr")[0] + ".zarr",
     )
 
     pipeline = (
@@ -98,11 +116,4 @@ def predict(config):
 
 
 if __name__ == "__main__":
-
-    logging.basicConfig(level=logging.INFO)
-
-    config_file = sys.argv[1]
-    with open(config_file, "r") as f:
-        run_config = json.load(f)
-
-    predict(run_config)
+    predict()

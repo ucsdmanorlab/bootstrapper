@@ -594,8 +594,6 @@ def get_roi(in_array, offset=None, shape=None):
 def make_configs(base_dir):
     """Create for multiple rounds with given volumes."""
 
-    logger.info(f"{os.listdir(base_dir)}")
-
     existing_rounds = [
         d
         for d in os.listdir(base_dir)

@@ -142,7 +142,7 @@ def view_snapshot(zarr_path):
     except KeyError:
         raw_shape = f[datasets[0]].shape
     shape = f[datasets[0]].shape
-    logger.info(f"Raw shape: {raw_shape}, First dataset shape: {shape}")
+    logger.info(f"Raw shape: {raw_shape}, pred shape: {shape}")
     is_2d = (len(shape) == 5 and shape[-3] == 1) and (len(raw_shape) == 4)
 
     dims = create_coordinate_space(f[datasets[0]].attrs["voxel_size"], is_2d)
