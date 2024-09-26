@@ -18,15 +18,10 @@ logging.getLogger().setLevel(logging.INFO)
 
 def segment_in_block(fragments, segmentation, lut, block):
     import numpy as np
-    from funlib.persistence import Array
     from funlib.segment.arrays import replace_values
 
-    # intersect ROIs
-    block.read_roi = block.read_roi.intersect(fragments.roi)
-    block.write_roi = block.write_roi.intersect(fragments.roi)
-
     # load fragments
-    fragments = fragments.to_ndarray(block.read_roi)
+    fragments = fragments[block.read_roi]
 
     # replace values, write to empty array
     relabelled = np.zeros_like(fragments)
@@ -78,11 +73,10 @@ def extract_segmentations(config):
     read_roi = write_roi = Roi((0,) * fragments.roi.dims, block_size)
 
     for threshold in thresholds:
-        seg_name: str = f"{seg_dataset}/{merge_function}/{int(threshold*100)}"
+        seg_name: str = f"{seg_dataset}/waterz_{merge_function}/{str(int(threshold*100)).zfill(2)}"
 
         start: float = time.time()
-        logging.info(fragments.roi)
-        logging.info(fragments.voxel_size)
+        logging.info(f"Writing {os.path.join(seg_file, seg_name)}")
 
         segmentation = prepare_ds(
             store=os.path.join(seg_file, seg_name),
@@ -98,7 +92,7 @@ def extract_segmentations(config):
         )
 
         # read LUT
-        lut_filename = f"seg_{config['edges_table']}_{int(threshold*100)}"
+        lut_filename = f"waterz_{config['edges_table']}_{str(int(threshold*100)).zfill(2)}"
         lut = os.path.join(lut_dir, lut_filename + ".npz")
         assert os.path.exists(path=lut), f"{lut} does not exist"
         lut = np.load(file=lut)["fragment_segment_lut"]

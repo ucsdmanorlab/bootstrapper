@@ -134,7 +134,7 @@ def get_connected_components(
     lut = np.array([nodes, components])
 
     logging.info(f"Storing fragment-segment LUT for threshold {threshold}...")
-    lookup = f"seg_{edges_collection}_{int(threshold*100)}"
+    lookup = f"waterz_{edges_collection}_{str(int(threshold*100)).zfill(2)}"
 
     out_file = os.path.join(out_dir, lookup)
     np.savez_compressed(out_file, fragment_segment_lut=lut)

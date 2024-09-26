@@ -9,7 +9,7 @@ from .blockwise.hglom.extract import extract, extract_segmentations
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 class OrderedGroup(click.Group):
     def list_commands(self, ctx):

@@ -51,7 +51,7 @@ def run_blockwise(in_array, out_array, block_shape, context):
         read_block_roi,
         write_block_roi,
         process_function=partial(block_fn, in_array, out_array),
-        read_write_conflict=True,
+        read_write_conflict=False,
         num_workers=20,
         max_retries=0,
         fit="shrink",

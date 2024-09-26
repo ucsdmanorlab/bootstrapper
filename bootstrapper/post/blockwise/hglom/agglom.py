@@ -28,8 +28,8 @@ def agglomerate_in_block(affs, fragments, db_config, merge_function, block):
     import waterz
 
     # load array data
-    affs_data = affs.to_ndarray(block.read_roi)
-    fragments_data = fragments.to_ndarray(block.read_roi)
+    affs_data = affs[block.read_roi][:3]
+    fragments_data = fragments[block.read_roi]
 
     # load RAG DB
     if "db_file" in db_config:

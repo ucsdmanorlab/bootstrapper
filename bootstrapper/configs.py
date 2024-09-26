@@ -208,7 +208,7 @@ def create_prediction_configs(volumes, train_config):
         out_affs_ds = [x for x in pred_datasets if "3d_affs" in x][0]
 
     # can lsd errors be computed ?
-    compute_lsd_errors = True if "3d_lsds" in model_outputs else False
+    # computable_pred_errors = ["3d_affs"]True if "3d_lsds" in model_outputs else False
 
     for volume in volumes:
         pred_config = {}
@@ -254,7 +254,7 @@ def create_prediction_configs(volumes, train_config):
             os.path.join(setup_dir, "pipeline", f"predict_{volume_name}.yaml"),
         )
 
-    return out_affs_ds, pred_datasets, compute_lsd_errors, setup_dir
+    return out_affs_ds, pred_datasets, setup_dir
 
 
 def create_segmentation_configs(volumes, out_affs_ds, setup_dir):
@@ -271,7 +271,7 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir):
         "replace_sections": None,
         "thresholds_minmax": [0, 1],
         "thresholds_step": 0.05,
-        "thresholds": [0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+        "thresholds": [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.65],
         "merge_function": "mean",
     }
 
@@ -383,46 +383,76 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir):
 
 
 def create_evaluation_configs(
-    volumes, out_segs, out_lsd_errors, pred_datasets, setup_dir
+    volumes, out_segs, pred_datasets, setup_dir
 ):
 
     round_name = os.path.basename(os.path.dirname(setup_dir))
     model_name = os.path.basename(setup_dir)
     logger.info(f"\nEvaluation configs for {round_name}/{model_name}:")
 
-    out_eval_dir = f"post/{round_name}-{model_name}/evaluations"
-    out_map_ds = f"post/{round_name}-{model_name}/evaluations/lsd_error_map"
-    out_mask_ds = f"post/{round_name}-{model_name}/evaluations/lsd_error_mask"
+    out_eval_dir = f"post/{round_name}-{model_name}/eval"
 
     for volume in volumes:
         volume_name = os.path.basename(volume["zarr_container"]).split(".zarr")[0]
+        container = volume["zarr_container"]
 
         logger.info(f"\nCreating evaluation config for {out_segs}:")
 
-        # ask if gt labels are available #TODO
-        gt_labels_file = None
-        gt_labels_dataset = None
-
-        # ask if gt skeletons are available #TODO
-        gt_skeletons_file = None
-
-        # compute lsd errors ?
-        if out_lsd_errors and click.confirm(
-            f"Compute LSD errors for {out_segs}?", default=True, show_default=True
-        ):
-            lsds_file = volume["zarr_container"]
-            lsds_dataset = [
-                x for x in pred_datasets if "3d_lsds" in x and "_from_" not in x
-            ][0]
-            lsd_error_file = volume["zarr_container"]
-            lsd_error_map_dataset = out_map_ds
-            lsd_error_mask_dataset = out_mask_ds
+        if click.confirm(f"Are ground truth labels available for {out_segs}?", default=False, show_default=True):
+            gt_labels_ds = click.prompt(
+                "Enter path to ground truth labels dataset (press enter to skip)",
+                type=click.Path(exists=True, dir_okay=True, file_okay=False),
+                default=None,
+                show_default=True
+            )
         else:
-            lsds_file = None
-            lsds_dataset = None
-            lsd_error_file = None
-            lsd_error_map_dataset = None
-            lsd_error_mask_dataset = None
+            gt_labels_ds = None
+
+        if click.confirm(f"Are ground truth skeletons available for {out_segs}?", default=False, show_default=True):
+            gt_skeletons_file = click.prompt(
+                "Enter path to ground truth skeletons file (.graphml format) (press enter to skip)",
+                type=click.Path(exists=True, dir_okay=False, file_okay=True),
+                default=None,
+                show_default=True
+            )
+        else:
+            gt_skeletons_file = None
+
+        # self evaluation ?
+        if click.confirm(
+            f"Compute prediction errors for {out_segs}?", default=True, show_default=True
+        ):
+            # on what predictions? lsds, affs, or both?
+            pred_choices = ["lsds", "affs"] if len([x for x in pred_datasets if "3d_lsds" in x and "_from_" not in x]) > 0 else ["affs"]
+            pred_choice = click.prompt(
+                "Select predictions to self-evaluate with:",
+                type=click.Choice(pred_choices), #TODO: support "both"
+                default=pred_choices[0],
+                show_default=True,
+                show_choices=True,
+            )
+
+            if pred_choice == "lsds":
+                pred_ds = [
+                    os.path.join(container,x) for x in pred_datasets if "3d_lsds" in x and "_from_" not in x
+                ][0]
+            else:
+                pred_ds = [
+                    os.path.join(container,x) for x in pred_datasets if "3d_affs" in x
+                ]
+                if len(pred_ds) > 1:
+                    logger.info(f"Multiple 3d_affs datasets found: {pred_ds}")
+                    pred_ds = click.Choice(pred_ds)
+                else:
+                    pred_ds = pred_ds[0]
+        
+            pred_error_map_ds = os.path.join(container, out_eval_dir, f"{pred_choice}_error_map")
+            pred_error_mask_ds = os.path.join(container, out_eval_dir, f"{pred_choice}_error_mask")
+
+        else:
+            pred_ds = None
+            pred_error_map_ds = None
+            pred_error_mask_ds = None
 
         # add evaluation mask ? #TODO
         mask_file = None
@@ -432,35 +462,34 @@ def create_evaluation_configs(
         # roi_offset, roi_shape, voxel_size = get_roi(in_array=out_segs)
 
         eval_config = {
-            "seg_file": volume["zarr_container"],
-            "seg_datasets": out_segs,  # TODO: zarr tree find all seg arrays. eval on all.
             "out_dir": out_eval_dir,
+            "seg_file": container,
+            "seg_datasets": out_segs,  # TODO: zarr tree find all seg arrays. eval on all.
             "mask_file": mask_file,
             "mask_dataset": mask_dataset,
+            "fragments_file": container,
+            
             # "roi_offset": roi_offset,
             # "roi_shape": roi_shape,
         }
 
-        if lsds_file is not None:
-            eval_config["lsd_errors"] = {
-                "lsds_file": lsds_file,
-                "lsds_dataset": lsds_dataset,
-                "out_file": lsd_error_file,
-                "out_map_dataset": lsd_error_map_dataset,
-                "out_mask_dataset": lsd_error_mask_dataset,
+        if pred_ds is not None:
+            eval_config["self"] = {
+                "pred_dataset": pred_ds,
+                "out_map_dataset": pred_error_map_ds,
+                "out_mask_dataset": pred_error_mask_ds,
                 "thresholds": [0.1, 1.0],
             }
 
-        if gt_labels_file is not None or gt_skeletons_file is not None:
+        if gt_labels_ds is not None or gt_skeletons_file is not None:
             eval_config["gt"] = {
-                "gt_labels_file": gt_labels_file,
-                "gt_labels_dataset": gt_labels_dataset,
+                "gt_labels_dataset": gt_labels_ds,
                 "gt_skeletons_file": gt_skeletons_file,
             }
 
         save_config(
             check_and_update(eval_config),
-            os.path.join(setup_dir, "pipeline", f"evaluation_{volume_name}.yaml"),
+            os.path.join(setup_dir, "pipeline", f"eval_{volume_name}.yaml"),
         )
 
     return out_eval_dir
@@ -524,14 +553,14 @@ def make_round_configs(round_dir, model_name, volumes):
 
     train_config = create_training_config(round_dir, model_name, volumes)
 
-    out_affs_ds, out_pred_datasets, out_lsd_errors, setup_dir = (
+    out_affs_ds, out_pred_datasets, setup_dir = (
         create_prediction_configs(volumes, train_config)
     )
 
     out_segs = create_segmentation_configs(volumes, out_affs_ds, setup_dir)
 
     out_eval_dir = create_evaluation_configs(
-        volumes, out_segs, out_lsd_errors, out_pred_datasets, setup_dir
+        volumes, out_segs, out_pred_datasets + [out_affs_ds], setup_dir
     )
     
     out_volumes = create_filter_configs(

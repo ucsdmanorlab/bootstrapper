@@ -44,8 +44,9 @@ def watershed_in_block(
 
     from bootstrapper.post import watershed_from_affinities
 
+
     # load data
-    affs_data = affs.to_ndarray(block.read_roi)[:3]  # short range affinities only
+    affs_data = affs[block.read_roi][:3]
 
     # normalize
     if affs_data.dtype == np.uint8:
@@ -60,12 +61,14 @@ def watershed_in_block(
         mask = None
 
     # watershed
-    fragments_data, _ = watershed_from_affinities(
+    fragments_data, n = watershed_from_affinities(
         affs_data,
         fragments_in_xy=fragments_in_xy,
         return_seeds=False,
         min_seed_distance=min_seed_distance,
     )
+
+    logging.info(f"Found {n} fragments in block {block}")
 
     # mask fragments
     if mask is not None:

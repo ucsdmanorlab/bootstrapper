@@ -11,40 +11,35 @@ import gunpowder as gp
 from funlib.persistence import prepare_ds, open_ds
 from funlib.geometry import Coordinate, Roi
 
-from bootstrapper.gp import AddLSDErrors
-from bootstrapper.utils import calc_max_padding
+from bootstrapper.gp import AddLSDErrors, AddAffErrors, calc_max_padding
 
 logging.basicConfig(level=logging.INFO)
 
 
 def compute_errors(
-    seg_file,
     seg_dataset,
-    lsds_file,
-    lsds_dataset,
-    mask_file,
+    pred_dataset,
     mask_dataset,
-    out_file,
     out_map_dataset,
     out_mask_dataset,
-    sigma=80,
     thresholds=(0.1, 1.0),
     return_arrays=False,
+    num_workers=1,
 ):
 
     # array keys
     seg = gp.ArrayKey("SEGMENTATION")
-    pred = gp.ArrayKey("PRED_LSDS")
-    seg_lsds = gp.ArrayKey("SEG_LSDS")
-    error_map = gp.ArrayKey("LSD_ERROR_MAP")
-    error_mask = gp.ArrayKey("LSD_ERROR_MASK")
+    pred = gp.ArrayKey("MODEL_PRED")
+    seg_pred = gp.ArrayKey("SEG_PRED")
+    error_map = gp.ArrayKey("PRED_ERROR_MAP")
+    error_mask = gp.ArrayKey("PRED_ERROR_MASK")
 
-    pred_ds = open_ds(os.path.join(lsds_file, lsds_dataset))
-    seg_ds = open_ds(os.path.join(seg_file, seg_dataset))
+    pred_ds = open_ds(pred_dataset)
+    seg_ds = open_ds(seg_dataset)
 
-    if mask_file is not None:
+    if mask_dataset is not None:
         mask = gp.ArrayKey("MASK")
-        mask_ds = open_ds(os.path.join(mask_file, mask_dataset))
+        mask_ds = open_ds(mask_dataset)
         mask_roi = mask_ds.roi
     else:
         mask = None
@@ -63,7 +58,8 @@ def compute_errors(
 
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
-    context = calc_max_padding(output_size, voxel_size, sigma)
+    context = calc_max_padding(output_size, voxel_size, 80)
+    #context = (input_size - output_size) / 2
 
     total_input_roi = roi.grow(context, context)
     total_output_roi = roi
@@ -74,13 +70,13 @@ def compute_errors(
     chunk_request.add(pred, input_size)
     if mask is not None:
         chunk_request.add(mask, input_size)
-    chunk_request.add(seg_lsds, input_size)
+    chunk_request.add(seg_pred, input_size)
     chunk_request.add(error_map, output_size)
     chunk_request.add(error_mask, output_size)
 
     # output datasets
     prepare_ds(
-        os.path.join(out_file, out_map_dataset),
+        out_map_dataset,
         shape=total_output_roi.shape / voxel_size,
         offset=total_output_roi.offset,
         voxel_size=voxel_size,
@@ -90,7 +86,7 @@ def compute_errors(
     )
 
     prepare_ds(
-        os.path.join(out_file, out_mask_dataset),
+        out_mask_dataset,
         shape=total_output_roi.shape / voxel_size,
         offset=total_output_roi.offset,
         voxel_size=voxel_size,
@@ -106,47 +102,94 @@ def compute_errors(
 
     pipeline = sources + gp.MergeProvider()
 
-    pipeline += gp.Pad(seg, None)
+    pipeline += gp.Pad(seg, context)
     pipeline += gp.Pad(pred, None)
     if mask is not None:
         pipeline += gp.Pad(mask, None)
     pipeline += gp.Normalize(pred)
 
-    pipeline += AddLSDErrors(
-        seg,
-        seg_lsds,
-        pred,
-        error_map,
-        error_mask,
-        thresholds=thresholds,
-        labels_mask=mask,
-        sigma=sigma,
-        downsample=4,
-        array_specs=(
-            {
-                error_map: gp.ArraySpec(
-                    interpolatable=False, voxel_size=voxel_size, roi=total_output_roi
-                ),
-                error_mask: gp.ArraySpec(
-                    interpolatable=False,
-                    voxel_size=voxel_size,
-                    roi=total_output_roi,
-                    dtype=np.uint8,
-                ),
-            }
-            if not return_arrays
-            else None
-        ),
-    )
+    if "3d_lsds" in pred_dataset and "_from_" not in pred_dataset:
+        sigma = 80  #TODO: unhardcode this
+
+        pipeline += AddLSDErrors(
+            seg,
+            seg_pred,
+            pred,
+            error_map,
+            error_mask,
+            thresholds=thresholds,
+            labels_mask=mask,
+            sigma=sigma,
+            downsample=4,
+            array_specs=(
+                {
+                    error_map: gp.ArraySpec(
+                        interpolatable=False, voxel_size=voxel_size, roi=total_output_roi
+                    ),
+                    error_mask: gp.ArraySpec(
+                        interpolatable=False,
+                        voxel_size=voxel_size,
+                        roi=total_output_roi,
+                        dtype=np.uint8,
+                    ),
+                }
+                if not return_arrays
+                else None
+            ),
+        )
+    elif "3d_affs" in pred_dataset:
+        neighborhood = [
+            [1, 0, 0], 
+            [0, 1, 0], 
+            [0, 0, 1], 
+            [2, 0, 0], 
+            [0, 8, 0], 
+            [0, 0, 8]
+        ] #TODO: unhardcode this
+
+        pipeline += AddAffErrors(
+            seg,
+            seg_pred,
+            pred,
+            error_map,
+            error_mask,
+            neighborhood,
+            thresholds=thresholds,
+            labels_mask=mask,
+            array_specs=(
+                {
+                    error_map: gp.ArraySpec(
+                        interpolatable=False, voxel_size=voxel_size, roi=total_output_roi
+                    ),
+                    error_mask: gp.ArraySpec(
+                        interpolatable=False,
+                        voxel_size=voxel_size,
+                        roi=total_output_roi,
+                        dtype=np.uint8,
+                    ),
+                }
+                if not return_arrays
+                else None
+            )
+        )
+
+    else:
+        raise ValueError(f"Unknown prediction type: {pred_dataset}")
 
     pipeline += gp.IntensityScaleShift(error_map, 255, 0)
     pipeline += gp.AsType(error_map, np.uint8)
 
     pipeline += gp.ZarrWrite(
-        dataset_names={error_map: out_map_dataset, error_mask: out_mask_dataset},
-        store=out_file,
+        dataset_names={error_map: out_map_dataset},
+        store=out_map_dataset.split(".zarr")[0] + ".zarr",
     )
-    pipeline += gp.Scan(chunk_request)
+
+    pipeline += gp.ZarrWrite(
+        dataset_names={error_mask: out_mask_dataset},
+        store=out_mask_dataset.split(".zarr")[0] + ".zarr",
+    )
+
+    pipeline += gp.Scan(chunk_request, num_workers=num_workers)
 
     # request
     predict_request = gp.BatchRequest()
