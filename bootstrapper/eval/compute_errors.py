@@ -16,6 +16,17 @@ from bootstrapper.gp import AddLSDErrors, AddAffErrors, calc_max_padding
 logging.basicConfig(level=logging.INFO)
 
 
+class PrintArray(gp.BatchFilter):
+
+    def __init__(self, array_key):
+        self.array_key = array_key
+
+    def process(self, batch, request):
+        print(
+            f"{self.array_key}: {batch[self.array_key].data.dtype}, {batch[self.array_key].data.shape}, np min, max, mean, median: {np.min(batch[self.array_key].data)}, {np.max(batch[self.array_key].data)}, {np.mean(batch[self.array_key].data)}, {np.median(batch[self.array_key].data)}"
+        )
+
+
 def compute_errors(
     seg_dataset,
     pred_dataset,
@@ -23,8 +34,9 @@ def compute_errors(
     out_map_dataset,
     out_mask_dataset,
     thresholds=(0.1, 1.0),
+    roi_offset=None,
+    roi_shape=None,
     return_arrays=False,
-    num_workers=1,
 ):
 
     # array keys
@@ -47,21 +59,21 @@ def compute_errors(
 
     # get rois
     roi = pred_ds.roi.intersect(seg_ds.roi).intersect(mask_roi)
-    print(
-        f"seg roi: {seg_ds.roi}, pred_roi: {pred_ds.roi}, mask_roi: {mask_roi}, intersection: {roi}"
-    )
-
+    if roi_offset is not None:
+        roi_offset = Coordinate(roi_offset)
+        roi_shape  = Coordinate(roi_shape)
+        roi = Roi(roi_offset, roi_shape).intersect(roi)
+        
     # io shapes
-    output_shape = Coordinate(pred_ds.chunk_shape[1:])
-    input_shape = Coordinate(pred_ds.chunk_shape[1:]) * 2
+    output_shape = Coordinate((8, 256, 256))
+    input_shape = Coordinate((12, 384, 384))
     voxel_size = pred_ds.voxel_size
 
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
     context = calc_max_padding(output_size, voxel_size, 80)
-    #context = (input_size - output_size) / 2
+    # context = (input_size - output_size) / 2
 
-    total_input_roi = roi.grow(context, context)
     total_output_roi = roi
 
     # request
@@ -75,6 +87,8 @@ def compute_errors(
     chunk_request.add(error_mask, output_size)
 
     # output datasets
+    logging.info(f"Prearing output datasets {out_map_dataset} and {out_mask_dataset}")
+
     prepare_ds(
         out_map_dataset,
         shape=total_output_roi.shape / voxel_size,
@@ -106,10 +120,11 @@ def compute_errors(
     pipeline += gp.Pad(pred, None)
     if mask is not None:
         pipeline += gp.Pad(mask, None)
+
     pipeline += gp.Normalize(pred)
 
     if "3d_lsds" in pred_dataset and "_from_" not in pred_dataset:
-        sigma = 80  #TODO: unhardcode this
+        sigma = 80  # TODO: unhardcode this
 
         pipeline += AddLSDErrors(
             seg,
@@ -124,7 +139,9 @@ def compute_errors(
             array_specs=(
                 {
                     error_map: gp.ArraySpec(
-                        interpolatable=False, voxel_size=voxel_size, roi=total_output_roi
+                        interpolatable=False,
+                        voxel_size=voxel_size,
+                        roi=total_output_roi,
                     ),
                     error_mask: gp.ArraySpec(
                         interpolatable=False,
@@ -139,13 +156,13 @@ def compute_errors(
         )
     elif "3d_affs" in pred_dataset:
         neighborhood = [
-            [1, 0, 0], 
-            [0, 1, 0], 
-            [0, 0, 1], 
-            [2, 0, 0], 
-            [0, 8, 0], 
-            [0, 0, 8]
-        ] #TODO: unhardcode this
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [2, 0, 0],
+            [0, 8, 0],
+            [0, 0, 8],
+        ]  # TODO: unhardcode this
 
         pipeline += AddAffErrors(
             seg,
@@ -159,7 +176,9 @@ def compute_errors(
             array_specs=(
                 {
                     error_map: gp.ArraySpec(
-                        interpolatable=False, voxel_size=voxel_size, roi=total_output_roi
+                        interpolatable=False,
+                        voxel_size=voxel_size,
+                        roi=total_output_roi,
                     ),
                     error_mask: gp.ArraySpec(
                         interpolatable=False,
@@ -170,26 +189,38 @@ def compute_errors(
                 }
                 if not return_arrays
                 else None
-            )
+            ),
         )
-
     else:
         raise ValueError(f"Unknown prediction type: {pred_dataset}")
 
     pipeline += gp.IntensityScaleShift(error_map, 255, 0)
     pipeline += gp.AsType(error_map, np.uint8)
 
+    # pipeline += PrintArray(error_map)
+
+    # pipeline += gp.Snapshot(
+    #     {
+    #         error_map: "pred_error_map",
+    #         error_mask: "pred_error_mask",
+    #         seg_pred: "seg_pred",
+    #         seg: "seg",
+    #         pred: "pred",
+    #     },
+    #     every=5,
+    # )
+
     pipeline += gp.ZarrWrite(
-        dataset_names={error_map: out_map_dataset},
+        dataset_names={error_map: out_map_dataset.split(".zarr")[-1]},
         store=out_map_dataset.split(".zarr")[0] + ".zarr",
     )
 
     pipeline += gp.ZarrWrite(
-        dataset_names={error_mask: out_mask_dataset},
+        dataset_names={error_mask: out_mask_dataset.split(".zarr")[-1]},
         store=out_mask_dataset.split(".zarr")[0] + ".zarr",
     )
 
-    pipeline += gp.Scan(chunk_request, num_workers=num_workers)
+    pipeline += gp.Scan(chunk_request)
 
     # request
     predict_request = gp.BatchRequest()
@@ -210,6 +241,7 @@ def compute_errors(
 
 def compute_stats(array):
 
+
     total_voxels = int(np.prod(array.shape))
     num_nonzero_voxels = array[array > 0].size
     mean = np.mean(array)
@@ -222,48 +254,3 @@ def compute_stats(array):
         "total_voxels": total_voxels,
         "nonzero_ratio": num_nonzero_voxels / total_voxels,
     }
-
-
-if __name__ == "__main__":
-
-    config_file = sys.argv[1]
-    try:
-        scores_out_file = sys.argv[2]
-    except IndexError:
-        scores_out_file = None
-
-    with open(config_file, "r") as f:
-        config = yaml.safe_load(f)
-
-    if config != {}:
-        start = time.time()
-        ret = compute_errors(**config)
-        end = time.time()
-
-        seconds = end - start
-        logging.info(f"Total time to compute LSD errors: {seconds}")
-
-        ret = {
-            "LSD_ERROR_MAP": open_ds(
-                os.path.join(config["out_file"], config["out_map_dataset"])
-            ),
-            "LSD_ERROR_MASK": open_ds(
-                os.path.join(config["out_file"], config["out_mask_dataset"])
-            ),
-        }
-
-        logging.info("Computing LSD Error statistics..")
-        stats = {}
-
-        # compute stats for each array
-        for array_key, arr in ret.items():
-            arr_data = arr.data
-            scores = compute_stats(arr_data[:])
-            stats[str(array_key)] = scores
-
-        # save scores to file
-        if scores_out_file is not None:
-            with open(scores_out_file, "w") as f:
-                json.dump(stats, f)
-
-        pprint.pp(stats)

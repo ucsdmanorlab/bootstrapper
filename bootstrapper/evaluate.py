@@ -37,17 +37,16 @@ def self(config_file, out_result):
     with open(config_file, "r") as f:
         config = yaml.safe_load(f)
 
-    eval_dir = config["out_dir"]
+   
     seg_container = config["seg_file"]
     seg_datasets_prefix = config["seg_datasets"]
+    eval_dir = os.path.join(seg_container, config["out_dir"])
 
     mask_file = config.get("mask_file", None)
     mask_dataset = config.get("mask_dataset", None)
     mask_array = None if mask_file is None or mask_dataset is None else os.path.join(mask_file, mask_dataset)
 
     pred_dataset = config["self"]["pred_dataset"]
-    out_map_dataset = config["self"]["out_map_dataset"]
-    out_mask_dataset = config["self"]["out_mask_dataset"]
     thresholds = tuple(config["self"]["thresholds"])
 
     # search for every zarr array under seg_container/seg_datasets
@@ -60,6 +59,10 @@ def self(config_file, out_result):
 
     for seg_ds in seg_datasets:
         logger.info(f"Evaluating {seg_ds}")
+        seg_name = seg_ds.split(f"{seg_datasets_prefix}/")[1]
+
+        out_map_dataset = os.path.join(config["self"]["out_map_dataset"], seg_name)
+        out_mask_dataset = os.path.join(config["self"]["out_mask_dataset"], seg_name)
 
         compute_errors(
             seg_ds,
@@ -69,17 +72,22 @@ def self(config_file, out_result):
             out_mask_dataset,
             thresholds=thresholds,
             return_arrays=False,
-            num_workers=40,
         )
 
         stats = {}
+        stats["seg_ds"] = seg_ds
+        stats["pred_ds"] = pred_dataset
+        stats["mask_ds"] = mask_array
+        stats["map_ds"] = out_map_dataset
+        stats["mask_ds"] = out_mask_dataset
+        stats["thresholds"] = thresholds
         pred_choice = "lsds" if "lsds_error_map" in out_map_dataset else "affs"
 
         stats[f"{pred_choice}_error_map"] = compute_stats(
-            open_ds(out_map_dataset, mode="r").data
+            open_ds(out_map_dataset, mode="r")[:]
         )
         stats[f"{pred_choice}_error_mask"] = compute_stats(
-            open_ds(out_mask_dataset, mode="r").data
+            open_ds(out_mask_dataset, mode="r")[:]
         )
 
         logger.info(f"Stats for {seg_ds}: {pprint(stats)}")

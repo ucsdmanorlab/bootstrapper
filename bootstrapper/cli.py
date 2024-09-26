@@ -21,7 +21,7 @@ class OrderedGroup(click.Group):
             "train",
             "predict",
             "segment",
-            "evaluate",
+            "eval",
             "filter",
             "auto",
             "view",
@@ -40,7 +40,7 @@ cli.add_command(view)
 cli.add_command(train)
 cli.add_command(predict)
 cli.add_command(segment)
-cli.add_command(evaluate)
+cli.add_command(evaluate, name="eval")
 cli.add_command(filter)
 cli.add_command(auto)
 cli.add_command(utils)

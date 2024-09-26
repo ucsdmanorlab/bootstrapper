@@ -399,22 +399,22 @@ def create_evaluation_configs(
         logger.info(f"\nCreating evaluation config for {out_segs}:")
 
         if click.confirm(f"Are ground truth labels available for {out_segs}?", default=False, show_default=True):
-            gt_labels_ds = click.prompt(
+            gt_labels_ds = os.path.abspath(click.prompt(
                 "Enter path to ground truth labels dataset (press enter to skip)",
                 type=click.Path(exists=True, dir_okay=True, file_okay=False),
                 default=None,
                 show_default=True
-            )
+            ))
         else:
             gt_labels_ds = None
 
         if click.confirm(f"Are ground truth skeletons available for {out_segs}?", default=False, show_default=True):
-            gt_skeletons_file = click.prompt(
+            gt_skeletons_file = os.path.abspath(click.prompt(
                 "Enter path to ground truth skeletons file (.graphml format) (press enter to skip)",
                 type=click.Path(exists=True, dir_okay=False, file_okay=True),
                 default=None,
                 show_default=True
-            )
+            ))
         else:
             gt_skeletons_file = None
 
