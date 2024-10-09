@@ -20,6 +20,7 @@ setup(
     install_requires=[
         "gunpowder>=1.4",
         "daisy>=1.2",
+        "funlib.evaluate",
         "numpy",
         "scipy",
         "scikit-image",
