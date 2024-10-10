@@ -69,7 +69,10 @@ def create_coordinate_space(voxel_size, is_2d):
 
 def process_dataset(f, ds, is_2d):
     data = f[ds][:]
-    vs = f[ds].attrs["voxel_size"]
+    try:
+        vs = f[ds].attrs["voxel_size"]
+    except:
+        vs = f[ds].attrs["resolution"]
     offset = f[ds].attrs["offset"]
 
     if is_2d:
@@ -145,7 +148,12 @@ def view_snapshot(zarr_path):
     logger.info(f"Raw shape: {raw_shape}, pred shape: {shape}")
     is_2d = (len(shape) == 5 and shape[-3] == 1) and (len(raw_shape) == 4)
 
-    dims = create_coordinate_space(f[datasets[0]].attrs["voxel_size"], is_2d)
+    try:
+        vs = f[datasets[0]].attrs["voxel_size"]
+    except:
+        vs = f[datasets[0]].attrs["resolution"]
+
+    dims = create_coordinate_space(vs, is_2d)
 
     with viewer.txn() as s:
         for ds in datasets:

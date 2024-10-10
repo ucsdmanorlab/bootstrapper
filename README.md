@@ -59,7 +59,7 @@ It also has:
 - `bs utils` offers functions for data manipulation and preprocessing.
 
 ## Examples
-[coming soon]
+* [CREMI](examples/cremi)
 
 ## Citation
 For questions about the preprint or this repository, please contact vvenu@utexas.edu
