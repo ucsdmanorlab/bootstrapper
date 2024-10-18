@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 def process_zarr(path, output_zarr, type):
 
     logger.info(f"Processing {path} to {output_zarr}")
-    in_f = zarr.open(path)
+    in_f = zarr.open_group(path)
     logger.info(in_f.tree())
 
     in_ds_name = click.prompt(
@@ -23,7 +23,7 @@ def process_zarr(path, output_zarr, type):
 
     out_ds_name = click.prompt(
         "Enter output dataset name",
-        default=f"volumes/{type}",
+        default=f"{type}",
         type=str,
         show_default=True,
     )
@@ -82,7 +82,7 @@ def process_non_zarr(path, output_zarr, type):
 
     dataset_name = click.prompt(
         "Enter output dataset name",
-        default=f"volumes/{type}",
+        default=f"{type}",
         type=str,
         show_default=True,
     )
@@ -125,6 +125,7 @@ def process_non_zarr(path, output_zarr, type):
             show_default=True,
         ).split()
     )
+    
     crop = click.confirm(
         "Perform bounding box crop?",
         default=False if type == "raw" else True,
@@ -168,55 +169,56 @@ def process_dataset(path, output_zarr, type):
         return None, None, None
 
     out_ds_name = f"{ds_name}"
-    if type == "raw":
-        if click.confirm("Apply CLAHE?", default=True):
-            out_ds_name += "_clahe"
-            subprocess.run(["bs", "utils", "clahe", "-i", ds_name, "-o", out_ds_name])
 
-    if click.confirm("Generate scale pyramid?", default=False):
-        in_file = output_zarr
-        in_ds_name = out_ds_name.split(".zarr/")[-1]
-        scales = tuple(
-            click.prompt(
-                "Enter scales for each axis (space separated integers)",
-                default="1 2 2",
-                type=str,
-                show_default=True,
-            ).split()
-        )
-        chunk_shape = tuple(
-            click.prompt(
-                "Enter chunk shape (space separated integers)",
-                default="8 256 256",
-                type=str,
-                show_default=True,
-            ).split()
-        )
-        mode = click.prompt(
-            "Enter mode",
-            type=click.Choice(["up", "down"]),
-            show_default=True,
-            default="down",
-        )
+    # if type == "raw":
+    #     if click.confirm("Apply CLAHE?", default=True):
+    #         out_ds_name += "_clahe"
+    #         subprocess.run(["bs", "utils", "clahe", "-i", ds_name, "-o", out_ds_name])
 
-        subprocess.run(
-            [
-                "bs",
-                "utils",
-                "scale-pyramid",
-                "-f",
-                in_file,
-                "-ds",
-                in_ds_name,
-                "-s",
-                *scales,
-                "-c",
-                *chunk_shape,
-                "-m",
-                mode,
-            ]
-        )
-        out_ds_name = os.path.join(out_ds_name, "s0")
+    # if click.confirm("Generate scale pyramid?", default=False):
+    #     in_file = output_zarr
+    #     in_ds_name = out_ds_name.split(".zarr/")[-1]
+    #     scales = tuple(
+    #         click.prompt(
+    #             "Enter scales for each axis (space separated integers)",
+    #             default="1 2 2",
+    #             type=str,
+    #             show_default=True,
+    #         ).split()
+    #     )
+    #     chunk_shape = tuple(
+    #         click.prompt(
+    #             "Enter chunk shape (space separated integers)",
+    #             default="8 256 256",
+    #             type=str,
+    #             show_default=True,
+    #         ).split()
+    #     )
+    #     mode = click.prompt(
+    #         "Enter mode",
+    #         type=click.Choice(["up", "down"]),
+    #         show_default=True,
+    #         default="down",
+    #     )
+
+    #     subprocess.run(
+    #         [
+    #             "bs",
+    #             "utils",
+    #             "scale-pyramid",
+    #             "-f",
+    #             in_file,
+    #             "-ds",
+    #             in_ds_name,
+    #             "-s",
+    #             *scales,
+    #             "-c",
+    #             *chunk_shape,
+    #             "-m",
+    #             mode,
+    #         ]
+    #     )
+    #     out_ds_name = os.path.join(out_ds_name, "s0")
 
     if click.confirm(f"Make {type} mask?", default=False):
         mask_ds_name = out_ds_name.replace(type, f"{type}_mask")
@@ -229,24 +231,24 @@ def process_dataset(path, output_zarr, type):
     return out_ds_name, mask_ds_name, vs
 
 
-def prepare_volume(base_dir, volume_index):
-    output_zarr = click.prompt(
-        "Enter path to output zarr container",
-        default=os.path.join(base_dir, f"volume_{volume_index + 1}.zarr"),
-        type=click.Path(),
-    )
-    output_zarr = os.path.abspath(output_zarr)
+def prepare_volume(volume_path):
+    # check if volume path ends in .zarr or .zarr/, else raise
+    if volume_path.endswith(".zarr") or volume_path.endswith(".zarr/"):
+        output_zarr = os.path.abspath(volume_path)
+    else:
+        raise ValueError(f"Volume path must end in .zarr")
 
+    # procress raw
     path = click.prompt(
-        f"Enter path to input RAW tif directory, tif stack, or zarr container for volume {volume_index + 1}",
+        f"Enter path to input RAW tif directory, tif stack, or zarr container for volume {volume_path}",
         type=click.Path(exists=True),
     )
     path = os.path.abspath(path)
-
     raw_ds, raw_mask, raw_vs = process_dataset(path, output_zarr, "raw")
 
+    # process labels
     path = click.prompt(
-        f"Enter path to input LABELS tif directory, tif stack, or zarr container for volume {volume_index + 1}",
+        f"Enter path to input LABELS tif directory, tif stack, or zarr container for volume {volume_path}",
         type=click.Path(exists=True),
     )
     path = os.path.abspath(path)
@@ -266,32 +268,3 @@ def prepare_volume(base_dir, volume_index):
         "labels_mask_dataset": None if obj_mask is None else os.path.abspath(obj_mask),
         "voxel_size": list(vs),
     }
-
-
-def make_volumes(base_dir, num_volumes=None):
-    """Prepare volumes for bootstrapping."""
-
-    logger.info(f"Processing volumes in {base_dir}")
-
-    if not base_dir:
-        base_dir = click.prompt(
-            "Enter the base directory path",
-            default=".",
-            type=click.Path(file_okay=False, dir_okay=True),
-        )
-        os.makedirs(base_dir, exist_ok=True)
-
-    if not num_volumes:
-        num_volumes = click.prompt(
-            "How many volumes for this round?", default=1, type=int
-        )
-
-    volumes = []
-    for i in range(num_volumes):
-        logger.info(f"Processing volume {i+1}")
-        volume_info = prepare_volume(base_dir, i)
-        if volume_info:
-            volumes.append(volume_info)
-
-    logger.info(f"Processed volumes: {volumes}")
-    return volumes
