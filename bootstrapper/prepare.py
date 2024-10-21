@@ -1,72 +1,69 @@
 import click
 import os
 import yaml
-import logging
-from pprint import pprint
 
 from .configs import (
-    save_config, 
-    choose_model, 
+    save_config,
+    choose_model,
     make_round_configs,
     create_training_config,
     create_prediction_configs,
     create_segmentation_configs,
     create_evaluation_configs,
     create_filter_configs,
-    check_and_update
+    check_and_update,
 )
 from .data.volumes import prepare_volume
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 def make_volumes():
     """Prepare volumes for bootstrapping."""
 
     num_volumes = click.prompt(
-        "Enter how many volumes to prepare?", default=1, type=int
+        click.style("Enter number of volumes to prepare", fg="cyan"),
+        default=1,
+        type=int,
     )
 
     volumes = []
     for i in range(num_volumes):
-        logger.info(f"Processing volume {i+1}")
+        click.echo()
+        click.secho(f"Processing volume {i+1}", fg="cyan", bold=True)
         volume_path = click.prompt(
-            "Enter the path to the volume: ",
+            click.style("Enter path to volume", fg="cyan"),
             type=click.Path(),
         )
         volume_info = prepare_volume(volume_path)
         if volume_info:
             volumes.append(volume_info)
 
-    logger.info(f"Processed volumes: {volumes}")
-
     return volumes
 
 
 def get_volumes():
-    """ Get volumes from yaml file if exists, else ask for volumes info"""
+    """Get volumes from yaml file if exists, else ask for volumes info"""
     volumes = []
 
-    if click.prompt("Enter if volumes.yaml already exists (y/n): ", default="n", type=click.Choice(["y", "n"])) == "y":
+    if click.confirm(
+        click.style("Does volumes.yaml already exist?", fg="cyan"), default=False
+    ):
         volumes_yaml = click.prompt(
-            "Enter the path to the volumes.yaml file: ",
+            click.style("Enter path to volumes.yaml file", fg="cyan"),
             type=click.Path(exists=True, dir_okay=False, file_okay=True),
         )
-        
+
         with open(volumes_yaml) as f:
             volumes = yaml.safe_load(f)
-            logger.info(f"Loaded volumes from {volumes_yaml}: ")
+            click.secho(f"Loaded volumes from {volumes_yaml}", fg="cyan", bold=True)
 
     else:
         volumes = make_volumes()
 
-    #save_config(volumes, volumes_yaml)
     return check_and_update(volumes)
 
 
 def make_configs(base_dir):
-    """Create for multiple rounds with given volumes."""
+    """Create configs for multiple rounds."""
 
     existing_rounds = [
         d
@@ -76,39 +73,43 @@ def make_configs(base_dir):
         and "round" in d
     ]
 
-    logger.info(f"Existing rounds: {existing_rounds}")
+    click.secho(f"Existing rounds: {existing_rounds}", fg="cyan", bold=True)
 
     out_volumes = []
     i = 0
 
     while True:
+        click.echo()
         round_name = click.prompt(
-            f"Enter name of round {i+1}: ", default=f"round_{i+1}"
+            click.style(f"Enter name for round {i+1}", fg="cyan"),
+            default=f"round_{i+1}",
         )
         round_dir = os.path.join(base_dir, round_name)
         os.makedirs(round_dir, exist_ok=True)
 
         if out_volumes == []:
-            volumes = get_volumes()      
+            volumes = get_volumes()
         else:
             volumes = out_volumes
 
-        logger.info(f"Writing volumes to {round_dir}/volumes.yaml")
-        save_config(volumes, os.path.join(round_dir, "volumes.yaml"))  
+        click.secho(
+            f"Writing volumes to {round_dir}/volumes.yaml", fg="cyan", bold=True
+        )
+        save_config(volumes, os.path.join(round_dir, "volumes.yaml"))
 
         model_name = choose_model()
         setup_dir = os.path.join(round_dir, model_name)
         out_volumes = make_round_configs(volumes, setup_dir, model_name)
 
-        if click.prompt(
-            "Make configs for next round? (y/n): ",
-            type=click.Choice(["y", "n"]),
-            default="n") == "y":
-                i += 1
-        else:
+        click.echo()
+        if not click.confirm(
+            click.style("Make configs for next round?", fg="cyan"), default=False
+        ):
             break
-        
-    logger.info(f"All configs created successfully!")
+        i += 1
+
+    click.echo()
+    click.secho("All configs created successfully!", fg="cyan", bold=True)
 
 
 class OrderedGroup(click.Group):
@@ -150,9 +151,8 @@ def prepare(ctx):
     allowing for refinement of the segmentations over time.
     """
     if ctx.invoked_subcommand is None:
-
         base_dir = click.prompt(
-            "Enter the path to the base directory: ",
+            click.style("Enter path to base directory", fg="cyan"),
             type=click.Path(),
             default=os.getcwd(),
         )
@@ -162,29 +162,25 @@ def prepare(ctx):
     pass
 
 
-@prepare.command('volumes')
+@prepare.command("volumes")
 def prep_vol():
-    """Prepare a single volume for bootstrapping."""
+    """Prepare a single volume."""
     volumes = make_volumes()
-    if click.prompt(
-        "Enter whether to save volumes.yaml (y/n): ",
-        default="y",
-        type=click.Choice(["y", "n"]),
-        show_default=True,
-    ) == "y":
+    click.echo()
+    if click.confirm(click.style("Save volumes.yaml?", fg="cyan"), default=True):
         volumes_yaml = click.prompt(
-            "Enter the path to new volumes.yaml file (enter to skip): ",
+            click.style("Enter path for new volumes.yaml file", fg="cyan"),
             type=click.Path(),
             default=os.path.join(os.getcwd(), "volumes.yaml"),
         )
         save_config(volumes, volumes_yaml)
 
 
-@prepare.command('train')
+@prepare.command("train")
 def prep_train_config():
     """Create training config files."""
     setup_dir = click.prompt(
-        "Enter the path to the setup directory to create: ",
+        click.style("Enter path to setup directory", fg="cyan"),
         type=click.Path(),
     )
     model_name = choose_model()
@@ -192,72 +188,79 @@ def prep_train_config():
 
     ret = create_training_config(volumes, setup_dir, model_name)
 
+    click.echo()
     config_path = click.prompt(
-        "Enter the path to save the train config file: ",
+        click.style("Enter path to save train config file", fg="cyan"),
         type=click.Path(),
-        default=os.path.join(setup_dir, "run", "train.yaml")
+        default=os.path.join(setup_dir, "run", "train.yaml"),
     )
     save_config(ret, config_path)
 
 
-@prepare.command('predict')
+@prepare.command("predict")
 def prep_predict_config():
     """Create prediction config files."""
     volumes = get_volumes()
     setup_dir = click.prompt(
-        "Enter the path to the setup directory: ",
+        click.style("Enter path to setup directory", fg="cyan"),
         type=click.Path(exists=True, dir_okay=True, file_okay=False),
     )
 
     ret = create_prediction_configs(volumes, setup_dir)
 
     for volume_name, config in ret["configs"].items():
+        click.echo()
         config_path = click.prompt(
-            f"Enter the path to save the predict config file for {volume_name}: ",
+            click.style(
+                f"Enter path to save predict config for {volume_name}", fg="cyan"
+            ),
             type=click.Path(),
-            default=os.path.join(setup_dir, "run", f"predict_{volume_name}.yaml")
+            default=os.path.join(setup_dir, "run", f"predict_{volume_name}.yaml"),
         )
         save_config(config, config_path)
 
 
-@prepare.command('segment')
+@prepare.command("segment")
 def prep_segment_config():
     """Create segmentation config files."""
     volumes = get_volumes()
     setup_dir = click.prompt(
-        "Enter the path to the setup directory: ",
+        click.style("Enter path to setup directory", fg="cyan"),
         type=click.Path(exists=True, dir_okay=True, file_okay=False),
     )
     out_affs_ds = click.prompt(
-        "Enter the name of the output affinities dataset: ",
+        click.style("Enter name of output affinities dataset", fg="cyan"),
         type=str,
     )
-    
+
     ret = create_segmentation_configs(volumes, setup_dir, out_affs_ds)
 
     for volume_name, config in ret["configs"].items():
+        click.echo()
         config_path = click.prompt(
-            f"Enter the path to save the segment config file for {volume_name}: ",
+            click.style(
+                f"Enter path to save segment config for {volume_name}", fg="cyan"
+            ),
             type=click.Path(),
             default=os.path.join(setup_dir, "run", f"seg_{volume_name}.yaml"),
         )
         save_config(config, config_path)
 
 
-@prepare.command('eval')
+@prepare.command("eval")
 def prep_eval_config():
     """Create evaluation config files."""
     volumes = get_volumes()
     setup_dir = click.prompt(
-        "Enter the path to the setup directory: ",
+        click.style("Enter path to setup directory", fg="cyan"),
         type=click.Path(exists=True, dir_okay=True, file_okay=False),
     )
     out_segs_prefix = click.prompt(
-        "Enter the prefix for the segmentation datasets: ",
+        click.style("Enter prefix for segmentation datasets", fg="cyan"),
         type=str,
     )
     pred_datasets = click.prompt(
-        "Enter the prediction datasets (commma-separated): ",
+        click.style("Enter prediction datasets (comma-separated)", fg="cyan"),
         type=str,
     )
     pred_datasets = [x.strip() for x in pred_datasets.split(",")]
@@ -265,36 +268,40 @@ def prep_eval_config():
     ret = create_evaluation_configs(volumes, setup_dir, out_segs_prefix, pred_datasets)
 
     for volume_name, config in ret["configs"].items():
+        click.echo()
         config_path = click.prompt(
-            f"Enter the path to save the eval config file for {volume_name}: ",
+            click.style(f"Enter path to save eval config for {volume_name}", fg="cyan"),
             type=click.Path(),
             default=os.path.join(setup_dir, "run", f"eval_{volume_name}.yaml"),
         )
         save_config(config, config_path)
 
 
-@prepare.command('filter')
+@prepare.command("filter")
 def prep_filter_config():
     """Create config files for filtering segmentations."""
     volumes = get_volumes()
     setup_dir = click.prompt(
-        "Enter the path to the setup directory: ",
+        click.style("Enter path to setup directory", fg="cyan"),
         type=click.Path(exists=True, dir_okay=True, file_okay=False),
     )
     out_segs_prefix = click.prompt(
-        "Enter the prefix for the segmentation datasets: ",
+        click.style("Enter prefix for segmentation datasets", fg="cyan"),
         type=str,
     )
     eval_dir = click.prompt(
-        "Enter the path to the evaluation directory: ",
+        click.style("Enter path to evaluation directory", fg="cyan"),
         type=click.Path(),
     )
 
     ret = create_filter_configs(volumes, setup_dir, out_segs_prefix, eval_dir)
 
     for volume_name, config in ret["configs"].items():
+        click.echo()
         config_path = click.prompt(
-            f"Enter the path to save the filter config file for {volume_name}: ",
+            click.style(
+                f"Enter path to save filter config for {volume_name}", fg="cyan"
+            ),
             type=click.Path(),
             default=os.path.join(setup_dir, "run", f"filter_{volume_name}.yaml"),
         )

@@ -2,36 +2,42 @@ import os
 import click
 import zarr
 import subprocess
-import logging
 
-# Set up logging
-logger = logging.getLogger(__name__)
+DEFAULT_PROMPT_STYLE = {"fg": "white"}
+DEFAULT_INFO_STYLE = {"fg": "white", "bold": True}
+DEFAULT_PROMPT_SUFFIX = click.style(" >>> ", **DEFAULT_PROMPT_STYLE)
 
 
 def process_zarr(path, output_zarr, type):
 
-    logger.info(f"Processing {path} to {output_zarr}")
+    click.secho(f"Processing {path} to {output_zarr}", **DEFAULT_INFO_STYLE)
     in_f = zarr.open_group(path)
-    logger.info(in_f.tree())
+    click.secho(in_f.tree())
 
     in_ds_name = click.prompt(
-        f"Enter input {type.upper()} dataset name contained in the Zarr container",
+        click.style(
+            f"Enter input {type.upper()} dataset name contained in the Zarr container",
+            **DEFAULT_PROMPT_STYLE,
+        ),
         type=str,
+        prompt_suffix=DEFAULT_PROMPT_SUFFIX,
     )
     if in_ds_name is None:
         return None, None
 
     out_ds_name = click.prompt(
-        "Enter output dataset name",
+        click.style("Enter output dataset name", **DEFAULT_PROMPT_STYLE),
         default=f"{type}",
         type=str,
         show_default=True,
+        prompt_suffix=DEFAULT_PROMPT_SUFFIX,
     )
 
     if click.confirm(
-        "Perform bounding box crop?",
+        click.style("Perform bounding box crop?", **DEFAULT_PROMPT_STYLE),
         default=False if type == "raw" else True,
         show_default=True,
+        prompt_suffix=DEFAULT_PROMPT_SUFFIX,
     ):
         subprocess.run(
             [
@@ -51,9 +57,15 @@ def process_zarr(path, output_zarr, type):
         if (
             os.path.abspath(path) == os.path.abspath(output_zarr)
             and in_ds_name != out_ds_name
-            and click.confirm(f"Rename {in_ds_name} to {out_ds_name}?", default=True)
+            and click.confirm(
+                click.style(
+                    f"Rename {in_ds_name} to {out_ds_name}?", **DEFAULT_PROMPT_STYLE
+                ),
+                default=True,
+                prompt_suffix=DEFAULT_PROMPT_SUFFIX,
+            )
         ):
-            logger.info(f"Renaming {in_ds_name} to {out_ds_name}")
+            click.secho(f"Renaming {in_ds_name} to {out_ds_name}")
             in_f.store.rename(in_ds_name, in_ds_name + "__tmp")
             # in_f.create_group('/'.join(out_ds_name.split('/')[:-1]))
             in_f.store.rename(in_ds_name + "__tmp", out_ds_name)
@@ -64,7 +76,10 @@ def process_zarr(path, output_zarr, type):
         ):
             pass
         else:
-            logger.info(f"Copying {path}/{in_ds_name} to {output_zarr}/{out_ds_name}")
+            click.secho(
+                f"Copying {path}/{in_ds_name} to {output_zarr}/{out_ds_name}",
+                **DEFAULT_INFO_STYLE,
+            )
             out_f[out_ds_name] = in_f[in_ds_name]
             out_f[out_ds_name].attrs["offset"] = in_f[in_ds_name].attrs["offset"]
             out_f[out_ds_name].attrs["voxel_size"] = in_f[in_ds_name].attrs[
@@ -81,55 +96,70 @@ def process_zarr(path, output_zarr, type):
 def process_non_zarr(path, output_zarr, type):
 
     dataset_name = click.prompt(
-        "Enter output dataset name",
+        click.style("Enter output dataset name", **DEFAULT_PROMPT_STYLE),
         default=f"{type}",
         type=str,
         show_default=True,
+        prompt_suffix=DEFAULT_PROMPT_SUFFIX,
     )
     out_array = os.path.join(output_zarr, dataset_name)
     dtype = click.prompt(
-        "Enter data type",
+        click.style("Enter data type", **DEFAULT_PROMPT_STYLE),
         default="uint32" if type == "labels" else "uint8",
         type=str,
         show_default=True,
+        prompt_suffix=DEFAULT_PROMPT_SUFFIX,
     )
     voxel_size = tuple(
         click.prompt(
-            "Enter voxel size (space separated integers)",
+            click.style(
+                "Enter voxel size (space separated integers)", **DEFAULT_PROMPT_STYLE
+            ),
             default="1 1 1",
             type=str,
             show_default=True,
+            prompt_suffix=DEFAULT_PROMPT_SUFFIX,
         ).split()
     )
     voxel_offset = tuple(
         click.prompt(
-            "Enter voxel offset (space separated integers)",
+            click.style(
+                "Enter voxel offset (space separated integers)", **DEFAULT_PROMPT_STYLE
+            ),
             default="0 0 0",
             type=str,
             show_default=True,
+            prompt_suffix=DEFAULT_PROMPT_SUFFIX,
         ).split()
     )
     axis_names = tuple(
         click.prompt(
-            "Enter axis names (space separated strings)",
+            click.style(
+                "Enter axis names (space separated strings)", **DEFAULT_PROMPT_STYLE
+            ),
             default="z y x",
             type=str,
             show_default=True,
+            prompt_suffix=DEFAULT_PROMPT_SUFFIX,
         ).split()
     )
     units = tuple(
         click.prompt(
-            "Enter units (space separated strings)",
+            click.style(
+                "Enter units (space separated strings)", **DEFAULT_PROMPT_STYLE
+            ),
             default="nm nm nm",
             type=str,
             show_default=True,
+            prompt_suffix=DEFAULT_PROMPT_SUFFIX,
         ).split()
     )
-    
+
     crop = click.confirm(
-        "Perform bounding box crop?",
+        click.style("Perform bounding box crop?", **DEFAULT_PROMPT_STYLE),
         default=False if type == "raw" else True,
         show_default=True,
+        prompt_suffix=DEFAULT_PROMPT_SUFFIX,
     )
 
     args = [
@@ -170,57 +200,11 @@ def process_dataset(path, output_zarr, type):
 
     out_ds_name = f"{ds_name}"
 
-    # if type == "raw":
-    #     if click.confirm("Apply CLAHE?", default=True):
-    #         out_ds_name += "_clahe"
-    #         subprocess.run(["bs", "utils", "clahe", "-i", ds_name, "-o", out_ds_name])
-
-    # if click.confirm("Generate scale pyramid?", default=False):
-    #     in_file = output_zarr
-    #     in_ds_name = out_ds_name.split(".zarr/")[-1]
-    #     scales = tuple(
-    #         click.prompt(
-    #             "Enter scales for each axis (space separated integers)",
-    #             default="1 2 2",
-    #             type=str,
-    #             show_default=True,
-    #         ).split()
-    #     )
-    #     chunk_shape = tuple(
-    #         click.prompt(
-    #             "Enter chunk shape (space separated integers)",
-    #             default="8 256 256",
-    #             type=str,
-    #             show_default=True,
-    #         ).split()
-    #     )
-    #     mode = click.prompt(
-    #         "Enter mode",
-    #         type=click.Choice(["up", "down"]),
-    #         show_default=True,
-    #         default="down",
-    #     )
-
-    #     subprocess.run(
-    #         [
-    #             "bs",
-    #             "utils",
-    #             "scale-pyramid",
-    #             "-f",
-    #             in_file,
-    #             "-ds",
-    #             in_ds_name,
-    #             "-s",
-    #             *scales,
-    #             "-c",
-    #             *chunk_shape,
-    #             "-m",
-    #             mode,
-    #         ]
-    #     )
-    #     out_ds_name = os.path.join(out_ds_name, "s0")
-
-    if click.confirm(f"Make {type} mask?", default=False):
+    if click.confirm(
+        click.style(f"Make {type} mask?", **DEFAULT_PROMPT_STYLE),
+        default=False,
+        prompt_suffix=DEFAULT_PROMPT_SUFFIX,
+    ):
         mask_ds_name = out_ds_name.replace(type, f"{type}_mask")
         subprocess.run(
             ["bs", "utils", "mask", "-i", out_ds_name, "-o", mask_ds_name, "-m", type]
@@ -240,22 +224,32 @@ def prepare_volume(volume_path):
 
     # procress raw
     path = click.prompt(
-        f"Enter path to input RAW tif directory, tif stack, or zarr container for volume {volume_path}",
+        click.style(
+            f"Enter path to input RAW tif directory, tif stack, or zarr container for volume {volume_path}",
+            **DEFAULT_PROMPT_STYLE,
+        ),
         type=click.Path(exists=True),
+        prompt_suffix=DEFAULT_PROMPT_SUFFIX,
     )
     path = os.path.abspath(path)
     raw_ds, raw_mask, raw_vs = process_dataset(path, output_zarr, "raw")
 
     # process labels
     path = click.prompt(
-        f"Enter path to input LABELS tif directory, tif stack, or zarr container for volume {volume_path}",
+        click.style(
+            f"Enter path to input LABELS tif directory, tif stack, or zarr container for volume {volume_path}",
+            **DEFAULT_PROMPT_STYLE,
+        ),
         type=click.Path(exists=True),
+        prompt_suffix=DEFAULT_PROMPT_SUFFIX,
     )
     path = os.path.abspath(path)
     obj_ds, obj_mask, obj_vs = process_dataset(path, output_zarr, "labels")
 
     if raw_vs != obj_vs:
-        logger.warning(f"Voxel sizes do not match: {raw_vs} vs {obj_vs}")
+        click.secho(
+            f"Voxel sizes do not match! {raw_vs} vs {obj_vs}", fg="red", bold=True
+        )
         vs = raw_vs if raw_vs is not None else obj_vs
     else:
         vs = raw_vs
