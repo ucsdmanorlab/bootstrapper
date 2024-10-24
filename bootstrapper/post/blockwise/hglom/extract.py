@@ -39,7 +39,7 @@ def extract_segmentations(config):
     fragments_dataset = config["fragments_dataset"]
     lut_dir = config["lut_dir"]
     seg_file = config["seg_file"]
-    seg_dataset = config["seg_dataset"]
+    seg_dataset_prefix = config["seg_dataset_prefix"]
     thresholds = config["thresholds"]
     merge_function = config["merge_function"]
     num_workers = config["num_workers"]
@@ -73,7 +73,7 @@ def extract_segmentations(config):
     read_roi = write_roi = Roi((0,) * fragments.roi.dims, block_size)
 
     for threshold in thresholds:
-        seg_name: str = f"{seg_dataset}/waterz_{merge_function}/{str(int(threshold*100)).zfill(2)}"
+        seg_name: str = f"{seg_dataset_prefix}/waterz_{merge_function}/{str(int(threshold*100)).zfill(2)}"
 
         start: float = time.time()
         logging.info(f"Writing {os.path.join(seg_file, seg_name)}")
