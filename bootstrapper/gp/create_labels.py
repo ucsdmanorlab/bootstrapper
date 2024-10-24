@@ -56,7 +56,7 @@ class CreateLabels(gp.BatchProvider):
         self.ndims = len(spec.voxel_size)
 
         if self.anisotropy_range is None:
-            self.anisotropy_range = (4, int(voxel_size[0] / voxel_size[1]))
+            self.anisotropy_range = (2, max(4, int(voxel_size[0] / voxel_size[1])))
 
         offset = gp.Coordinate((0,) * self.ndims)
         spec.roi = gp.Roi(offset, gp.Coordinate(self.shape) * spec.voxel_size)

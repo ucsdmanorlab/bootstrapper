@@ -85,24 +85,22 @@ def train(
     # prepare pipeline
     source = tuple(
         (
-            gp.ArraySource(raw, open_ds(os.path.join(sample, ds_names["raw"])), True),
-            gp.ArraySource(
-                labels, open_ds(os.path.join(sample, ds_names["labels"])), False
-            ),
+            (
+                gp.ArraySource(raw, open_ds(os.path.join(sample, ds_names["raw"])), True),
+                gp.ArraySource(labels, open_ds(os.path.join(sample, ds_names["labels"])), False),
+                gp.ArraySource(unlabelled, open_ds(os.path.join(sample, ds_names["mask"])), False),
+            ) + gp.MergeProvider() 
+            if "mask" in ds_names and ds_names["mask"] is not None
+            else (
+                gp.ArraySource(raw, open_ds(os.path.join(sample, ds_names["raw"])), True),
+                gp.ArraySource(labels, open_ds(os.path.join(sample, ds_names["labels"])), False),
+            ) + gp.MergeProvider() + CreateMask(labels, unlabelled)
         )
-        + gp.MergeProvider()
         + gp.Normalize(raw)
         + Renumber(labels)
         + gp.AsType(labels, "uint32")
         + gp.Pad(raw, None)
         + gp.Pad(labels, context)
-        + (
-            gp.ArraySource(
-                unlabelled, open_ds(os.path.join(sample, ds_names["mask"])), False
-            )
-            if "mask" in ds_names and ds_names["mask"] is not None
-            else CreateMask(labels, unlabelled)
-        )
         + gp.Pad(unlabelled, context)
         + gp.RandomLocation()
         + gp.Reject(mask=unlabelled, min_masked=0.05)
