@@ -24,7 +24,6 @@ def train(
     voxel_size,
     max_iterations,
     samples,
-    out_dir,
     save_checkpoints_every,
     save_snapshots_every,
 ):
@@ -158,8 +157,8 @@ def train(
         outputs={
             0: pred_affs,
         },
-        log_dir=os.path.join(out_dir, "log"),
-        checkpoint_basename=os.path.join(out_dir, "model"),
+        log_dir=os.path.join(setup_dir, "log"),
+        checkpoint_basename=os.path.join(setup_dir, "model"),
         save_every=save_checkpoints_every,
     )
 
@@ -173,7 +172,7 @@ def train(
             affs_weights: "affs_weights",
         },
         output_filename="batch_{iteration}.zarr",
-        output_dir=os.path.join(out_dir, "snapshots"),
+        output_dir=os.path.join(setup_dir, "snapshots"),
         every=save_snapshots_every,
     )
 
