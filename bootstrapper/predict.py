@@ -14,27 +14,19 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def predict_blockwise(
-    worker,
-    args,
-    input_roi,
-    block_read_roi,
-    block_write_roi,
-    num_workers,
-    num_gpus,
-):
+def predict_blockwise(config):
 
-    logger.info(f"Starting block-wise processing with predict_worker: {worker}...")
+    logger.info(f"Starting block-wise processing with predict_worker: {config['worker']}...")
 
     # process block-wise
     task = daisy.Task(
         "PredictBlockwiseTask",
-        input_roi,
-        block_read_roi,
-        block_write_roi,
-        process_function=lambda: call_predict(worker, args, num_gpus),
+        config['total_roi'],
+        config['read_roi'],
+        config['write_roi'],
+        process_function=lambda: call_predict(config),
         check_function=None,
-        num_workers=num_workers,
+        num_workers=config['num_workers'],
         read_write_conflict=False,
         max_retries=5,
         fit="overhang",
@@ -47,112 +39,60 @@ def predict_blockwise(
         logger.info("All blocks finished successfully!")
 
 
-def call_predict(worker: str, args: list, num_gpus: int = 1):
-
+def call_predict(config):
     worker_id = daisy.Context.from_env()["worker_id"]
-    os.environ["CUDA_VISIBLE_DEVICES"] = f"{int(worker_id) % num_gpus}"
+    os.environ["CUDA_VISIBLE_DEVICES"] = f"{int(worker_id) % config['num_gpus']}"
+    subprocess.run(["python", config['worker'], *config['args']])
 
-    subprocess.run(["python", worker, *args])
 
-
-@click.command()
-@click.argument(
-    "yaml_file", type=click.Path(exists=True, file_okay=True, dir_okay=False)
-)
-@click.argument("model_name", type=str)
-@click.option(
-    "--setup-dir",
-    "-s",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True),
-    help="Path to directory with model and configs",
-)
-@click.option(
-    "--checkpoint",
-    "-c",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
-    help="Path to checkpoint file",
-)
-@click.option(
-    "--input_datasets",
-    "-i",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True),
-    multiple=True,
-    help="Path to input dataset, can be specified multiple times",
-)
-@click.option(
-    "--output_container", "-oc", type=click.Path(), help="Path to output zarr container"
-)
-@click.option(
-    "--output_datasets_prefix", "-op", type=str, help="Prefix for output datasets names"
-)
-@click.option(
-    "--roi_offset",
-    "-ro",
-    type=str,
-    help="Offset of ROI in world units (space separated integers)",
-)
-@click.option(
-    "--roi_shape",
-    "-rs",
-    type=str,
-    help="Shape of ROI in world units (space separated integers)",
-)
-@click.option("--num_workers", "-nw", type=int, help="Number of workers")
-@click.option("--num_gpus", "-gpu", type=int, help="Number of GPUs to use")
-def predict(yaml_file, model_name, **kwargs):
-    """
-    Run prediction with the specified config file and model name
-
-    Overrides the values in the YAML file with the values provided on the command line.
-    """
-
-    # load config
+def get_pred_config(yaml_file, setup_id, **kwargs):
+    # load yaml config
     with open(yaml_file, "r") as f:
-        config = yaml.safe_load(f)[model_name]
+        config = yaml.safe_load(f)[setup_id]
 
-    # override config values with command line arguments
-    if any(kwargs.values()):
-        for key, value in kwargs.items():
-            if value is not None and len(value) > 0:
-                config[key] = value
-
-    logger.info(f"Using config: {pprint(config)}")
+    # override config values with provided kwargs
+    for key, value in kwargs.items():
+        if value is not None:# and len(value) > 0:
+            config[key] = value
 
     setup_dir = config["setup_dir"]
     checkpoint = config["checkpoint"]
     input_datasets = config["input_datasets"]
     output_container = config["output_container"]
     output_datasets_prefix = config["output_datasets_prefix"]
-    num_workers = config["num_workers"]
+    chain_str = config.get("chain_str", "")
+    num_workers = config.get("num_workers", 1)
+    num_gpus = config.get("num_gpus", 1)
+    roi_offset = config.get("roi_offset", None)
+    roi_shape = config.get("roi_shape", None)
 
-    # TODO, support device names
-    if "num_gpus" in config:
-        num_gpus = config["num_gpus"]
-    else:
-        num_gpus = 1
+    # try reading all input datasets, get voxel size
+    in_channels_sum = 0
+    for in_ds_path in input_datasets[::-1]:
+        in_ds = open_ds(in_ds_path, 'r')
+        in_channels_sum += in_ds.shape[0] if len(in_ds.shape) > 3 else 1 # channels first, 3D
+    in_ds = open_ds(input_datasets[0], 'r')
+    voxel_size = in_ds.voxel_size
 
     # load net config
     net_config_file = os.path.join(setup_dir, "net_config.json")
     with open(net_config_file, "r") as f:
         net_config = json.load(f)
 
-    # get net outputs, shapes
-    outputs = net_config["outputs"]
+    # validate number of input datasets
+
+    # get input, output shapes
     shape_increase = net_config["shape_increase"]
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
     output_shape = [x + y for x, y in zip(shape_increase, net_config["output_shape"])]
 
-    # add z-dimension if 2D network
+    # add z-dimension for 2D networks
     if len(input_shape) == 2:
-        input_shape = [3, *input_shape] if "3ch" in setup_dir else [1, *input_shape]
+        input_shape = [net_config['in_channels'], *input_shape] # support for "3ch" models
         output_shape = [1, *output_shape]
-
-    # get input datasets, voxel size
-    in_ds = open_ds(input_datasets[0], "r")
-    voxel_size = in_ds.voxel_size
-    logger.info(
-        f"Input dataset has shape {in_ds.shape}, ROI {in_ds.roi} and voxel size {voxel_size}"
-    )
+    else:
+        assert in_channels_sum == net_config['in_channels'], f"sum of channels of input datasets ({in_channels_sum}) does not match network's number of input channels ({net_config['in_channels']})"
+    
 
     # get block input and output ROIs
     input_size = Coordinate(input_shape) * voxel_size
@@ -161,14 +101,7 @@ def predict(yaml_file, model_name, **kwargs):
     read_roi = Roi((0,) * len(input_size), input_size) - context
     write_roi = Roi((0,) * len(output_size), output_size)
 
-    # get total input and output ROIs
-    if "roi_offset" in config and "roi_shape" in config:
-        roi_offset = config["roi_offset"]
-        roi_shape = config["roi_shape"]
-    else:
-        roi_offset = None
-        roi_shape = None
-
+    # get total roi
     if roi_offset is not None:
         input_roi = Roi(roi_offset, roi_shape).grow(context, context)
         output_roi = Roi(roi_offset, roi_shape)
@@ -176,32 +109,20 @@ def predict(yaml_file, model_name, **kwargs):
         input_roi = in_ds.roi.grow(context, context)
         output_roi = in_ds.roi
 
-    # get output dataset names and prepare output datasets
+    # get output dataset names and prepare output datasets if using daisy
     output_datasets = []
-    iteration = checkpoint.split("_")[-1]
-    for output_name, val in outputs.items():
-        out_dims = val["dims"]
-        out_dtype = val["dtype"]
+    iteration = checkpoint.split('_')[-1]
+    for output_name, val in net_config['outputs'].items():
+        output_dims = val['dims']
+        output_dtype = val['dtype']
 
-        # pred to pred
-        if "_from_" in setup_dir:
-            if "_from_2d_mtlsd" in setup_dir:
-                assert (
-                    len(input_datasets) == 2
-                ), f"{setup_dir} takes two inputs: LSDs and Affinities."
-            else:
-                assert len(input_datasets) == 1
+        out_ds = f"{output_name}_{iteration}"
+        if chain_str != "":
+            out_ds += f"-from-{chain_str}"
 
-            out_ds = f"{output_datasets_prefix}/{output_name}_{iteration}_from_{input_datasets[0].split('_')[-1]}"
-
-        # image to pred
-        else:
-            assert len(input_datasets) == 1
-            out_ds = f"{output_datasets_prefix}/{output_name}_{iteration}"
-
-        # append to list to add to worker config
-        output_dataset = os.path.join(output_container, out_ds)
+        output_dataset = os.path.join(output_container, output_datasets_prefix, out_ds)
         output_datasets.append(output_dataset)
+
         output_axes = (
             [
                 "c^",
@@ -213,18 +134,19 @@ def predict(yaml_file, model_name, **kwargs):
 
         logger.info(f"Preparing output dataset {output_dataset} with ROI {output_roi}")
 
+        # prepare output dataset
         prepare_ds(
             store=output_dataset,
-            shape=(out_dims, *(output_roi.shape / voxel_size)),
+            shape=(output_dims, *(output_roi.shape / voxel_size)),
             offset=output_roi.offset,
             voxel_size=voxel_size,
             axis_names=output_axes,
             units=in_ds.units,
-            chunk_shape=(out_dims, *output_shape),
-            dtype=out_dtype,
+            chunk_shape=(output_dims, *output_shape),
+            dtype=output_dtype,
         )
 
-    # get command line arguments
+    # get args
     worker = os.path.join(setup_dir, "predict.py")
     args = ["-c", checkpoint]
     for in_ds in input_datasets:
@@ -232,21 +154,72 @@ def predict(yaml_file, model_name, **kwargs):
     for out_ds in output_datasets:
         args.extend(["-o", out_ds])
 
-    if "blockwise" in config and config["blockwise"] is True:
+    # daisy for distributed prediction
+    if num_gpus > 1:
         args.extend(["-d"])
-        predict_blockwise(
-            worker,
-            args,
-            input_roi,
-            read_roi,
-            write_roi,
-            num_workers,
-            num_gpus,
-        )
+
+        return {
+            "total_roi": input_roi,
+            "read_roi": read_roi,
+            "write_roi": write_roi,
+            "num_workers": num_workers,
+            "num_gpus": num_gpus,
+            "worker": worker,
+            "args": args
+        }
+    
     else:
         args.extend(["-n", str(num_workers)])
-        subprocess.run(["python", worker, *args])
+        args.extend(["-ro", " ".join(map(str, output_roi.offset))])
+        args.extend(["-rs", " ".join(map(str, output_roi.shape))])
 
+        return {
+            "worker": worker,
+            "args": args,
+            "num_gpus": num_gpus,
+            "num_workers": num_workers,
+        }
+
+
+def run_prediction(yaml_file, setup_id, **kwargs):
+    config = get_pred_config(yaml_file, setup_id, **kwargs)
+    pprint(config)
+
+    if config['num_gpus'] > 1:
+        predict_blockwise(config)
+    else:
+        subprocess.run(["python", config['worker'], *config['args']])
+
+
+@click.command()
+@click.argument("yaml_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.option("--setup-id", "-s", type=str, help="Setup ID(s) to run prediction for. 01, 02, etc.")
+@click.option("--roi-offset", "-ro", type=str, help="Offset of ROI in world units (space separated integers)")
+@click.option("--roi-shape", "-rs", type=str, help="Shape of ROI in world units (space separated integers)")
+@click.option("--num-workers", "-nw", type=int, help="Number of workers")
+@click.option("--num-gpus", "-ng", type=int, help="Number of GPUs to use")
+def predict(yaml_file, setup_id, **kwargs):
+    """Run prediction for a setup or all setups in a prediction YAML file. """
+    with open(yaml_file, "r") as f:
+        setup_ids = list(yaml.safe_load(f).keys())
+
+    # map setup_nums to setup_ids, names to ids, ids to ids
+    valid_setups = {
+        **{setup_id.split("-")[0]: setup_id for setup_id in setup_ids},
+        **{setup_id.split("-")[-1]: setup_id for setup_id in setup_ids},
+        **{setup_id: setup_id for setup_id in setup_ids}
+    }
+
+    if setup_id:
+        setup_ids = sorted(setup_id.strip().split(" "))
+        for s_id in setup_ids:
+            if s_id in valid_setups:
+                run_prediction(yaml_file, valid_setups[setup_id], **kwargs)
+            else:
+                raise ValueError(f"Setup ID {s_id} not found in {setup_ids}")
+    else:
+        for setup_id in setup_ids:
+            run_prediction(yaml_file, setup_id, **kwargs)
 
 if __name__ == "__main__":
     predict()

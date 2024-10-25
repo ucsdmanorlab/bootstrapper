@@ -454,29 +454,26 @@ def create_prediction_configs(volumes, setup_dirs):
             iteration = iterations[i]
             setup_name = os.path.basename(setup_dir)
 
+            # get chain str
+            chain = [f"{sn}_{it}" for sn, it in zip(setup_dirs[:i], iterations[:i])]
+            chain_str = "-from-".join(chain)
+
             # get model outputs
             with open(os.path.join(setup_dir, "net_config.json"), "r") as f:
                 model_outputs = json.load(f)["outputs"]
 
             # get in and out dataset names
             out_ds_prefix = f"predictions/{setup_name}"
-            if i == 0:
+            if i == 0 and chain_str == "":
                 in_ds = [raw_array]
                 out_ds = [f"{out_ds_prefix}/{x}_{iteration}" for x in model_outputs]
             else:
-                chain = []
-                for j in range(i-1, -1, -1):
-                    prev_setup = os.path.basename(setup_dirs[j])
-                    prev_iteration = iterations[j]
-                    chain.append(f"{prev_setup}_{prev_iteration}")
-
-                chain_str = "-from-".join(chain)
                 in_ds = [os.path.join(container, ds) for ds in output_datasets[-1]]
                 out_ds = [f"{out_ds_prefix}/{x}_{iteration}-from-{chain_str}" for x in model_outputs]
 
             output_datasets.append(out_ds)
 
-            pred_config[f"{str(i+1).zfill(2)}_{setup_name}"] = {
+            pred_config[f"{str(i+1).zfill(2)}-{setup_name}"] = {
                 "setup_dir": setup_dir,
                 "input_datasets": in_ds,
                 "roi_offset": list(roi_offset),
@@ -484,6 +481,7 @@ def create_prediction_configs(volumes, setup_dirs):
                 "checkpoint": os.path.join(setup_dir, f"model_checkpoint_{iteration}"),
                 "output_container": container,
                 "output_datasets_prefix": out_ds_prefix,
+                "chain_str": chain_str,
                 "num_workers": num_workers,
                 "num_gpus": num_gpus,
             }
@@ -495,7 +493,7 @@ def create_prediction_configs(volumes, setup_dirs):
 
     return {
         "out_affs_dataset": out_affs_ds, # final 3d affs dataset to segment
-        "out_pred_datasets": output_datasets, # sequence of pred datasets
+        "out_pred_datasets": [ds for x in output_datasets for ds in x], # sequence of pred datasets
         "configs": configs,
     }
 
@@ -696,7 +694,8 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=
             default=True,
             show_default=True,
         ):
-            pred_choices = [x for x in pred_datasets if x.split('/')[2].startswith("3d_")]
+            print(pred_datasets)
+            pred_choices = [ds for ds in pred_datasets if ds.split('/')[-1].startswith("3d_")]
 
             if len(pred_choices) == 1:
                 pred_ds = pred_choices[0]

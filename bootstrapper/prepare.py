@@ -44,15 +44,14 @@ def get_volumes(round_dir=None):
     """Get volumes from yaml file if exists, else ask for volumes info"""
     volumes = []
 
-    if round_dir is not None:
+    if round_dir is not None and os.path.exists(os.path.join(round_dir, "volumes.yaml")):
         volumes_yaml = os.path.join(round_dir, "volumes.yaml")
-        if os.path.exists(volumes_yaml):
-            if click.confirm(
-                click.style(f"Load volumes from {volumes_yaml}?", fg="cyan"), default=True
-            ):
-                with open(volumes_yaml) as f:
-                    volumes = yaml.safe_load(f)
-                    click.secho(f"Loaded volumes from {volumes_yaml}", fg="cyan", bold=True)
+        if click.confirm(
+            click.style(f"Load volumes from {volumes_yaml}?", fg="cyan"), default=True
+        ):
+            with open(volumes_yaml) as f:
+                volumes = yaml.safe_load(f)
+                click.secho(f"Loaded volumes from {volumes_yaml}", fg="cyan", bold=True)
     elif click.confirm(
         click.style("Does volumes.yaml already exist?", fg="cyan"), default=False
     ):
