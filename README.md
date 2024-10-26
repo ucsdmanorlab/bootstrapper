@@ -76,6 +76,8 @@ If you find Bootstrapper useful in your research, please consider citing our **[
 ```
 
 ## Funding 
+Chan-Zuckerberg Imaging Scientist Award DOI https://doi.org/10.37921/694870itnyzk from the Chan Zuckerberg Initiative DAF, an advised fund of Silicon Valley Community Foundation (funder DOI 10.13039/100014989). 
+
 NSF NeuroNex Technology Hub Award (1707356), NSF NeuroNex2 Award (2014862)
 
 ![image](https://github.com/ucsdmanorlab/bootstrapper/assets/64760651/4b4a6029-e1ba-42bb-ab8b-d9357cc46239)
