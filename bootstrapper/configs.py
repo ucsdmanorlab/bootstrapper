@@ -455,7 +455,7 @@ def create_prediction_configs(volumes, setup_dirs):
             setup_name = os.path.basename(setup_dir)
 
             # get chain str
-            chain = [f"{sn}_{it}" for sn, it in zip(setup_dirs[:i], iterations[:i])]
+            chain = [f"{os.path.basename(sn)}_{it}" for sn, it in zip(setup_dirs[:i], iterations[:i])]
             chain_str = "-from-".join(chain)
 
             # get model outputs
