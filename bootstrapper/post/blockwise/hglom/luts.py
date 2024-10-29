@@ -15,18 +15,18 @@ from funlib.persistence.types import Vec
 logging.getLogger().setLevel(logging.INFO)
 
 
-def find_segments(config, db_config):
+def find_segments(config):
 
     # read config
-    fragments_file = config["fragments_file"]
     fragments_dataset = config["fragments_dataset"]
     lut_dir = config["lut_dir"]
     thresholds_minmax = config["thresholds_minmax"]
     thresholds_step = config["thresholds_step"]
+    db_config = config["db"]
 
     # load fragments
     logging.info("Reading fragments")
-    fragments = open_ds(os.path.join(fragments_file, fragments_dataset))
+    fragments = open_ds(fragments_dataset)
 
     # get ROIs
     if "roi_offset" in config and "roi_shape" in config:
@@ -90,7 +90,7 @@ def find_segments(config, db_config):
     logging.info(msg=f"Complete RAG contains {len(nodes)} nodes, {len(edges)} edges")
 
     # create lookup tables directory
-    out_dir: str = os.path.join(fragments_file, lut_dir, "fragment_segment")
+    out_dir: str = os.path.join(lut_dir, "fragment_segment")
     os.makedirs(out_dir, exist_ok=True)
 
     # generate thresholds
@@ -148,13 +148,10 @@ def luts(config_file):
     """
 
     with open(config_file, "r") as f:
-        yaml_config = yaml.safe_load(f)
-
-    config = yaml_config["waterz"]
-    db_config = yaml_config["db"]
+        config = yaml.safe_load(f)
 
     start = time.time()
-    find_segments(config, db_config)
+    find_segments(config)
     end = time.time()
 
     seconds = end - start

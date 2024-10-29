@@ -505,19 +505,6 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
             show_default=True,
         )
 
-    # TODO: add support for choice between waterz, mws, thresh
-    waterz_defaults = {
-        "fragments_in_xy": True,
-        "min_seed_distance": 10,
-        "epsilon_agglomerate": 0.0,
-        "filter_fragments": 0.05,
-        "replace_sections": None,
-        "thresholds_minmax": [0, 1],
-        "thresholds_step": 0.05,
-        "thresholds": [0.2, 0.3],
-        "merge_function": "mean",
-    }
-
     out_frags_ds = f"post/{setup_name}/fragments"
     out_lut_dir = f"post/{setup_name}/luts"
     out_seg_prefix = f"post/{setup_name}/segmentations"
@@ -584,21 +571,16 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
 
         # are raw masks available ?
         if volume["raw_mask_dataset"] is not None:
-            mask_file = volume["zarr_container"]
-            mask_dataset = volumes["raw_mask_dataset"]
+            mask_dataset = os.path.join(volumes["zarr_container"], volumes["raw_mask_dataset"])
         else:
-            mask_file = None
             mask_dataset = None
 
-        waterz_config = {
-            "affs_file": volume["zarr_container"],
+        seg_config = {
             "affs_dataset": out_affs_ds,
-            "fragments_file": volume["zarr_container"],
             "fragments_dataset": out_frags_ds,
-            "lut_dir": out_lut_dir,
+            "lut_dir": os.path.join(volume["zarr_container"], out_lut_dir),
             "seg_file": volume["zarr_container"],
             "seg_dataset_prefix": out_seg_prefix,
-            "mask_file": mask_file,
             "mask_dataset": mask_dataset,
             # "roi_offset": roi_offset,
             # "roi_shape": roi_shape,
@@ -606,9 +588,9 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
             "context": block_shape,
             "blockwise": do_blockwise,
             "num_workers": num_workers,
-        } | waterz_defaults
+            "db": db_config,
+        } 
 
-        seg_config = {"db": db_config, "waterz": waterz_config}
         configs[volume_name] = check_and_update(seg_config, style=DEFAULT_SEG_STYLE)
 
     return {"out_seg_prefix": out_seg_prefix, "configs": configs}

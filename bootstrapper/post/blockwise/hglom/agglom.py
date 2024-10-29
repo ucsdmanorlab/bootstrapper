@@ -145,15 +145,14 @@ def agglomerate_in_block(affs, fragments, db_config, merge_function, block):
     return 0
 
 
-def agglomerate(config, db_config):
+def agglomerate(config):
 
     logging.info(f"Agglomerating fragments with config: {pprint(config)}")
 
     # Extract arguments from config
-    affs_file = config["affs_file"]  # Path to affinities zarr container
     affs_dataset = config["affs_dataset"]  # Name of affinities dataset
-    fragments_file = config["fragments_file"]  # Path to fragments zarr container
     fragments_dataset = config["fragments_dataset"]  # Name of fragments dataset
+    db_config = config["db"]  # Database configuration
 
     # Optional parameters
     blockwise = config.get("blockwise", False)
@@ -182,10 +181,10 @@ def agglomerate(config, db_config):
     }[merge_function]
 
     # Read affs, fragments
-    logging.info(f"Reading affs from {affs_file}/{affs_dataset}")
-    affs = open_ds(os.path.join(affs_file, affs_dataset))
-    logging.info(f"Reading fragments from {fragments_file}/{fragments_dataset}")
-    fragments = open_ds(os.path.join(fragments_file, fragments_dataset))
+    logging.info(f"Reading affs from {affs_dataset}")
+    affs = open_ds(affs_dataset)
+    logging.info(f"Reading fragments from {fragments_dataset}")
+    fragments = open_ds(fragments_dataset)
     voxel_size = affs.voxel_size
 
     # get total ROI
@@ -274,13 +273,10 @@ def agglom(config_file):
 
     # Load config file
     with open(config_file, "r") as f:
-        yaml_config = yaml.safe_load(f)
-
-    config = yaml_config["waterz"]
-    db_config = yaml_config["db"]
+        config = yaml.safe_load(f)
 
     start = time.time()
-    agglomerate(config, db_config)
+    agglomerate(config)
     end = time.time()
 
     seconds = end - start

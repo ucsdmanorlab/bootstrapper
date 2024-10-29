@@ -42,7 +42,7 @@ def watershed_in_block(
     from funlib.persistence.types import Vec
     import waterz
 
-    from bootstrapper.post import watershed_from_affinities
+    from bootstrapper.post.ws import watershed_from_affinities
 
 
     # load data
@@ -226,16 +226,15 @@ def watershed_in_block(
     return 0
 
 
-def extract_fragments(config, db_config):
+def extract_fragments(config):
 
     logging.info("Extracting fragments with config:")
     pprint(config)
 
     # Extract arguments from config
-    affs_file = config["affs_file"]  # Path to affinities zarr container
     affs_dataset = config["affs_dataset"]  # Name of affinities dataset
-    fragments_file = config["fragments_file"]  # Path to fragments zarr container
     fragments_dataset = config["fragments_dataset"]  # Name of fragments dataset
+    db_config = config["db"]  # Database configuration
 
     # Optional parameters
     roi_offset = config.get("roi_offset", None)  # Offset of ROI
@@ -263,8 +262,8 @@ def extract_fragments(config, db_config):
     )  # Replace fragments data with zero in given sections
 
     # Read affs
-    logging.info(f"Reading affs from {affs_file}/{affs_dataset}")
-    affs = open_ds(os.path.join(affs_file, affs_dataset))
+    logging.info(f"Reading affs from {affs_dataset}")
+    affs = open_ds(affs_dataset)
     voxel_size = affs.voxel_size
 
     # get total ROI
@@ -318,9 +317,9 @@ def extract_fragments(config, db_config):
         mask_array = None
 
     # prepare fragments array
-    logging.info(f"Preparing fragments array in {fragments_file}/{fragments_dataset}")
+    logging.info(f"Preparing fragments array in {fragments_dataset}")
     fragments = prepare_ds(
-        store=os.path.join(fragments_file, fragments_dataset),
+        store=fragments_dataset,
         shape=total_roi.shape / voxel_size,
         offset=total_roi.offset,
         voxel_size=voxel_size,
@@ -406,13 +405,10 @@ def frags(config_file):
 
     # Load config file
     with open(config_file, "r") as f:
-        yaml_config = yaml.safe_load(f)
-
-    config = yaml_config["waterz"]
-    db_config = yaml_config["db"]
+        config = yaml.safe_load(f)
 
     start = time.time()
-    extract_fragments(config, db_config)
+    extract_fragments(config)
     end = time.time()
 
     seconds = end - start

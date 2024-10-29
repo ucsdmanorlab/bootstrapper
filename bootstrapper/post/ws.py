@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.ndimage import label, maximum_filter, gaussian_filter, distance_transform_edt
 from skimage.segmentation import watershed as skimage_watershed
-from mahotas import cwatershed
+#from mahotas import cwatershed
 
 
 def watershed_from_boundary_distance(

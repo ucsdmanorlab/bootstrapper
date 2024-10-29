@@ -35,7 +35,6 @@ def segment_in_block(fragments, segmentation, lut, block):
 
 def extract_segmentations(config):
     # read config
-    fragments_file = config["fragments_file"]
     fragments_dataset = config["fragments_dataset"]
     lut_dir = config["lut_dir"]
     seg_file = config["seg_file"]
@@ -46,11 +45,11 @@ def extract_segmentations(config):
     pprint(config)
 
     # load fragments
-    fragments = open_ds(os.path.join(fragments_file, fragments_dataset))
+    fragments = open_ds(fragments_dataset)
     voxel_size = fragments.voxel_size
 
     # get LUT dir
-    lut_dir = os.path.join(fragments_file, lut_dir, "fragment_segment")
+    lut_dir = os.path.join(lut_dir, "fragment_segment")
 
     # get ROIs
     if "block_shape" in config and config["block_shape"] is not None:
@@ -92,7 +91,7 @@ def extract_segmentations(config):
         )
 
         # read LUT
-        lut_filename = f"waterz_{config['edges_table']}_{str(int(threshold*100)).zfill(2)}"
+        lut_filename = f"waterz_{config["db"]['edges_table']}_{str(int(threshold*100)).zfill(2)}"
         lut = os.path.join(lut_dir, lut_filename + ".npz")
         assert os.path.exists(path=lut), f"{lut} does not exist"
         lut = np.load(file=lut)["fragment_segment_lut"]
@@ -129,9 +128,7 @@ def extract(config_file, **kwargs):
     """
 
     with open(config_file, "r") as f:
-        yaml_config = yaml.safe_load(f)
-
-    config = yaml_config["waterz"] | yaml_config["db"]
+        config = yaml.safe_load(f)
 
     start = time.time()
     extract_segmentations(config)

@@ -1,23 +1,119 @@
+import os
 import click
 import logging
-
-from bootstrapper.post.watershed import ws
-# from bootstrapper.post.mws import mws
-# from bootstrapper.post.threshold import threshold
+from pprint import pprint
+import yaml
+from ast  import literal_eval
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+DEFAULTS = {
+    "ws" : {
+        "fragments_in_xy": True,
+        "min_seed_distance": 10,
+        "epsilon_agglomerate": 0.0,
+        "filter_fragments": 0.05,
+        "replace_sections": None,
+        "thresholds_minmax": [0, 1],
+        "thresholds_step": 0.05,
+        "thresholds": [0.2, 0.3],
+        "merge_function": "mean",
+    }
+}
 
-@click.group()
-def segment():
+
+def parse_params(param_str):
+    try:
+        return literal_eval(param_str)
+    except:
+        return param_str
+    
+
+def get_method_params(method, params):
+    ret = DEFAULTS[method].copy()
+
+    for p_str in params:
+        p, v = p_str.split("=")
+        if p in ret:
+            ret[p] = parse_params(v)
+
+    return ret
+
+
+def get_seg_config(yaml_file, method, **kwargs):
+    # load yaml config
+    with open(yaml_file, "r") as f:
+        config = yaml.safe_load(f)
+
+    # override config values with provided kwargs, except method specific params
+    for key, value in kwargs.items():
+        if key != "param" and value is not None:
+            config[key] = value
+
+    # override method specific defaults with provided params
+    if "param" in kwargs:
+        params = get_method_params(method, kwargs["param"])
+    else:
+        params = DEFAULTS[method]
+
+    # check blockwise -- check if db info is provided
+    if config["blockwise"]:
+        if config["not_blockwise"]:
+            raise ValueError("Blockwise and not blockwise cannot be True at the same time!")
+        
+        if "db" not in config:
+            raise ValueError("Blockwise requires a database config!")
+
+        if "lut_dir" not in config:
+            config["lut_dir"] = os.path.join(
+                config["seg_file"], config["seg_dataset_prefix"].replace("segmentations", "luts")
+            )  
+
+    return config
+
+
+def run_segmentation(yaml_file, mode, **kwargs):
+    config = get_seg_config(yaml_file, mode, **kwargs)
+    pprint(config)
+
+    if mode == "ws":
+        from .post.watershed import watershed_segmentation
+        watershed_segmentation(config)
+    elif mode == "mws":
+        # from .post.watershed_mutex import mutex_watershed_segmentation
+        # mutex_watershed_segmentation(config)
+        raise NotImplementedError("Mutex watershed segmentation coming soon!")
+    elif mode == "cc":
+        # from .post.connected_components import cc_segmentation
+        # cc_segmentation(config)
+        raise NotImplementedError("Connected components segmentation coming soon!")
+    else:
+        raise ValueError(f"Unknown segmentation mode: {mode}")
+
+
+@click.command()
+@click.argument("yaml_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.option("--ws", "-ws", is_flag=True, help="Watershed segmentation (waterz)")
+@click.option("--mws", "-mws", is_flag=True, help="Mutex watershed segmentation")
+@click.option("--cc", "-cc", is_flag=True, help="Connected componenents segmentation")
+@click.option("--blockwise","-b", is_flag=True, help="Run blockwise segmentation, with daisy")
+@click.option("--not-blockwise","-nb", is_flag=True, help="Run segmentation non-blockwise, i.e, without daisy")
+@click.option("--num-workers","-n", type=int, help="Number of workers, for blockwise segmentation")
+@click.option("--block-shape","-bs", type=str, help="Block shape, for blockwise segmentation")
+@click.option("--block-context","-bc", type=str, help="Block context, for blockwise segmentation")
+@click.option("--param", "-p", multiple=True, help="Method specific parameters to override in config (e.g. -p ws.thresholds=[0.2,0.3])'")
+def segment(yaml_file, ws, mws, cc, **kwargs):
     """
-    Run post-processing on predictions to generate segmentations.
-
-    Can be run blockwise or on the entire volume.
+    Segment affinities as specified in YAML_FILE.
     """
-    pass
+    methods = []
+    if any([ws, mws, cc]):
+        if ws: methods.append("ws")
+        if mws: methods.append("mws")
+        if cc: methods.append("cc")
+    else:
+        methods = ["ws"]
 
-segment.add_command(ws)
-# segment.add_command(mws)
-# segment.add_command(threshold)
+    for method in methods:
+        run_segmentation(yaml_file, method, **kwargs)
