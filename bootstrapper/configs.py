@@ -514,6 +514,8 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
 
         volume_name = os.path.basename(volume["zarr_container"]).split(".zarr")[0]
         affs_array = os.path.join(volume["zarr_container"], out_affs_ds)
+        frags_array = os.path.join(volume["zarr_container"], out_frags_ds)
+        lut_dir = os.path.join(volume["zarr_container"], out_lut_dir)
 
         click.echo()
         click.secho(
@@ -576,9 +578,9 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
             mask_dataset = None
 
         seg_config = {
-            "affs_dataset": out_affs_ds,
-            "fragments_dataset": out_frags_ds,
-            "lut_dir": os.path.join(volume["zarr_container"], out_lut_dir),
+            "affs_dataset": affs_array,
+            "fragments_dataset": frags_array,
+            "lut_dir": lut_dir,
             "seg_file": volume["zarr_container"],
             "seg_dataset_prefix": out_seg_prefix,
             "mask_dataset": mask_dataset,

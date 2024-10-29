@@ -170,7 +170,7 @@ def watershed_in_block(
 
     # bump fragment IDs
     id_bump = block.block_id[1] * num_voxels_in_block
-    fragments_array.data[fragments_array.data > 0] += id_bump
+    fragments_array.data[fragments_array.data > 0] += int(id_bump)
     fragment_ids = range(id_bump + 1, id_bump + 1 + int(max_id))
 
     # store fragments

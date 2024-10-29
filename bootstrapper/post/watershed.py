@@ -12,38 +12,38 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-class OrderedGroup(click.Group):
-    def list_commands(self, ctx):
-        # Return the commands in the desired order
-        return [
-            "frags",
-            "agglom",
-            "luts",
-            "extract"
-        ]
+# class OrderedGroup(click.Group):
+#     def list_commands(self, ctx):
+#         # Return the commands in the desired order
+#         return [
+#             "frags",
+#             "agglom",
+#             "luts",
+#             "extract"
+#         ]
 
-@click.group(invoke_without_command=True, cls=OrderedGroup, chain=True)
-@click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
-@click.pass_context
-def ws(ctx, config_file):
-    """
-    Hierarchical region agglomeration using waterz.
+# @click.group(invoke_without_command=True, cls=OrderedGroup, chain=True)
+# @click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+# @click.pass_context
+# def ws(ctx, config_file):
+#     """
+#     Hierarchical region agglomeration using waterz.
 
-    No subcommand runs the whole pipeline:
-    frags -> agglom -> luts -> extract
-    """
-    if ctx.invoked_subcommand is None:
+#     No subcommand runs the whole pipeline:
+#     frags -> agglom -> luts -> extract
+#     """
+#     if ctx.invoked_subcommand is None:
 
-        with open(config_file, "r") as f:
-            config = yaml.safe_load(f)
+#         with open(config_file, "r") as f:
+#             config = yaml.safe_load(f)
 
-        waterz_pipeline(config)
-    pass
+#         waterz_pipeline(config)
+#     pass
 
-ws.add_command(frags)
-ws.add_command(agglom)
-ws.add_command(luts)
-ws.add_command(extract)
+# ws.add_command(frags)
+# ws.add_command(agglom)
+# ws.add_command(luts)
+# ws.add_command(extract)
 
 
 def waterz_pipeline(config):
@@ -70,9 +70,11 @@ def simple_watershed(config):
     roi_shape = config.get("roi_shape", None)
 
     # optional waterz params
-    threshold = config.get("threshold", 0.5)
+    thresholds = config.get("thresholds", [0.5])
     fragments_in_xy = config.get("fragments_in_xy", True)
     min_seed_distance = config.get("min_seed_distance", 10)
+
+    assert len(thresholds) == 1, "Only one threshold supported for simple watershed"
 
     # load affs
     affs = open_ds(affs_ds)
@@ -122,7 +124,7 @@ def simple_watershed(config):
     # agglomerate
     generator = waterz.agglomerate(
         affs_data,
-        thresholds=[threshold],
+        thresholds=thresholds,
         fragments=fragments_data.copy(),
     )
 
@@ -146,7 +148,17 @@ def watershed_segmentation(config):
     # blockwise or not
     blockwise = config.get("blockwise", False)
 
+    roi_offset = config.get("roi_offset", None)
+    roi_shape = config.get("roi_shape", None)
+    block_shape = config.get("block_shape", None)
+
+    if roi_offset is not None:
+        config['roi_offset'] = list(map(int, roi_offset.strip().split(" ")))
+        config['roi_shape'] = list(map(int, roi_shape.strip().split(" ")))
+
     if blockwise:
+        if block_shape == "roi":
+            config['blockwise'] = False
         waterz_pipeline(config)
     else:
         simple_watershed(config)

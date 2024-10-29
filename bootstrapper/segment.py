@@ -70,7 +70,7 @@ def get_seg_config(yaml_file, method, **kwargs):
                 config["seg_file"], config["seg_dataset_prefix"].replace("segmentations", "luts")
             )  
 
-    return config
+    return config | params
 
 
 def run_segmentation(yaml_file, mode, **kwargs):
@@ -97,12 +97,14 @@ def run_segmentation(yaml_file, mode, **kwargs):
 @click.option("--ws", "-ws", is_flag=True, help="Watershed segmentation (waterz)")
 @click.option("--mws", "-mws", is_flag=True, help="Mutex watershed segmentation")
 @click.option("--cc", "-cc", is_flag=True, help="Connected componenents segmentation")
+@click.option("--roi-offset", "-ro", type=str, help="Offset of ROI in world units (space separated integers)")
+@click.option("--roi-shape", "-rs", type=str, help="Shape of ROI in world units (space separated integers)")
 @click.option("--blockwise","-b", is_flag=True, help="Run blockwise segmentation, with daisy")
 @click.option("--not-blockwise","-nb", is_flag=True, help="Run segmentation non-blockwise, i.e, without daisy")
 @click.option("--num-workers","-n", type=int, help="Number of workers, for blockwise segmentation")
-@click.option("--block-shape","-bs", type=str, help="Block shape, for blockwise segmentation")
-@click.option("--block-context","-bc", type=str, help="Block context, for blockwise segmentation")
-@click.option("--param", "-p", multiple=True, help="Method specific parameters to override in config (e.g. -p ws.thresholds=[0.2,0.3])'")
+@click.option("--block-shape","-bs", type=str, help="Block shape, for blockwise segmentation (space separated integers or 'roi')")
+@click.option("--block-context","-bc", type=str, help="Block context, for blockwise segmentation (space separated integers)")
+@click.option("--param", "-p", multiple=True, help="Method specific parameters to override in config (e.g. -p 'thresholds=[0.2,0.3]')")
 def segment(yaml_file, ws, mws, cc, **kwargs):
     """
     Segment affinities as specified in YAML_FILE.
