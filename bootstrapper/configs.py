@@ -24,10 +24,10 @@ DEFAULT_FILTER_STYLE = {"fg": "blue"}
 BS_DIR = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 MODEL_DIR = os.path.join(BS_DIR, "models")
 MODEL_URLS = {
-    "3d_affs_from_2d_affs": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.1.0/3d_affs_from_2d_affs.zip",
-    "3d_affs_from_2d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.1.0/3d_affs_from_2d_lsd.zip",
-    "3d_affs_from_2d_mtlsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.1.0/3d_affs_from_2d_mtlsd.zip",
-    "3d_affs_from_3d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.1.0/3d_affs_from_3d_lsd.zip",
+    "3d_affs_from_2d_affs": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.1.1/3d_affs_from_2d_affs.zip",
+    "3d_affs_from_2d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.1.1/3d_affs_from_2d_lsd.zip",
+    "3d_affs_from_2d_mtlsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.1.1/3d_affs_from_2d_mtlsd.zip",
+    "3d_affs_from_3d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.1.1/3d_affs_from_3d_lsd.zip",
 }
 
 def check_and_update(configs, style=DEFAULT_PROMPT_STYLE):
@@ -261,16 +261,7 @@ def download_checkpoints(model_name, setup_dir):
     with zipfile.ZipFile(file_path, 'r') as zip_ref:
         zip_ref.extractall(setup_dir)
 
-    # move setup_dir/model_name/checkpoint_*.pth to setup_dir/checkpoint_*.pth
-    for file in os.listdir(os.path.join(setup_dir, model_name)):
-        if "model_checkpoint_" in file:
-            os.rename(
-                os.path.join(setup_dir, model_name, file),
-                os.path.join(setup_dir, file)
-            )
-
     # clean up
-    os.rmdir(os.path.join(setup_dir, model_name))
     os.remove(file_path)
 
 
