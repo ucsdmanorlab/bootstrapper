@@ -52,7 +52,7 @@ def extract_segmentations(config):
     lut_dir = os.path.join(lut_dir, "fragment_segment")
 
     # get ROIs
-    if "block_shape" in config and config["block_shape"] is not None:
+    if "block_shape" in config and config["block_shape"] not in [None, "roi"]:
         block_size = Coordinate(config["block_shape"]) * voxel_size
     else:
         block_size = Coordinate(fragments.chunk_shape) * voxel_size

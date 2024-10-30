@@ -511,11 +511,11 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
 
     configs = {}
     for volume in volumes:
-
-        volume_name = os.path.basename(volume["zarr_container"]).split(".zarr")[0]
-        affs_array = os.path.join(volume["zarr_container"], out_affs_ds)
-        frags_array = os.path.join(volume["zarr_container"], out_frags_ds)
-        lut_dir = os.path.join(volume["zarr_container"], out_lut_dir)
+        container = volume["zarr_container"]
+        volume_name = os.path.basename(container).split(".zarr")[0]
+        affs_array = os.path.join(container, out_affs_ds)
+        frags_array = os.path.join(container, out_frags_ds)
+        lut_dir = os.path.join(container, out_lut_dir)
 
         click.echo()
         click.secho(
@@ -536,17 +536,19 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
             click.style(f"Set block shape and context?", **DEFAULT_SEG_STYLE), default=False, show_default=True
         ):
             block_shape = click.prompt(
-                click.style("Enter block shape in voxels (e.g. 128,128,128)", **DEFAULT_SEG_STYLE),
-                default="128,128,128",
+                click.style("Enter block shape in voxels (e.g. 128,128,128), or 'roi' for single block with daisy", **DEFAULT_SEG_STYLE),
+                #default="128,128,128",
                 type=str,
             )
             context = click.prompt(
                 click.style("Enter context in voxels (e.g. 128,128,128)", **DEFAULT_SEG_STYLE),
-                default="128,128,128",
+                #default="128,128,128",
                 type=str,
             )
-            block_shape = [int(x) for x in block_shape.split(",")]
-            context = [int(x) for x in context.split(",")]
+            if block_shape is not None and block_shape != "roi":
+                block_shape = [int(x) for x in block_shape.split(",")]
+            if context:
+                context = [int(x) for x in context.split(",")]
             num_workers = click.prompt(click.style("Enter number of workers", **DEFAULT_SEG_STYLE), default=10, type=int)
         else:
             block_shape = None
@@ -554,7 +556,7 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
             num_workers = 1
 
         sqlite_path = os.path.join(
-            volume["zarr_container"], f"post/{setup_name}/rag.db"
+            container, f"post/{setup_name}/rag.db"
         )
 
         # SQLite or not ?
@@ -581,7 +583,7 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
             "affs_dataset": affs_array,
             "fragments_dataset": frags_array,
             "lut_dir": lut_dir,
-            "seg_file": volume["zarr_container"],
+            "seg_file": container,
             "seg_dataset_prefix": out_seg_prefix,
             "mask_dataset": mask_dataset,
             # "roi_offset": roi_offset,

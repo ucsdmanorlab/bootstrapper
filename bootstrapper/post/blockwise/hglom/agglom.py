@@ -12,7 +12,7 @@ import daisy
 
 logging.basicConfig(level=logging.INFO)
 
-def agglomerate_in_block(affs, fragments, db_config, merge_function, block):
+def agglomerate_in_block(affs, fragments, db_config, shift, merge_function, block):
 
     # import
     from pathlib import Path
@@ -74,21 +74,31 @@ def agglomerate_in_block(affs, fragments, db_config, merge_function, block):
     else:
         affs_data = affs_data.astype(np.float32)
 
-    # add random noise to affinities to break ties and prevent streaking
-    random_noise = np.random.randn(*affs_data.shape) * 0.01
+    if shift is not None:
+        sigma = shift['sigma']
+        noise_eps = shift['noise_eps']
+        bias = shift['bias']
 
-    # add smoothed affs, to solve a similar issue to the random noise. We want to bias
-    # towards processing the central regions of objects first.
-    smoothed_affs = (gaussian_filter(affs_data, sigma=(0, 1, 2, 2)) - 0.5) * 0.05
+        shift = np.zeros_like(affs_data)
 
-    affs_data = (affs_data + random_noise + smoothed_affs).astype(np.float32)
-    affs_data = np.clip(affs_data, 0.005, 0.995)
+        if noise_eps is not None:
+            shift += np.random.randn(*affs_data.shape) * noise_eps
 
-    # So far, 'rag' does not contain any edges belonging to write_roi (there
-    # might be a few edges from neighboring blocks, though). Run waterz until
-    # threshold 0 to get the waterz RAG, which tells us which nodes are
-    # neighboring. Use this to populate 'rag' with edges. Then run waterz for
-    # the given threshold.
+        if sigma is not None:
+            sigma = (0, *sigma)
+            shift += gaussian_filter(affs_data, sigma=sigma) - affs_data
+
+        if bias is not None:
+            if type(bias) == float:
+                bias = [bias] * len(affs_data.shape[0])
+            else:
+                assert len(bias) == len(affs_data.shape[0])
+            
+            shift += np.array([bias]).reshape(
+                (-1, *((1,) * (len(affs.shape) - 1)))
+            )
+
+        affs_data += shift
 
     # add fake z-affinities if 2D affinities
     if affs_data.shape[0] == 2:
@@ -161,6 +171,19 @@ def agglomerate(config):
     roi_shape = config.get("roi_shape", None)
     block_shape = config.get("block_shape", None)
     context = config.get("context", None)
+
+    sigma = config.get("sigma", None)
+    noise_eps = config.get("noise_eps", None)
+    bias = config.get("bias", None)
+
+    if sigma is not None or noise_eps is not None or bias is not None:
+        affs_shift = {
+            "sigma": sigma,
+            "noise_eps": noise_eps,
+            "bias": bias,
+        }
+    else:
+        affs_shift = None
 
     # Optional waterz parameters
     merge_function = config.get("merge_function", "mean")
@@ -247,6 +270,7 @@ def agglomerate(config):
             affs,
             fragments,
             db_config,
+            affs_shift,
             waterz_merge_function,
         ),
         read_write_conflict=True,

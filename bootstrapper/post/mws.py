@@ -4,18 +4,25 @@ import mwatershed as mws
 import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 
-logging.basic(level=logging.INFO)
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def mwatershed_from_affinities(
-    affs,
-    neighborhood,
-    sigma,
-    adjacent_edge_bias,
-    lr_edge_bias,
-    strides=None,
+    affs: np.ndarray,
+    neighborhood: list[list[int]],
+    bias: list[float],
+    sigma: list[int] | None = None,
+    noise_eps: float | None = None,
+    strides: list[list[int]] | None = None,
+    randomized_strides: bool = False,
 ):
+    if sigma is not None:
+        # add 0 for channel dim
+        sigma = (0, *sigma)
+    else:
+        sigma = None
 
     # add some random noise to affs (this is particularly necessary if your affs are
     #  stored as uint8 or similar)
@@ -24,7 +31,10 @@ def mwatershed_from_affinities(
 
     ### tmp comment out ###
 
-    random_noise = np.random.randn(*affs.shape) * 0.001  # todo: parameterize?
+    shift = np.zeros_like(affs)
+
+    if noise_eps is not None:
+        shift += np.random.randn(*affs.shape) * noise_eps
 
     #######################
 
@@ -33,25 +43,20 @@ def mwatershed_from_affinities(
 
     ### tmp comment out ###
 
-    smoothed_affs = (
-        gaussian_filter(affs, sigma=sigma) - 0.5
-    ) * 0.01  # todo: parameterize?
+    if sigma is not None:
+        shift += gaussian_filter(affs, sigma=sigma) - affs
 
     #######################
-
-    shift = np.array(
-        [
-            adjacent_edge_bias if max(offset) <= 1 else lr_edge_bias
-            for offset in neighborhood
-        ]
-    ).reshape((-1, *((1,) * (len(affs.data.shape) - 1))))
+    shift += np.array([bias]).reshape(
+        (-1, *((1,) * (len(affs.shape) - 1)))
+    )
 
     fragments_data = mws.agglom(
-        affs + shift + random_noise + smoothed_affs,
+        (affs + shift).astype(np.float64),
         offsets=neighborhood,
         strides=strides,
+        randomized_strides=randomized_strides,
     )
 
     return fragments_data
-
 

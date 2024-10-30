@@ -23,6 +23,7 @@ def watershed_in_block(
     affs,
     fragments,
     db_config,
+    shift,
     mask_array,
     fragments_in_xy,
     min_seed_distance,
@@ -34,7 +35,7 @@ def watershed_in_block(
 
     # import
     import numpy as np
-    from scipy.ndimage import mean, center_of_mass
+    from scipy.ndimage import mean, center_of_mass, gaussian_filter
 
     from funlib.persistence import Array
     from funlib.segment.arrays import relabel, replace_values
@@ -60,6 +61,37 @@ def watershed_in_block(
     else:
         mask = None
 
+    # shift affs with noise, smoothing, and bias
+    if shift is not None:
+        sigma = shift['sigma']
+        noise_eps = shift['noise_eps']
+        bias = shift['bias']
+
+        shift = np.zeros_like(affs_data)
+
+        if noise_eps is not None:
+            shift += np.random.randn(*affs_data.shape) * noise_eps
+
+        if sigma is not None:
+            sigma = (0, *sigma)
+            shift += gaussian_filter(affs_data, sigma=sigma) - affs_data
+
+        if bias is not None:
+            if type(bias) == float:
+                bias = [bias] * len(affs_data.shape[0])
+            else:
+                assert len(bias) == len(affs_data.shape[0])
+            
+            shift += np.array([bias]).reshape(
+                (-1, *((1,) * (len(affs.shape) - 1)))
+            )
+
+        affs_data += shift
+
+    # mask affinities
+    if mask is not None:
+        affs_data *= (mask > 0).astype(np.uint8)
+
     # watershed
     fragments_data, n = watershed_from_affinities(
         affs_data,
@@ -69,10 +101,6 @@ def watershed_in_block(
     )
 
     logging.info(f"Found {n} fragments in block {block}")
-
-    # mask fragments
-    if mask is not None:
-        fragments_data *= mask.astype(np.uint64)
 
     # filter fragments
     if filter_fragments is not None and filter_fragments > 0:
@@ -261,6 +289,19 @@ def extract_fragments(config):
         "replace_sections", None
     )  # Replace fragments data with zero in given sections
 
+    sigma = config.get("sigma", None)
+    noise_eps = config.get("noise_eps", None)
+    bias = config.get("bias", None)
+
+    if sigma is not None or noise_eps is not None or bias is not None:
+        affs_shift = {
+            "sigma": sigma,
+            "noise_eps": noise_eps,
+            "bias": bias,
+        }
+    else:
+        affs_shift = None
+
     # Read affs
     logging.info(f"Reading affs from {affs_dataset}")
     affs = open_ds(affs_dataset)
@@ -374,6 +415,7 @@ def extract_fragments(config):
             affs,
             fragments,
             db_config,
+            affs_shift,
             mask_array,
             fragments_in_xy,
             min_seed_distance,

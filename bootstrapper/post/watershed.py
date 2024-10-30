@@ -1,15 +1,10 @@
-import click
 import logging
-import yaml
-
-from .blockwise.hglom.frags import frags, extract_fragments
-from .blockwise.hglom.agglom import agglom, agglomerate
-from .blockwise.hglom.luts import luts, find_segments
-from .blockwise.hglom.extract import extract, extract_segmentations
+# import click
+# import yaml
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 # class OrderedGroup(click.Group):
@@ -47,6 +42,11 @@ logger.setLevel(logging.DEBUG)
 
 
 def waterz_pipeline(config):
+    from .blockwise.hglom.frags import extract_fragments
+    from .blockwise.hglom.agglom import agglomerate
+    from .blockwise.hglom.luts import find_segments
+    from .blockwise.hglom.extract import extract_segmentations
+
     extract_fragments(config)
     agglomerate(config)
     find_segments(config)
@@ -58,6 +58,7 @@ def simple_watershed(config):
     import numpy as np
     from funlib.persistence import open_ds, prepare_ds
     from funlib.geometry import Roi
+    from scipy.ndimage import gaussian_filter
     from .ws import watershed_from_affinities
     import waterz
 
@@ -73,8 +74,26 @@ def simple_watershed(config):
     thresholds = config.get("thresholds", [0.5])
     fragments_in_xy = config.get("fragments_in_xy", True)
     min_seed_distance = config.get("min_seed_distance", 10)
+    merge_function = config.get("merge_function", "mean")
+    sigma = config.get("sigma", None)
+    noise_eps = config.get("noise_eps", None)
+    bias = config.get("bias", None)
 
     assert len(thresholds) == 1, "Only one threshold supported for simple watershed"
+
+    waterz_merge_function = {
+        "hist_quant_10": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 10, ScoreValue, 256, false>>",
+        "hist_quant_10_initmax": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 10, ScoreValue, 256, true>>",
+        "hist_quant_25": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 25, ScoreValue, 256, false>>",
+        "hist_quant_25_initmax": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 25, ScoreValue, 256, true>>",
+        "hist_quant_50": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 50, ScoreValue, 256, false>>",
+        "hist_quant_50_initmax": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 50, ScoreValue, 256, true>>",
+        "hist_quant_75": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 75, ScoreValue, 256, false>>",
+        "hist_quant_75_initmax": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 75, ScoreValue, 256, true>>",
+        "hist_quant_90": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 90, ScoreValue, 256, false>>",
+        "hist_quant_90_initmax": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 90, ScoreValue, 256, true>>",
+        "mean": "OneMinus<MeanAffinity<RegionGraphType, ScoreValue>>",
+    }[merge_function]
 
     # load affs
     affs = open_ds(affs_ds)
@@ -97,9 +116,35 @@ def simple_watershed(config):
     # load mask
     if mask_ds is not None:
         mask = open_ds(mask_ds)
-        mask = mask[roi].to_ndarray()
+        mask = mask[roi]
     else:
         mask = None
+
+    if mask is not None:
+        affs_data *= (mask > 0).astype(np.uint8) 
+
+    # shift affs with noise, smoothing, and bias
+    if sigma is not None or noise_eps is not None or bias is not None:
+        shift = np.zeros_like(affs_data)
+
+        if noise_eps is not None:
+            shift += np.random.randn(*affs_data.shape) * noise_eps
+
+        if sigma is not None:
+            sigma = (0, *sigma)
+            shift += gaussian_filter(affs_data, sigma=sigma) - affs_data
+
+        if bias is not None:
+            if type(bias) == float:
+                bias = [bias] * len(affs_data.shape[0])
+            else:
+                assert len(bias) == len(affs_data.shape[0])
+            
+            shift += np.array([bias]).reshape(
+                (-1, *((1,) * (len(affs.shape) - 1)))
+            )
+
+        affs_data += shift
 
     # watershed
     fragments_data, n = watershed_from_affinities(
@@ -126,12 +171,13 @@ def simple_watershed(config):
         affs_data,
         thresholds=thresholds,
         fragments=fragments_data.copy(),
+        merge_function=waterz_merge_function
     )
 
     segmentation = next(generator)
 
     # write segmentation
-    seg_ds_name = os.path.join(seg_file, seg_ds_prefix, "watershed", str(threshold))
+    seg_ds_name = os.path.join(seg_file, seg_ds_prefix, "watershed", str(thresholds[0]))
     seg = prepare_ds(
         seg_ds_name,
         shape=segmentation.shape,

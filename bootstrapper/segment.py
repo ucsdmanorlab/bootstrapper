@@ -17,8 +17,27 @@ DEFAULTS = {
         "replace_sections": None,
         "thresholds_minmax": [0, 1],
         "thresholds_step": 0.05,
-        "thresholds": [0.2, 0.3],
+        "thresholds": [0.3],
         "merge_function": "mean",
+        "sigma": None,
+        "noise_eps": None,
+        "bias": None,
+    },
+    "mws" : {
+        "neighborhood": [[1, 0, 0], [0, 1, 0], [0, 0, 1], [2, 0, 0], [0, 8, 0], [0, 0, 8]],
+        "bias": [-0.5, -0.5, -0.5, -0.9, -0.9, -0.9],
+        "sigma": None,
+        "noise_eps": None,
+        "strides": None,
+        "randomized_strides": False,
+        "filter_fragments": 0.0,
+        "remove_debris": 0,
+    },
+    "cc" : {
+        "threshold": 0.5,
+        "sigma": None,
+        "noise_eps": None,
+        "remove_debris": 0,
     }
 }
 
@@ -35,8 +54,11 @@ def get_method_params(method, params):
 
     for p_str in params:
         p, v = p_str.split("=")
+        m, p = p.split(".")
         if p in ret:
             ret[p] = parse_params(v)
+        else:
+            raise ValueError(f"Invalid parameter {m}.{p}")
 
     return ret
 
@@ -81,13 +103,11 @@ def run_segmentation(yaml_file, mode, **kwargs):
         from .post.watershed import watershed_segmentation
         watershed_segmentation(config)
     elif mode == "mws":
-        # from .post.watershed_mutex import mutex_watershed_segmentation
-        # mutex_watershed_segmentation(config)
-        raise NotImplementedError("Mutex watershed segmentation coming soon!")
+        from .post.watershed_mutex import mutex_watershed_segmentation
+        mutex_watershed_segmentation(config)
     elif mode == "cc":
-        # from .post.connected_components import cc_segmentation
-        # cc_segmentation(config)
-        raise NotImplementedError("Connected components segmentation coming soon!")
+        from .post.connected_components import cc_segmentation
+        cc_segmentation(config)
     else:
         raise ValueError(f"Unknown segmentation mode: {mode}")
 
@@ -104,7 +124,7 @@ def run_segmentation(yaml_file, mode, **kwargs):
 @click.option("--num-workers","-n", type=int, help="Number of workers, for blockwise segmentation")
 @click.option("--block-shape","-bs", type=str, help="Block shape, for blockwise segmentation (space separated integers or 'roi')")
 @click.option("--block-context","-bc", type=str, help="Block context, for blockwise segmentation (space separated integers)")
-@click.option("--param", "-p", multiple=True, help="Method specific parameters to override in config (e.g. -p 'thresholds=[0.2,0.3]')")
+@click.option("--param", "-p", multiple=True, help="Method specific parameters to override in config (e.g. -p 'ws.thresholds=[0.2,0.3]')")
 def segment(yaml_file, ws, mws, cc, **kwargs):
     """
     Segment affinities as specified in YAML_FILE.

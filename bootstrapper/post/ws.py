@@ -47,14 +47,14 @@ def watershed_from_affinities(
         (fragments, max_id, seeds) if return_seeds == True"""
 
     # add random noise
-    random_noise = np.random.randn(*affs.shape) * 0.01
+    # random_noise = np.random.randn(*affs.shape) * 0.001
 
-    # add smoothed affs, to solve a similar issue to the random noise. We want to bias
-    # towards processing the central regions of objects first.
-    smoothed_affs: np.ndarray = (gaussian_filter(affs, sigma=(0, 1, 2, 2)) - 0.5) * 0.05
+    # # add smoothed affs, to solve a similar issue to the random noise. We want to bias
+    # # towards processing the central regions of objects first.
+    # smoothed_affs: np.ndarray = (gaussian_filter(affs, sigma=(0, 1, 2, 2)) - 0.5) * 0.01
 
-    affs = (affs + random_noise + smoothed_affs).astype(np.float32)
-    affs = np.clip(affs, 0.0, 1.0)
+    # affs = (affs + random_noise + smoothed_affs).astype(np.float32)
+    # affs = np.clip(affs, 0.0, 1.0)
 
     if fragments_in_xy:
 
