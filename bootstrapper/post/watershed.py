@@ -136,9 +136,9 @@ def simple_watershed(config):
 
         if bias is not None:
             if type(bias) == float:
-                bias = [bias] * len(affs_data.shape[0])
+                bias = [bias] * affs_data.shape[0]
             else:
-                assert len(bias) == len(affs_data.shape[0])
+                assert len(bias) == affs_data.shape[0]
             
             shift += np.array([bias]).reshape(
                 (-1, *((1,) * (len(affs.shape) - 1)))
@@ -171,7 +171,7 @@ def simple_watershed(config):
         affs_data,
         thresholds=thresholds,
         fragments=fragments_data.copy(),
-        merge_function=waterz_merge_function
+        scoring_function=waterz_merge_function
     )
 
     segmentation = next(generator)

@@ -78,9 +78,9 @@ def watershed_in_block(
 
         if bias is not None:
             if type(bias) == float:
-                bias = [bias] * len(affs_data.shape[0])
+                bias = [bias] * affs_data.shape[0]
             else:
-                assert len(bias) == len(affs_data.shape[0])
+                assert len(bias) == affs_data.shape[0]
             
             shift += np.array([bias]).reshape(
                 (-1, *((1,) * (len(affs.shape) - 1)))
