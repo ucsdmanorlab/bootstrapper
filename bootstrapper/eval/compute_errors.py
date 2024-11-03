@@ -135,7 +135,7 @@ def compute_errors(
             thresholds=thresholds,
             labels_mask=mask,
             sigma=sigma,
-            downsample=4,
+            downsample=2,
             array_specs=(
                 {
                     error_map: gp.ArraySpec(
@@ -196,19 +196,6 @@ def compute_errors(
 
     pipeline += gp.IntensityScaleShift(error_map, 255, 0)
     pipeline += gp.AsType(error_map, np.uint8)
-
-    # pipeline += PrintArray(error_map)
-
-    # pipeline += gp.Snapshot(
-    #     {
-    #         error_map: "pred_error_map",
-    #         error_mask: "pred_error_mask",
-    #         seg_pred: "seg_pred",
-    #         seg: "seg",
-    #         pred: "pred",
-    #     },
-    #     every=5,
-    # )
 
     pipeline += gp.ZarrWrite(
         dataset_names={error_map: out_map_dataset.split(".zarr")[-1]},

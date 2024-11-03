@@ -685,7 +685,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=
                     show_choices=True,
                 )
 
-            pred_type = pred_ds.split('/')[2][3:7]
+            pred_type = pred_ds.split('/')[-1][3:7]
             assert pred_type in ["lsds", "affs"]
 
             pred_error_map_ds = os.path.join(
@@ -710,7 +710,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=
         eval_config = {
             "out_dir": out_eval_dir,
             "seg_file": container,
-            "seg_datasets": out_seg_prefix,  # TODO: zarr tree find all seg arrays. eval on all.
+            "seg_datasets_prefix": out_seg_prefix,  # TODO: zarr tree find all seg arrays. eval on all.
             "mask_file": mask_file,
             "mask_dataset": mask_dataset,
             "fragments_file": container,
@@ -728,8 +728,8 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=
 
         if gt_labels_ds is not None or gt_skeletons_file is not None:
             eval_config["gt"] = {
-                "gt_labels_dataset": gt_labels_ds,
-                "gt_skeletons_file": gt_skeletons_file,
+                "labels_dataset": gt_labels_ds,
+                "skeletons_file": gt_skeletons_file,
             }
 
         configs[volume_name] = check_and_update(eval_config, style=DEFAULT_EVAL_STYLE)
