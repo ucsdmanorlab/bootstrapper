@@ -181,14 +181,30 @@ def get_pred_config(yaml_file, setup_id, **kwargs):
         }
 
 
-def run_prediction(yaml_file, setup_id, **kwargs):
-    config = get_pred_config(yaml_file, setup_id, **kwargs)
-    pprint(config)
+def run_prediction(yaml_file, setup_ids=None, **kwargs):
 
-    if config['num_gpus'] > 1:
-        predict_blockwise(config)
-    else:
-        subprocess.run(["python", config['worker'], *config['args']])
+    with open(yaml_file, "r") as f:
+        all_setup_ids = list(yaml.safe_load(f).keys())
+
+    valid_setups = {
+        **{s.split("-")[0]: s for s in all_setup_ids},
+        **{s.split("-")[-1]: s for s in all_setup_ids},
+        **{s: s for s in all_setup_ids}
+    }
+
+    setups = (sorted(setup_ids.strip().split()) if setup_ids else all_setup_ids)
+
+    for s_id in setups:
+        if s_id not in valid_setups:
+            raise ValueError(f"Setup ID {s_id} not found in {all_setup_ids}")
+        
+        config = get_pred_config(yaml_file, valid_setups[s_id], **kwargs)
+        pprint(config)
+
+        if config['num_gpus'] > 1:
+            predict_blockwise(config)
+        else:
+            subprocess.run(["python", config['worker'], *config['args']])
 
 
 @click.command()
@@ -200,26 +216,7 @@ def run_prediction(yaml_file, setup_id, **kwargs):
 @click.option("--num-gpus", "-ng", type=int, help="Number of GPUs to use")
 def predict(yaml_file, setup_id, **kwargs):
     """Run prediction for a setup or all setups in a prediction YAML file. """
-    with open(yaml_file, "r") as f:
-        setup_ids = list(yaml.safe_load(f).keys())
-
-    # map setup_nums to setup_ids, names to ids, ids to ids
-    valid_setups = {
-        **{setup_id.split("-")[0]: setup_id for setup_id in setup_ids},
-        **{setup_id.split("-")[-1]: setup_id for setup_id in setup_ids},
-        **{setup_id: setup_id for setup_id in setup_ids}
-    }
-
-    if setup_id:
-        setup_ids = sorted(setup_id.strip().split(" "))
-        for s_id in setup_ids:
-            if s_id in valid_setups:
-                run_prediction(yaml_file, valid_setups[setup_id], **kwargs)
-            else:
-                raise ValueError(f"Setup ID {s_id} not found in {setup_ids}")
-    else:
-        for setup_id in setup_ids:
-            run_prediction(yaml_file, setup_id, **kwargs)
+    run_prediction(yaml_file, setup_id, **kwargs)
 
 if __name__ == "__main__":
     predict()
