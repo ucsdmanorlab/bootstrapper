@@ -11,7 +11,7 @@ from functools import partial, reduce
 
 
 def filter_in_block(
-    in_labels, out_labels, out_mask, lsd_errors, ids_to_remove, erode_out_mask, block
+    in_labels, out_labels, out_mask, error_mask, ids_to_remove, erode_out_mask, block
 ):
     import numpy as np
     from funlib.persistence import Array
@@ -30,9 +30,9 @@ def filter_in_block(
     mask_array = labels_array > 0
 
     # Apply LSD error mask if provided
-    if lsd_errors is not None:
-        lsd_errors_mask = lsd_errors.to_ndarray(block.read_roi)
-        mask_array *= np.logical_not(lsd_errors_mask > 0)
+    if error_mask is not None:
+        error_mask_array = error_mask.to_ndarray(block.read_roi)
+        mask_array *= np.logical_not(error_mask_array > 0)
 
     # Erode out mask in z if specified
     if erode_out_mask:
@@ -51,8 +51,8 @@ def filter_in_block(
         mask_array[block.write_roi], block.write_roi.offset, in_labels.voxel_size
     )
 
-    out_labels[block.write_roi] = labels_array.data
-    out_mask[block.write_roi] = mask_array.data.astype(np.uint8)
+    out_labels[block.write_roi] = labels_array[block.write_roi]
+    out_mask[block.write_roi] = mask_array[block.write_roi].astype(np.uint8)
 
 
 def compute_ids_to_remove(
@@ -131,13 +131,10 @@ def compute_ids_to_remove(
 
 
 def filter_segmentation(
-    seg_file,
     seg_dataset,
-    out_file,
     out_labels_dataset,
     out_mask_dataset,
-    lsd_error_file=None,
-    lsd_error_mask_dataset=None,
+    error_mask_dataset=None,
     dust_filter=0,
     remove_outliers=False,
     remove_z_fragments=1,
@@ -152,7 +149,7 @@ def filter_segmentation(
 ):
 
     # Open input dataset
-    in_labels = open_ds(os.path.join(seg_file, seg_dataset))
+    in_labels = open_ds(seg_dataset)
     voxel_size = in_labels.voxel_size
 
     # get total ROI
@@ -162,11 +159,6 @@ def filter_segmentation(
         total_roi = in_labels.roi
 
     # get block size, context
-    if block_shape is not None:
-        block_size = Coordinate(block_shape) * voxel_size
-    else:
-        block_size = Coordinate(in_labels.chunk_shape) * voxel_size
-
     if context is not None:
         context = Coordinate(context) * voxel_size
     else:
@@ -180,33 +172,51 @@ def filter_segmentation(
             * voxel_size
         )
 
-    if lsd_error_file is not None:
-        lsd_errors = open_ds(os.path.join(lsd_error_file, lsd_error_mask_dataset))
+    if block_shape == "roi":
+        block_size = total_roi.get_shape()
+        context = Coordinate(
+            [
+                0,
+            ]
+            * in_labels.roi.dims
+        )
+        num_workers = 1
+    elif block_shape is None:
+        block_size = Coordinate(in_labels.chunk_shape) * voxel_size
     else:
-        lsd_errors = None
+        block_size = Coordinate(block_shape) * voxel_size
+
+    if error_mask_dataset is not None:
+        error_mask = open_ds(error_mask_dataset)
+    else:
+        error_mask = None
 
     # Prepare output datasets
     out_labels = prepare_ds(
-        os.path.join(out_file, out_labels_dataset),
+        out_labels_dataset,
         shape=total_roi.shape / in_labels.voxel_size,
         offset=total_roi.offset,
         voxel_size=in_labels.voxel_size,
         axis_names=in_labels.axis_names,
         units=in_labels.units,
         dtype=in_labels.dtype,
+        chunk_shape=block_size / in_labels.voxel_size,
         mode="w",
     )
 
     out_mask = prepare_ds(
-        os.path.join(out_file, out_mask_dataset),
+        out_mask_dataset,
         shape=total_roi.shape / in_labels.voxel_size,
         offset=total_roi.offset,
         voxel_size=in_labels.voxel_size,
         axis_names=in_labels.axis_names,
         units=in_labels.units,
         dtype=np.uint8,
+        chunk_shape=block_size / in_labels.voxel_size,
         mode="w",
     )
+
+    print(f"Filtering input segmentation {seg_dataset} into {out_labels_dataset} and {out_mask_dataset}")
 
     read_roi = Roi((0,) * in_labels.roi.dims, block_size).grow(context, context)
     write_roi = Roi((0,) * in_labels.roi.dims, block_size)
@@ -239,12 +249,13 @@ def filter_segmentation(
             in_labels,
             out_labels,
             out_mask,
-            lsd_errors,
+            error_mask,
             to_remove,
             erode_out_mask,
         ),
         fit="shrink",
         num_workers=num_workers,
+        read_write_conflict=True,
     )
 
     # Run the task

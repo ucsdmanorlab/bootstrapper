@@ -84,10 +84,10 @@ def self(config_file, out_result):
         stats["thresholds"] = thresholds
         pred_choice = "lsds" if "lsds_error_map" in out_map_dataset else "affs"
 
-        stats[f"{pred_choice}_error_map"] = compute_stats(
+        stats[f"error_map"] = compute_stats(
             open_ds(out_map_dataset, mode="r")[:]
         )
-        stats[f"{pred_choice}_error_mask"] = compute_stats(
+        stats[f"error_mask"] = compute_stats(
             open_ds(out_mask_dataset, mode="r")[:]
         )
 

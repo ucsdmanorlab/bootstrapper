@@ -671,7 +671,6 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=
             default=True,
             show_default=True,
         ):
-            print(pred_datasets)
             pred_choices = [ds for ds in pred_datasets if ds.split('/')[-1].startswith("3d_")]
 
             if len(pred_choices) == 1:
@@ -760,18 +759,18 @@ def create_filter_configs(volumes, out_seg_prefix, eval_dir, setup_dir=None):
 
     configs = {}
     for volume in volumes:
-        volume_name = os.path.basename(volume["zarr_container"]).split(".zarr")[0]
+        container = volume["zarr_container"]
+        volume_name = os.path.basename(container).split(".zarr")[0]
 
         # get filter ROI TODO: get from eval config
         # roi_offset, roi_shape, _ = get_roi(in_array=out_segs)
 
         filter_config = {
-            "seg_file": volume["zarr_container"],
-            "seg_datasets": out_seg_prefix,
-            "eval_dir": eval_dir,
-            "out_file": volume["zarr_container"],
-            "out_seg_dataset": out_seg_ds,
-            "out_mask_dataset": out_mask_ds,
+            "seg_file": container,
+            "seg_datasets_prefix": out_seg_prefix,
+            "eval_dir": os.path.join(container, eval_dir),
+            "out_seg_dataset": os.path.join(container,  out_seg_ds),
+            "out_mask_dataset": os.path.join(container, out_mask_ds),
             # "roi_offset": roi_offset,
             # "roi_shape": roi_shape,
             "dust_filter": 500,
@@ -785,7 +784,7 @@ def create_filter_configs(volumes, out_seg_prefix, eval_dir, setup_dir=None):
 
         out_volumes.append(
             {
-                "zarr_container": volume["zarr_container"],
+                "zarr_container": container,
                 "raw_dataset": volume["raw_dataset"],
                 "raw_mask_dataset": volume["raw_mask_dataset"],
                 "labels_dataset": out_seg_ds,
