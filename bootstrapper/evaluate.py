@@ -98,7 +98,7 @@ def run_self_evaluation(config, seg_ds):
     return stats
 
 
-def run_evaluation(yaml_file, mode, **kwargs):
+def run_evaluation(yaml_file, mode="pred", **kwargs):
     config = get_eval_config(yaml_file, **kwargs)
     if "seg_datasets" in config:
         seg_datasets = config["seg_datasets"]

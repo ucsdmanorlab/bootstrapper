@@ -95,7 +95,7 @@ def get_seg_config(yaml_file, method, **kwargs):
     return config | params
 
 
-def run_segmentation(yaml_file, mode, **kwargs):
+def run_segmentation(yaml_file, mode="ws", **kwargs):
     config = get_seg_config(yaml_file, mode, **kwargs)
     pprint(config)
 
