@@ -5,7 +5,6 @@ import os
 from ast import literal_eval
 import glob
 from pprint import pprint
-from bootstrapper.post.blockwise.filter_segmentation import filter_segmentation
 
 
 DEFAULTS = {
@@ -124,6 +123,8 @@ def get_filter_config(yaml_file, **kwargs):
 
 
 def run_filter(config_file, **kwargs):
+    from bootstrapper.post.blockwise.filter_segmentation import filter_segmentation
+
     # load config
     configs = get_filter_config(config_file, **kwargs)
     for config in configs:

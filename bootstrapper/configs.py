@@ -700,17 +700,15 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=
             pred_error_mask_ds = None
 
         # add evaluation mask ? #TODO
-        mask_file = None
         mask_dataset = None
 
         # get evaluation ROI TODO: get from segmentation config
         # roi_offset, roi_shape, voxel_size = get_roi(in_array=out_segs)
 
         eval_config = {
-            "out_dir": out_eval_dir,
+            "out_dir": os.path.join(container, out_eval_dir),
             "seg_file": container,
             "seg_datasets_prefix": out_seg_prefix,  # TODO: zarr tree find all seg arrays. eval on all.
-            "mask_file": mask_file,
             "mask_dataset": mask_dataset,
             "fragments_file": container,
             # "roi_offset": roi_offset,
