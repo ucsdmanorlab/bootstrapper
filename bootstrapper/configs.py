@@ -12,7 +12,6 @@ from funlib.geometry import Roi
 from funlib.persistence import open_ds
 
 
-
 DEFAULT_PROMPT_STYLE = {"fg": "cyan"}
 DEFAULT_INFO_STYLE = {"fg": "cyan", "bold": True}
 DEFAULT_TRAIN_STYLE = {"fg": "green"}
@@ -31,8 +30,8 @@ MODEL_URLS = {
 }
 
 def check_and_update(configs, style=DEFAULT_PROMPT_STYLE):
-    is_single = not isinstance(configs, list)
-    configs = [configs] if is_single else configs
+    multiple = isinstance(configs, list)
+    configs = [configs] if not multiple else configs
 
     click.echo()
     for config in configs:
@@ -44,13 +43,13 @@ def check_and_update(configs, style=DEFAULT_PROMPT_STYLE):
         if edited_yaml := click.edit(yaml.dump_all(configs)):
             configs = list(yaml.safe_load_all(edited_yaml))
 
-    return configs[0] if is_single else configs
+    return configs[0] if not multiple else configs
 
 
-def save_config(config, filename):
+def save_config(config, filename, style=DEFAULT_INFO_STYLE):
     with open(filename, "w") as f:
         yaml.dump(config, f)
-    click.secho(f"{filename} saved successfully.", **DEFAULT_INFO_STYLE)
+    click.secho(f"{filename} saved successfully.", **style)
 
 
 def copy_model_scripts(model_name, setup_dir):
@@ -59,7 +58,7 @@ def copy_model_scripts(model_name, setup_dir):
     copytree(src, setup_dir, dirs_exist_ok=True)
 
 
-def get_roi(in_array, offset=None, shape=None):
+def get_sub_roi(in_array, offset=None, shape=None, style=DEFAULT_PROMPT_STYLE):
     """Get desired ROI within volume."""
     in_array = open_ds(in_array)
     full_roi = in_array.roi
@@ -70,7 +69,7 @@ def get_roi(in_array, offset=None, shape=None):
         offset = click.prompt(
             click.style(
                 f"Enter voxel offset as space-separated integers in {in_array.axis_names}",
-                **DEFAULT_PRED_STYLE,
+                **style,
             ),
             type=str,
             default="0 0 0",
@@ -82,16 +81,16 @@ def get_roi(in_array, offset=None, shape=None):
         shape = click.prompt(
             click.style(
                 f"Enter required voxel shape starting from {offset} as space-separated integers in {in_array.axis_names} (skipping will get remaining available shape)",
-                **DEFAULT_PRED_STYLE,
+                **style,
             ),
             default="0 0 0",
         )
         shape = tuple(map(int, shape.strip().split())) if shape != "0 0 0" else None
 
-    roi_offset = [x * y for x, y in zip(offset, voxel_size)]
+    roi_offset = [o * v for o, v in zip(offset, voxel_size)]
 
     if shape is None and roi_offset == [0, 0, 0]:
-        roi_shape = [x * y for x, y in zip(full_shape, voxel_size)]
+        roi_shape = [s * v for s, v in zip(full_shape, voxel_size)]
     else:
         remaining_shape = [
             fs - (ro // vs) for fs, ro, vs in zip(full_shape, roi_offset, voxel_size)
@@ -99,7 +98,7 @@ def get_roi(in_array, offset=None, shape=None):
         if shape is None:
             roi_shape = [rem * vs for rem, vs in zip(remaining_shape, voxel_size)]
         else:
-            roi_shape = [x * y for x, y in zip(shape, voxel_size)]
+            roi_shape = [s * v for s, v in zip(shape, voxel_size)]
             roi_shape = [
                 min(rs, rem * vs)
                 for rs, rem, vs in zip(roi_shape, remaining_shape, voxel_size)
@@ -109,10 +108,10 @@ def get_roi(in_array, offset=None, shape=None):
     if not full_roi.contains(roi):
         click.secho(
             "ROI is not contained within the full volume's ROI. Cropping to..",
-            **DEFAULT_PRED_STYLE,
+            **style,
         )
         roi = roi.intersect(full_roi)
-        click.secho(f"{roi}", **DEFAULT_PRED_STYLE)
+        click.secho(f"{roi}", **style)
 
     return roi.offset, roi.shape, voxel_size
 
@@ -197,7 +196,7 @@ def choose_models():
     # get first model
     i = 0
     previous_model = click.prompt(
-        click.style(f"Enter first model name", **DEFAULT_TRAIN_STYLE),
+        click.style(f"Enter model name", **DEFAULT_TRAIN_STYLE),
         type=click.Choice(image_models),
         show_choices=True,
     )
@@ -288,6 +287,7 @@ def create_training_config(volumes, parent_dir=None):
     setup_dirs = [] # corresponding setup dirs
     setups_to_train = [] # list of tuples (model_name, setup_dir)
     
+    # get setup dirs for each model
     for i, model_name in enumerate(model_names):
         if i == 0:
             setup_dir = click.prompt(
@@ -418,11 +418,10 @@ def create_prediction_configs(volumes, setup_dirs):
         type=int,
         default=1,
     )
-
     num_workers = click.prompt(
         click.style("Enter number of CPU workers to use for prediction", **DEFAULT_PRED_STYLE),
         type=int,
-        default=1,
+        default=num_gpus,
     )
 
     # loop over volumes
@@ -438,9 +437,10 @@ def create_prediction_configs(volumes, setup_dirs):
             f"Creating prediction configs for {volume_name}", **DEFAULT_PRED_STYLE
         )
 
-        roi_offset, roi_shape, _ = get_roi(in_array=raw_array)
+        roi_offset, roi_shape, _ = get_sub_roi(in_array=raw_array)
         output_datasets = [] # list of lists of output datasets per setup
 
+        # loop over setups
         for i, setup_dir in enumerate(setup_dirs):
             iteration = iterations[i]
             setup_name = os.path.basename(setup_dir)
@@ -525,7 +525,7 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
         # TODO: find way to get roi from predictions
         # roi_offset, roi_shape, voxel_size = get_roi(in_array=affs_array)
 
-        do_blockwise = True
+        do_blockwise = False
 
         if click.confirm(
             click.style(f"Do blockwise = {do_blockwise}. Switch?", **DEFAULT_SEG_STYLE), default=False, show_default=True
@@ -555,24 +555,6 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
             context = None
             num_workers = 1
 
-        sqlite_path = os.path.join(
-            container, f"post/{setup_name}/rag.db"
-        )
-
-        # SQLite or not ?
-        use_sqlite = not do_blockwise
-        if click.confirm(
-            click.style(f"Use SQLite for RAG = {use_sqlite}. Switch?", **DEFAULT_SEG_STYLE),
-            default=False,
-            show_default=True,
-        ):
-            use_sqlite = not use_sqlite
-
-        sqlite_path = sqlite_path if use_sqlite else None
-
-        # get rag db config
-        db_config = get_rag_db_config(sqlite_path)
-
         # are raw masks available ?
         if volume["raw_mask_dataset"] is not None:
             mask_dataset = os.path.join(volumes["zarr_container"], volumes["raw_mask_dataset"])
@@ -583,7 +565,7 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
             "affs_dataset": affs_array,
             "fragments_dataset": frags_array,
             "lut_dir": lut_dir,
-            "seg_file": container,
+            "seg_container": container,
             "seg_dataset_prefix": out_seg_prefix,
             "mask_dataset": mask_dataset,
             # "roi_offset": roi_offset,
@@ -592,8 +574,27 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
             "context": block_shape,
             "blockwise": do_blockwise,
             "num_workers": num_workers,
-            "db": db_config,
-        } 
+        }
+
+        # get RAG db config
+        if do_blockwise:
+            sqlite_path = os.path.join(
+                container, f"post/{setup_name}/rag.db"
+            )
+
+            # SQLite or not ?
+            use_sqlite = not do_blockwise
+            if click.confirm(
+                click.style(f"Use SQLite for RAG = {use_sqlite}. Switch?", **DEFAULT_SEG_STYLE),
+                default=False,
+                show_default=True,
+            ):
+                use_sqlite = not use_sqlite
+
+            sqlite_path = sqlite_path if use_sqlite else None
+
+            # get rag db config
+            seg_config["db"] = get_rag_db_config(sqlite_path) 
 
         configs[volume_name] = check_and_update(seg_config, style=DEFAULT_SEG_STYLE)
 
@@ -699,25 +700,27 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=
             pred_error_map_ds = None
             pred_error_mask_ds = None
 
-        # add evaluation mask ? #TODO
-        mask_dataset = None
+        # are raw masks available ?
+        if volume["raw_mask_dataset"] is not None:
+            mask_dataset = volumes["raw_mask_dataset"]
+        else:
+            mask_dataset = None
 
         # get evaluation ROI TODO: get from segmentation config
         # roi_offset, roi_shape, voxel_size = get_roi(in_array=out_segs)
 
         eval_config = {
             "out_dir": os.path.join(container, out_eval_dir),
-            "seg_file": container,
-            "seg_datasets_prefix": out_seg_prefix,  # TODO: zarr tree find all seg arrays. eval on all.
+            "seg_container": container,
+            "seg_datasets_prefix": out_seg_prefix,
             "mask_dataset": mask_dataset,
-            "fragments_file": container,
             # "roi_offset": roi_offset,
             # "roi_shape": roi_shape,
         }
 
         if pred_ds is not None:
             eval_config["self"] = {
-                "pred_dataset": pred_ds,
+                "pred_dataset": os.path.join(container, pred_ds),
                 "out_map_dataset": pred_error_map_ds,
                 "out_mask_dataset": pred_error_mask_ds,
                 "thresholds": [0.1, 1.0],
@@ -764,7 +767,7 @@ def create_filter_configs(volumes, out_seg_prefix, eval_dir, setup_dir=None):
         # roi_offset, roi_shape, _ = get_roi(in_array=out_segs)
 
         filter_config = {
-            "seg_file": container,
+            "seg_container": container,
             "seg_datasets_prefix": out_seg_prefix,
             "eval_dir": os.path.join(container, eval_dir),
             "out_seg_dataset": os.path.join(container,  out_seg_ds),

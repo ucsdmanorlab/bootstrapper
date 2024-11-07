@@ -103,7 +103,7 @@ def run_evaluation(yaml_file, mode="pred", **kwargs):
     if "seg_datasets" in config:
         seg_datasets = config["seg_datasets"]
     else:
-        seg_datasets = get_seg_datasets(config["seg_file"], config["seg_datasets_prefix"])
+        seg_datasets = get_seg_datasets(config["seg_container"], config["seg_datasets_prefix"])
     seg_stats = {}
 
     for seg_ds in seg_datasets:

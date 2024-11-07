@@ -1,44 +1,8 @@
 import logging
-# import click
-# import yaml
 
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-
-# class OrderedGroup(click.Group):
-#     def list_commands(self, ctx):
-#         # Return the commands in the desired order
-#         return [
-#             "frags",
-#             "agglom",
-#             "luts",
-#             "extract"
-#         ]
-
-# @click.group(invoke_without_command=True, cls=OrderedGroup, chain=True)
-# @click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
-# @click.pass_context
-# def ws(ctx, config_file):
-#     """
-#     Hierarchical region agglomeration using waterz.
-
-#     No subcommand runs the whole pipeline:
-#     frags -> agglom -> luts -> extract
-#     """
-#     if ctx.invoked_subcommand is None:
-
-#         with open(config_file, "r") as f:
-#             config = yaml.safe_load(f)
-
-#         waterz_pipeline(config)
-#     pass
-
-# ws.add_command(frags)
-# ws.add_command(agglom)
-# ws.add_command(luts)
-# ws.add_command(extract)
 
 
 def waterz_pipeline(config):
@@ -64,7 +28,7 @@ def simple_watershed(config):
 
     affs_ds = config["affs_dataset"]
     frags_ds = config["fragments_dataset"]
-    seg_file = config["seg_file"]
+    seg_container = config["seg_container"]
     seg_ds_prefix = config["seg_dataset_prefix"]
     mask_ds = config.get("mask_dataset", None)
     roi_offset = config.get("roi_offset", None)
@@ -177,7 +141,7 @@ def simple_watershed(config):
     segmentation = next(generator)
 
     # write segmentation
-    seg_ds_name = os.path.join(seg_file, seg_ds_prefix, "watershed", str(thresholds[0]))
+    seg_ds_name = os.path.join(seg_container, seg_ds_prefix, "watershed", str(thresholds[0]))
     seg = prepare_ds(
         seg_ds_name,
         shape=segmentation.shape,

@@ -29,11 +29,11 @@ def make_volumes():
     for i in range(num_volumes):
         click.echo()
         click.secho(f"Processing volume {i+1}", fg="cyan", bold=True)
-        volume_path = click.prompt(
-            click.style("Enter path to volume", fg="cyan"),
+        container = click.prompt(
+            click.style("Enter path to output container", fg="cyan"),
             type=click.Path(),
         )
-        volume_info = prepare_volume(volume_path)
+        volume_info = prepare_volume(container)
         if volume_info:
             volumes.append(volume_info)
 
@@ -238,6 +238,8 @@ def prep_predict_config():
 
             else:
                 raise ValueError(f"Invalid setup: directory {setup_dir} does not exist")
+        else:
+            setup_dirs[i] = os.path.abspath(setup_dir)
 
     ret = create_prediction_configs(volumes, setup_dirs)
 

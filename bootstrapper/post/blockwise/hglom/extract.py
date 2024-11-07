@@ -37,7 +37,7 @@ def extract_segmentations(config):
     # read config
     fragments_dataset = config["fragments_dataset"]
     lut_dir = config["lut_dir"]
-    seg_file = config["seg_file"]
+    seg_container = config["seg_container"]
     seg_dataset_prefix = config["seg_dataset_prefix"]
     thresholds = config["thresholds"]
     merge_function = config["merge_function"]
@@ -75,10 +75,10 @@ def extract_segmentations(config):
         seg_name: str = f"{seg_dataset_prefix}/waterz_{merge_function}/{str(int(threshold*100)).zfill(2)}"
 
         start: float = time.time()
-        logging.info(f"Writing {os.path.join(seg_file, seg_name)}")
+        logging.info(f"Writing {os.path.join(seg_container, seg_name)}")
 
         segmentation = prepare_ds(
-            store=os.path.join(seg_file, seg_name),
+            store=os.path.join(seg_container, seg_name),
             shape=total_roi.shape / voxel_size,
             offset=total_roi.offset,
             voxel_size=voxel_size,

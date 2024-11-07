@@ -89,7 +89,7 @@ def get_seg_config(yaml_file, method, **kwargs):
 
         if "lut_dir" not in config:
             config["lut_dir"] = os.path.join(
-                config["seg_file"], config["seg_dataset_prefix"].replace("segmentations", "luts")
+                config["seg_container"], config["seg_dataset_prefix"].replace("segmentations", "luts")
             )  
 
     return config | params

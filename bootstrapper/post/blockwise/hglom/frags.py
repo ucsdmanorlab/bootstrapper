@@ -349,11 +349,10 @@ def extract_fragments(config):
 
     # get mask
     if (
-        "mask_file" in config
-        and "mask_dataset" in config
-        and config["mask_file"] is not None
+        "mask_dataset" in config
+        and config["mask_dataset"] is not None
     ):
-        mask_array = open_ds(os.path.join(config["mask_file"], config["mask_dataset"]))
+        mask_array = open_ds(config["mask_dataset"])
     else:
         mask_array = None
 

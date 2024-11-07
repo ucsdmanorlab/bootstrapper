@@ -89,9 +89,9 @@ def get_filter_config(yaml_file, **kwargs):
         eval_files = glob.glob(os.path.join(config["eval_dir"], "*.json"))
         for eval_file in eval_files:
             in_seg_datasets.append(get_best_seg_from_eval(eval_file))
-    elif "seg_file" in config and "seg_datasets_prefix" in config:
+    elif "seg_container" in config and "seg_datasets_prefix" in config:
         seg_datasets = [
-            x for x in glob.glob(os.path.join(config["seg_file"], config["seg_datasets_prefix"], "*", "*"))
+            x for x in glob.glob(os.path.join(config["seg_container"], config["seg_datasets_prefix"], "*", "*"))
             if os.path.isdir(x) and os.path.exists(os.path.join(x, ".zarray"))
         ]
         in_seg_datasets.extend(seg_datasets)
@@ -102,7 +102,7 @@ def get_filter_config(yaml_file, **kwargs):
             else:
                 raise ValueError(f"Invalid seg_dataset: {x}")
     else:
-        raise ValueError("Must provide either eval_dir, seg_file and seg_dataset_prefix, or seg_datasets")
+        raise ValueError("Must provide either eval_dir, seg_container and seg_dataset_prefix, or seg_datasets")
 
     # output
     configs = []

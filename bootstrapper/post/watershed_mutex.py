@@ -19,7 +19,7 @@ def simple_mutex(config):
 
     affs_ds = config["affs_dataset"]
     frags_ds = config["fragments_dataset"]
-    seg_file = config["seg_file"]
+    seg_container = config["seg_container"]
     seg_ds_prefix = config["seg_dataset_prefix"]
     mask_ds = config.get("mask_dataset", None)
     roi_offset = config.get("roi_offset", None)
@@ -107,7 +107,7 @@ def simple_mutex(config):
 
     # write segmentation
     bias_str = '_'.join([str(int(x*10)) for x in bias])
-    seg_ds_name = os.path.join(seg_file, seg_ds_prefix, "mutex", bias_str)
+    seg_ds_name = os.path.join(seg_container, seg_ds_prefix, "mutex", bias_str)
     seg = prepare_ds(
         seg_ds_name,
         shape=fragments_data.shape,
