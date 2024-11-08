@@ -35,6 +35,15 @@ MODEL_URLS = {
     "3d_affs_from_3d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.1.1/3d_affs_from_3d_lsd.zip",
 }
 
+
+def get_setup_name(setup_dir):
+    setup_name = os.path.basename(setup_dir)
+    if '_from_' in setup_name:
+        return MODEL_SHORT_NAMES[setup_name]
+    else:
+        return setup_name
+
+
 def check_and_update(configs, style=DEFAULT_PROMPT_STYLE):
     multiple = isinstance(configs, list)
     configs = [configs] if not multiple else configs
@@ -384,7 +393,7 @@ def create_training_config(volumes, parent_dir=None):
 
         if '_from_' not in model_name:
             train_config['samples'] = {
-                v["zarr_container"]: {
+                v["name"]: {
                     "raw": v["raw_dataset"],
                     "labels": v["labels_dataset"],
                     "mask": v["labels_mask_dataset"],
@@ -419,11 +428,7 @@ def create_prediction_configs(volumes, setup_dirs):
             show_default=True,
         )
         iterations.append(iteration)
-        setup_name = os.path.basename(setup_dir)
-        if '_from_' in os.path.basename(setup_dir):
-            setup_names.append(MODEL_SHORT_NAMES[setup_name])
-        else:
-            setup_names.append(setup_name)
+        setup_names.append(get_setup_name(setup_dir)) 
 
     num_gpus = click.prompt(
         click.style("Enter number of GPUs to use for prediction", **DEFAULT_PRED_STYLE),
@@ -440,8 +445,8 @@ def create_prediction_configs(volumes, setup_dirs):
     configs = {}
     for volume in volumes:
         pred_config = {}
-        container = volume["zarr_container"]
-        volume_name = os.path.basename(container).split(".zarr")[0]
+        container = volume["output_container"]
+        volume_name = volume["name"]
         raw_array = volume["raw_dataset"]
 
         click.echo()
@@ -450,7 +455,7 @@ def create_prediction_configs(volumes, setup_dirs):
         )
 
         roi_offset, roi_shape, _ = get_sub_roi(in_array=raw_array)
-        output_datasets = [] # list of lists of output datasets per setup
+        output_datasets = [] # list of lists of output datasets per setup per volume
 
         # loop over setups
         for i, setup_dir in enumerate(setup_dirs):
@@ -509,7 +514,7 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
     )
 
     if setup_dir is not None:
-        setup_name = os.path.basename(setup_dir)
+        setup_name = get_setup_name(setup_dir)
     else:
         setup_name = click.prompt(
             click.style("Enter setup name for segmentations", **DEFAULT_SEG_STYLE),
@@ -523,8 +528,8 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
 
     configs = {}
     for volume in volumes:
-        container = volume["zarr_container"]
-        volume_name = os.path.basename(container).split(".zarr")[0]
+        container = volume["output_container"]
+        volume_name = volume["name"]
         affs_array = os.path.join(container, out_affs_ds)
         frags_array = os.path.join(container, out_frags_ds)
         lut_dir = os.path.join(container, out_lut_dir)
@@ -569,7 +574,7 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
 
         # are raw masks available ?
         if volume["raw_mask_dataset"] is not None:
-            mask_dataset = os.path.join(volumes["zarr_container"], volumes["raw_mask_dataset"])
+            mask_dataset = os.path.join(volumes["output_container"], volumes["raw_mask_dataset"])
         else:
             mask_dataset = None
 
@@ -621,7 +626,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=
     )
 
     if setup_dir is not None:
-        setup_name = os.path.basename(setup_dir)
+        setup_name = get_setup_name(setup_dir)
     else:
         setup_name = click.prompt(
             click.style("Enter setup name for evaluation outputs", **DEFAULT_SEG_STYLE),
@@ -633,8 +638,8 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=
 
     configs = {}
     for volume in volumes:
-        volume_name = os.path.basename(volume["zarr_container"]).split(".zarr")[0]
-        container = volume["zarr_container"]
+        volume_name = volume["name"]
+        container = volume["output_container"]
 
         click.echo()
         click.secho(
@@ -757,7 +762,7 @@ def create_filter_configs(volumes, out_seg_prefix, eval_dir, setup_dir=None):
     )
 
     if setup_dir is not None:
-        setup_name = os.path.basename(setup_dir)
+        setup_name = get_setup_name(setup_dir)
     else:
         setup_name = click.prompt(
             click.style("Enter setup name for filtered segmentations", **DEFAULT_SEG_STYLE),
@@ -772,8 +777,10 @@ def create_filter_configs(volumes, out_seg_prefix, eval_dir, setup_dir=None):
 
     configs = {}
     for volume in volumes:
-        container = volume["zarr_container"]
-        volume_name = os.path.basename(container).split(".zarr")[0]
+        container = volume["output_container"]
+        volume_name = volume["name"]
+        out_seg_ds_path = os.path.join(container, out_seg_ds)
+        out_mask_ds_path = os.path.join(container, out_mask_ds)
 
         # get filter ROI TODO: get from eval config
         # roi_offset, roi_shape, _ = get_roi(in_array=out_segs)
@@ -782,8 +789,8 @@ def create_filter_configs(volumes, out_seg_prefix, eval_dir, setup_dir=None):
             "seg_container": container,
             "seg_datasets_prefix": out_seg_prefix,
             "eval_dir": os.path.join(container, eval_dir),
-            "out_seg_dataset": os.path.join(container,  out_seg_ds),
-            "out_mask_dataset": os.path.join(container, out_mask_ds),
+            "out_seg_dataset": out_seg_ds_path,
+            "out_mask_dataset": out_mask_ds_path,
             # "roi_offset": roi_offset,
             # "roi_shape": roi_shape,
             "dust_filter": 500,
@@ -795,15 +802,17 @@ def create_filter_configs(volumes, out_seg_prefix, eval_dir, setup_dir=None):
 
         configs[volume_name] = check_and_update(filter_config, style=DEFAULT_FILTER_STYLE)
 
+        # volumes for the next round
         out_volumes.append(
             {
-                "zarr_container": container,
+                "name": volume_name,
                 "raw_dataset": volume["raw_dataset"],
                 "raw_mask_dataset": volume["raw_mask_dataset"],
-                "labels_dataset": out_seg_ds,
-                "labels_mask_dataset": out_mask_ds,
+                "labels_dataset": out_seg_ds_path,
+                "labels_mask_dataset": out_mask_ds_path,
                 "voxel_size": volume["voxel_size"],
-                "previous_volume": volume,
+                "previous_labels_datasets": [volume['labels_dataset'],] + volume.get("previous_labels_datasets", []),
+                "previous_labels_mask_datasets": [volume['labels_mask_dataset'],] + volume.get("previous_labels_mask_datasets", [])
             }
         )
 
@@ -822,10 +831,10 @@ def make_round_configs(volumes, round_dir):
 
     # training configs
     train_config = create_training_config(volumes, round_dir)
-    for setup_dir in train_config["configs"]:
+    for i, setup_dir in enumerate(train_config["configs"]):
         save_config(
             train_config["configs"][setup_dir],
-            os.path.join(run_dir, f"train_{os.path.basename(setup_dir)}.yaml"),
+            os.path.join(run_dir, f"01_train_{str(i).zfill(2)}.yaml"),
         )
 
     setup_dirs = train_config["setup_dirs"]
@@ -833,7 +842,7 @@ def make_round_configs(volumes, round_dir):
     for volume_name in pred_config["configs"]:
         save_config(
             pred_config["configs"][volume_name],
-            os.path.join(run_dir, f"pred_{volume_name}.yaml"),
+            os.path.join(run_dir, f"02_pred_{volume_name}.yaml"),
         )
 
     out_affs_ds = pred_config["out_affs_dataset"]
@@ -842,7 +851,7 @@ def make_round_configs(volumes, round_dir):
     for volume_name in pred_config["configs"]:
         save_config(
             seg_configs["configs"][volume_name],
-            os.path.join(run_dir, f"seg_{volume_name}.yaml"),
+            os.path.join(run_dir, f"03_seg_{volume_name}.yaml"),
         )
 
     out_seg_prefix = seg_configs["out_seg_prefix"]
@@ -852,7 +861,7 @@ def make_round_configs(volumes, round_dir):
     for volume_name in pred_config["configs"]:
         save_config(
             eval_configs["configs"][volume_name],
-            os.path.join(run_dir, f"eval_{volume_name}.yaml"),
+            os.path.join(run_dir, f"04_eval_{volume_name}.yaml"),
         )
 
     out_eval_dir = eval_configs["out_eval_dir"]
@@ -860,7 +869,7 @@ def make_round_configs(volumes, round_dir):
     for volume_name in pred_config["configs"]:
         save_config(
             filter_configs["configs"][volume_name],
-            os.path.join(run_dir, f"filter_{volume_name}.yaml"),
+            os.path.join(run_dir, f"05_filter_{volume_name}.yaml"),
         )
 
     out_volumes = filter_configs["out_volumes"]

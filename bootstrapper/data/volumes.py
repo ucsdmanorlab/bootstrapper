@@ -10,23 +10,33 @@ DEFAULT_PROMPT_SUFFIX = click.style(" >>> ", **DEFAULT_PROMPT_STYLE)
 
 def process_zarr(path, output_zarr, type):
 
-    click.secho(f"Processing {path} to {output_zarr}", **DEFAULT_INFO_STYLE)
+    click.secho(f"Processing {path}", **DEFAULT_INFO_STYLE)
     in_array = zarr.open(path)
 
-    out_ds_path = click.prompt(
-        click.style(f"Enter output {type.upper()} dataset path", **DEFAULT_PROMPT_STYLE),
-        default=os.path.join(output_zarr, type),
-        type=str,
-        show_default=True,
-        prompt_suffix=DEFAULT_PROMPT_SUFFIX,
-    )
-
-    if click.confirm(
+    do_bbox = click.confirm(
         click.style("Perform bounding box crop?", **DEFAULT_PROMPT_STYLE),
         default=False if type == "raw" else True,
         show_default=True,
         prompt_suffix=DEFAULT_PROMPT_SUFFIX,
-    ):
+    )
+    copy_to_output = click.confirm(
+        click.style(f"Copy {path} to output container {output_zarr}?", **DEFAULT_PROMPT_STYLE),
+        default=False,
+        show_default=True,
+        prompt_suffix=DEFAULT_PROMPT_SUFFIX,
+    )
+
+    if do_bbox or copy_to_output:
+        out_ds_path = click.prompt(
+            click.style(f"Enter output {type.upper()} dataset path", **DEFAULT_PROMPT_STYLE),
+            default=os.path.join(output_zarr, type),
+            type=str,
+            show_default=True,
+            prompt_suffix=DEFAULT_PROMPT_SUFFIX)
+    else:
+        out_ds_path = path
+
+    if do_bbox:
         subprocess.run(
             [
                 "bs",
@@ -39,7 +49,7 @@ def process_zarr(path, output_zarr, type):
             ]
         )
     else:
-        if os.path.abspath(path) == os.path.abspath(out_ds_path):
+        if not copy_to_output:
             return out_ds_path, in_array.attrs["voxel_size"]
 
         # copy contents of in_array into a new zarr array at out_ds_path, with attrs
@@ -160,6 +170,7 @@ def process_dataset(path, output_zarr, type):
 
     out_ds_name = f"{ds_name}"
 
+    # make or provide mask
     if click.confirm(
         click.style(f"Make or provide {type} mask?", **DEFAULT_PROMPT_STYLE),
         default=False,
@@ -197,14 +208,23 @@ def prepare_volume(volume_path):
     if volume_path.endswith(".zarr") or volume_path.endswith(".zarr/"):
         output_zarr = os.path.abspath(volume_path)
     else:
-        raise ValueError(f"Volume path must end in .zarr")
+        raise ValueError(f"Volume (output container) path must end in .zarr")
+    
+    # get volume name
+    volume_name = click.prompt(
+        click.style("Enter volume name", **DEFAULT_PROMPT_STYLE),
+        default=os.path.basename(volume_path).split(".zarr")[0],
+        type=str,
+        show_default=True,
+        prompt_suffix=DEFAULT_PROMPT_SUFFIX,
+    )
 
     # procress raw
     while True:
         try:
             path = click.prompt(
                 click.style(
-                    f"Enter path to input RAW tif directory, tif stack, or zarr array {volume_path}",
+                    f"Enter path to input RAW tif directory, tif stack, or zarr array for {volume_name}",
                     **DEFAULT_PROMPT_STYLE,
                 ),
                 type=click.Path(exists=True),
@@ -219,7 +239,7 @@ def prepare_volume(volume_path):
     # process labels
     path = click.prompt(
         click.style(
-            f"Enter path to input LABELS tif directory, tif stack, or zarr container for volume {volume_path} (enter to skip)",
+            f"Enter path to input LABELS tif directory, tif stack, or zarr container for {volume_name} (enter to skip)",
             **DEFAULT_PROMPT_STYLE,
         ),
         default=" ",
@@ -235,7 +255,8 @@ def prepare_volume(volume_path):
         vs = raw_vs
 
     return {
-        "zarr_container": os.path.abspath(output_zarr),
+        "name": volume_name,
+        "output_container": output_zarr,
         "raw_dataset": os.path.abspath(raw_ds),
         "raw_mask_dataset": None if raw_mask is None else os.path.abspath(raw_mask),
         "labels_dataset": None if obj_ds is None else os.path.abspath(obj_ds),
