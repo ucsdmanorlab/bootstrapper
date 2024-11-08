@@ -22,6 +22,12 @@ DEFAULT_FILTER_STYLE = {"fg": "blue"}
 
 BS_DIR = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 MODEL_DIR = os.path.join(BS_DIR, "models")
+MODEL_SHORT_NAMES = {
+    "3d_affs_from_2d_affs": "3Af2A",
+    "3d_affs_from_2d_lsd": "3Af2L",
+    "3d_affs_from_2d_mtlsd": "3Af2M",
+    "3d_affs_from_3d_lsd": "3Af3L",
+}
 MODEL_URLS = {
     "3d_affs_from_2d_affs": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.1.1/3d_affs_from_2d_affs.zip",
     "3d_affs_from_2d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.1.1/3d_affs_from_2d_lsd.zip",
@@ -402,8 +408,9 @@ def create_prediction_configs(volumes, setup_dirs):
         f"Prediction configs for {" -> ".join(setup_dirs)}", **DEFAULT_PRED_STYLE
     )
 
-    # get prediction iterations
+    # get prediction iterations and setup names
     iterations = []
+    setup_names = []
     for i, setup_dir in enumerate(setup_dirs):
         iteration = click.prompt(
             click.style(f"Enter checkpoint iteration for model {i+1}: {os.path.basename(setup_dir)}", **DEFAULT_PRED_STYLE),
@@ -412,6 +419,11 @@ def create_prediction_configs(volumes, setup_dirs):
             show_default=True,
         )
         iterations.append(iteration)
+        setup_name = os.path.basename(setup_dir)
+        if '_from_' in os.path.basename(setup_dir):
+            setup_names.append(MODEL_SHORT_NAMES[setup_name])
+        else:
+            setup_names.append(setup_name)
 
     num_gpus = click.prompt(
         click.style("Enter number of GPUs to use for prediction", **DEFAULT_PRED_STYLE),
@@ -443,11 +455,11 @@ def create_prediction_configs(volumes, setup_dirs):
         # loop over setups
         for i, setup_dir in enumerate(setup_dirs):
             iteration = iterations[i]
-            setup_name = os.path.basename(setup_dir)
+            setup_name = setup_names[i]
 
             # get chain str
-            chain = [f"{os.path.basename(sn)}_{it}" for sn, it in zip(setup_dirs[:i], iterations[:i])]
-            chain_str = "-from-".join(chain)
+            chain = [f"{sn}_{it}" for sn, it in zip(setup_names[:i], iterations[:i])]
+            chain_str = "--from--".join(chain)
 
             # get model outputs
             with open(os.path.join(setup_dir, "net_config.json"), "r") as f:
@@ -460,7 +472,7 @@ def create_prediction_configs(volumes, setup_dirs):
                 out_ds = [f"{out_ds_prefix}/{x}_{iteration}" for x in model_outputs]
             else:
                 in_ds = [os.path.join(container, ds) for ds in output_datasets[-1]]
-                out_ds = [f"{out_ds_prefix}/{x}_{iteration}-from-{chain_str}" for x in model_outputs]
+                out_ds = [f"{out_ds_prefix}/{x}_{iteration}--from--{chain_str}" for x in model_outputs]
 
             output_datasets.append(out_ds)
 

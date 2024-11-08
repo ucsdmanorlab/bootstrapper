@@ -118,7 +118,7 @@ def get_pred_config(yaml_file, setup_id, **kwargs):
 
         out_ds = f"{output_name}_{iteration}"
         if chain_str != "":
-            out_ds += f"-from-{chain_str}"
+            out_ds += f"--from--{chain_str}"
 
         output_dataset = os.path.join(output_container, output_datasets_prefix, out_ds)
         output_datasets.append(output_dataset)
