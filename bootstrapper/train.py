@@ -1,4 +1,4 @@
-import argparse
+import glob
 import yaml
 import subprocess
 import os
@@ -35,7 +35,7 @@ def setup_train(yaml_file, **kwargs):
             raise ValueError(f"Labels dataset path {labels} does not exist")
         elif ".zarray" not in os.listdir(labels):
             # recursively search for all arrays matching the prefix
-            labels_datasets = [] #TODO
+            labels_datasets = [os.path.dirname(x) for x in glob.glob(os.path.join(labels, "**", ".zarray"), recursive=True)]
             if len(labels_datasets) == 0:
                 raise ValueError(f"Labels dataset prefix {labels} does not contain any array")
         else:
@@ -47,7 +47,7 @@ def setup_train(yaml_file, **kwargs):
                 raise ValueError(f"Labels dataset path {labels} does not exist")
             elif ".zarray" not in os.listdir(mask):
                 # recursively search for all arrays matching the prefix
-                mask_datasets = [] #TODO
+                mask_datasets = [os.path.dirname(x) for x in glob.glob(os.path.join(mask, "**", ".zarray"), recursive=True)]
                 if len(mask_datasets) == 0:
                     raise ValueError(f"Mask dataset prefix {mask} does not contain any array")
             else:
