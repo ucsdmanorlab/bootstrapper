@@ -28,22 +28,19 @@ def simple_watershed(config):
 
     affs_ds = config["affs_dataset"]
     frags_ds = config["fragments_dataset"]
-    seg_container = config["seg_container"]
     seg_ds_prefix = config["seg_dataset_prefix"]
     mask_ds = config.get("mask_dataset", None)
     roi_offset = config.get("roi_offset", None)
     roi_shape = config.get("roi_shape", None)
 
     # optional waterz params
-    thresholds = config.get("thresholds", [0.5])
+    thresholds = config.get("thresholds", [0.2,0.35,0.5])
     fragments_in_xy = config.get("fragments_in_xy", True)
     min_seed_distance = config.get("min_seed_distance", 10)
     merge_function = config.get("merge_function", "mean")
     sigma = config.get("sigma", None)
     noise_eps = config.get("noise_eps", None)
     bias = config.get("bias", None)
-
-    assert len(thresholds) == 1, "Only one threshold supported for simple watershed"
 
     waterz_merge_function = {
         "hist_quant_10": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 10, ScoreValue, 256, false>>",
@@ -138,20 +135,19 @@ def simple_watershed(config):
         scoring_function=waterz_merge_function
     )
 
-    segmentation = next(generator)
-
-    # write segmentation
-    seg_ds_name = os.path.join(seg_container, seg_ds_prefix, "watershed", str(thresholds[0]))
-    seg = prepare_ds(
-        seg_ds_name,
-        shape=segmentation.shape,
-        offset=roi.offset,
-        voxel_size=affs.voxel_size,
-        axis_names=affs.axis_names[1:],
-        dtype=np.uint64,
-        units=affs.units,
-    )
-    seg[roi] = segmentation
+    for threshold, segmentation in zip(thresholds, generator):
+        # write segmentation
+        seg_ds_name = os.path.join(seg_ds_prefix, f"{merge_function}_{str(threshold)}")
+        seg = prepare_ds(
+            seg_ds_name,
+            shape=segmentation.shape,
+            offset=roi.offset,
+            voxel_size=affs.voxel_size,
+            axis_names=affs.axis_names[1:],
+            dtype=np.uint64,
+            units=affs.units,
+        )
+        seg[roi] = segmentation
 
 
 def watershed_segmentation(config):

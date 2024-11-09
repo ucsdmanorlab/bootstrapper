@@ -37,7 +37,6 @@ def extract_segmentations(config):
     # read config
     fragments_dataset = config["fragments_dataset"]
     lut_dir = config["lut_dir"]
-    seg_container = config["seg_container"]
     seg_dataset_prefix = config["seg_dataset_prefix"]
     thresholds = config["thresholds"]
     merge_function = config["merge_function"]
@@ -72,13 +71,13 @@ def extract_segmentations(config):
     read_roi = write_roi = Roi((0,) * fragments.roi.dims, block_size)
 
     for threshold in thresholds:
-        seg_name: str = f"{seg_dataset_prefix}/waterz_{merge_function}/{str(int(threshold*100)).zfill(2)}"
+        seg_name: str = f"{seg_dataset_prefix}/{merge_function}_{str(threshold)}"
 
         start: float = time.time()
-        logging.info(f"Writing {os.path.join(seg_container, seg_name)}")
+        logging.info(f"Writing {seg_name}")
 
         segmentation = prepare_ds(
-            store=os.path.join(seg_container, seg_name),
+            store=seg_name,
             shape=total_roi.shape / voxel_size,
             offset=total_roi.offset,
             voxel_size=voxel_size,
@@ -91,7 +90,7 @@ def extract_segmentations(config):
         )
 
         # read LUT
-        lut_filename = f"waterz_{config["db"]['edges_table']}_{str(int(threshold*100)).zfill(2)}"
+        lut_filename = f"{config["db"]['edges_table']}_{str(int(threshold*100)).zfill(2)}"
         lut = os.path.join(lut_dir, lut_filename + ".npz")
         assert os.path.exists(path=lut), f"{lut} does not exist"
         lut = np.load(file=lut)["fragment_segment_lut"]

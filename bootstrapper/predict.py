@@ -58,7 +58,6 @@ def get_pred_config(yaml_file, setup_id, **kwargs):
     setup_dir = config["setup_dir"]
     checkpoint = config["checkpoint"]
     input_datasets = config["input_datasets"]
-    output_container = config["output_container"]
     output_datasets_prefix = config["output_datasets_prefix"]
     chain_str = config.get("chain_str", "")
     num_workers = config.get("num_workers", 1)
@@ -116,11 +115,9 @@ def get_pred_config(yaml_file, setup_id, **kwargs):
         output_dims = val['dims']
         output_dtype = val['dtype']
 
-        out_ds = f"{output_name}_{iteration}"
-        if chain_str != "":
-            out_ds += f"--from--{chain_str}"
+        out_ds = f"{iteration}/{output_name}" if chain_str == "" else f"{iteration}--from--{chain_str}/{output_name}"
 
-        output_dataset = os.path.join(output_container, output_datasets_prefix, out_ds)
+        output_dataset = os.path.join(output_datasets_prefix, out_ds)
         output_datasets.append(output_dataset)
 
         output_axes = (

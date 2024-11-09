@@ -17,7 +17,7 @@ DEFAULTS = {
         "replace_sections": None,
         "thresholds_minmax": [0, 1],
         "thresholds_step": 0.05,
-        "thresholds": [0.3],
+        "thresholds": [0.2, 0.35, 0.5],
         "merge_function": "mean",
         "sigma": None,
         "noise_eps": None,
@@ -50,15 +50,14 @@ def parse_params(param_str):
     
 
 def get_method_params(method, params):
-    ret = DEFAULTS[method].copy()
+    ret = {}
 
     for p_str in params:
         p, v = p_str.split("=")
-        m, p = p.split(".")
-        if p in ret:
+        if p in DEFAULTS[method]:
             ret[p] = parse_params(v)
         else:
-            raise ValueError(f"Invalid parameter {m}.{p}")
+            raise ValueError(f"Invalid {method} parameter {p}")
 
     return ret
 
@@ -75,9 +74,11 @@ def get_seg_config(yaml_file, method, **kwargs):
 
     # override method specific defaults with provided params
     if "param" in kwargs:
-        params = get_method_params(method, kwargs["param"])
+        params = config.get(f"{method}_params", {}) | get_method_params(method, kwargs["param"])
     else:
-        params = DEFAULTS[method]
+        params = DEFAULTS[method] | config.get(f"{method}_params", {})
+
+    del config[f"{method}_params"]
 
     # check blockwise -- check if db info is provided
     if config["blockwise"]:
@@ -88,9 +89,7 @@ def get_seg_config(yaml_file, method, **kwargs):
             raise ValueError("Blockwise requires a database config!")
 
         if "lut_dir" not in config:
-            config["lut_dir"] = os.path.join(
-                config["seg_container"], config["seg_dataset_prefix"].replace("segmentations", "luts")
-            )  
+            config["lut_dir"] = config["seg_dataset_prefix"].replace("segmentations", "luts")
 
     return config | params
 
@@ -124,16 +123,25 @@ def run_segmentation(yaml_file, mode="ws", **kwargs):
 @click.option("--num-workers","-n", type=int, help="Number of workers, for blockwise segmentation")
 @click.option("--block-shape","-bs", type=str, help="Block shape, for blockwise segmentation (space separated integers or 'roi')")
 @click.option("--block-context","-bc", type=str, help="Block context, for blockwise segmentation (space separated integers)")
-@click.option("--param", "-p", multiple=True, help="Method specific parameters to override in config (e.g. -p 'ws.thresholds=[0.2,0.3]')")
+@click.option("--param", "-p", multiple=True, help="Method specific parameters to override in config (e.g. -p 'thresholds=[0.2,0.3]')")
 def segment(yaml_file, ws, mws, cc, **kwargs):
     """
     Segment affinities as specified in YAML_FILE.
     """
     methods = []
+
+    with open(yaml_file, "r") as f:
+        config = yaml.safe_load(f)
+        method_params = [
+            config.get(f"{method}_params", None) for method in ["ws", "mws", "cc"]
+        ]
+
     if any([ws, mws, cc]):
         if ws: methods.append("ws")
         if mws: methods.append("mws")
         if cc: methods.append("cc")
+    elif any(method_params):
+        methods = [method for method, params in zip(["ws", "mws", "cc"], method_params) if params]
     else:
         methods = ["ws"]
 

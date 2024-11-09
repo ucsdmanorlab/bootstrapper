@@ -8,37 +8,97 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 
-def extract_setup_dir(yaml_file):
-    with open(yaml_file, "r") as file:
-        config = yaml.safe_load(file)
-    return config["setup_dir"]
-
-
-def run_training(yaml_file, **kwargs):
-    setup_dir = extract_setup_dir(yaml_file)
-    train_script = os.path.join(setup_dir, "train.py")
-
-    # Load the config file
+def setup_train(yaml_file, **kwargs):
     with open(yaml_file, "r") as file:
         config = yaml.safe_load(file)
 
+    # get training samples
+    samples = config["samples"]
+    if not samples:
+        raise ValueError(f"No training samples provided in {yaml_file}")
+    
+    # check training samples
+    out_samples = []
+    for sample in samples.items():
+        raw = sample["raw"]
+        labels = sample["labels"]
+        mask = sample["mask"]
+
+        # check raw
+        if not os.path.exists(raw):
+            raise ValueError(f"Raw dataset path {raw} does not exist")
+        elif ".zarray" not in os.listdir(raw):
+            raise ValueError(f"Raw dataset path {raw} does not contain a zarr array")
+
+        # check labels, find all contained arrays if just a prefix
+        if not os.path.exists(labels):
+            raise ValueError(f"Labels dataset path {labels} does not exist")
+        elif ".zarray" not in os.listdir(labels):
+            # recursively search for all arrays matching the prefix
+            labels_datasets = [] #TODO
+            if len(labels_datasets) == 0:
+                raise ValueError(f"Labels dataset prefix {labels} does not contain any array")
+        else:
+            labels_datasets = [labels]
+
+        # check mask, find all contained arrays if just a prefix and not None
+        if mask is not None:
+            if not os.path.exists(mask):
+                raise ValueError(f"Labels dataset path {labels} does not exist")
+            elif ".zarray" not in os.listdir(mask):
+                # recursively search for all arrays matching the prefix
+                mask_datasets = [] #TODO
+                if len(mask_datasets) == 0:
+                    raise ValueError(f"Mask dataset prefix {mask} does not contain any array")
+            else:
+                mask_datasets = [mask]
+        else:
+            mask_datasets = [None for _ in labels_datasets]
+
+        assert len(labels_datasets) == len(mask_datasets), "Number of labels and mask datasets must be equal"
+
+        # update sample
+        for labels_ds, mask_ds in zip(labels_datasets, mask_datasets):
+            out_samples.append(
+                {
+                    "raw": raw,
+                    "labels": labels_ds,
+                    "mask": mask_ds,
+                }
+            )
+
+    # update samples in config
+    config["samples"] = out_samples
+
+    # Override config values with provided kwargs
     config_file = yaml_file
     if any(kwargs.values()):
-        # Override config values with provided kwargs
         for key, value in kwargs.items():
             if value is not None:
                 config[key] = value
 
-        # Write the updated config to a temporary file
-        config_file = os.path.join(os.path.dirname(yaml_file), "temp_train.yaml")
-        counter = 1
-        while os.path.exists(config_file):
-            config_file = os.path.join(
-                os.path.dirname(yaml_file), f"temp_train_{counter}.yaml"
-            )
+        base_name = yaml_file.replace(".yaml", "_modified.yaml")
+        counter = 0
+
+        # write updated config
+        while True:
+            config_file = f"{base_name}_{counter}.yaml"
+            if not os.path.exists(config_file):
+                break
             counter += 1
-        with open(config_file, "w") as file:
-            yaml.dump(config, file)
+
+    # write updated config
+    logging.info(f"Using updated config {config_file}")
+    with open(config_file, "w") as file:
+        yaml.dump(config, file)
+
+    train_script = os.path.join(config['setup_dir'], 'train.py')
+    return train_script, config_file
+
+
+def run_training(yaml_file, **kwargs):
+
+    train_script, config_file = setup_train(yaml_file, **kwargs)
 
     # Run the training script with the temporary config file
     command = ["python", train_script, config_file]

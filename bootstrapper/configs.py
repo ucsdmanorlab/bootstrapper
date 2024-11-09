@@ -11,6 +11,8 @@ import zipfile
 from funlib.geometry import Roi
 from funlib.persistence import open_ds
 
+from .segment import DEFAULTS as SEG_DEFAULTS
+
 
 DEFAULT_PROMPT_STYLE = {"fg": "cyan"}
 DEFAULT_INFO_STYLE = {"fg": "cyan", "bold": True}
@@ -247,6 +249,34 @@ def choose_models():
     return model_names
 
 
+def choose_seg_method_params():
+    # choose method and params ?
+    if click.confirm(
+        click.style("Specify segmentation method?", **DEFAULT_SEG_STYLE),
+        default=False,
+    ):
+        # specify method ?
+        method = click.prompt(
+            click.style("Enter segmentation method", **DEFAULT_SEG_STYLE),
+            type=click.Choice(["ws", "mws", "cc"]),
+            show_choices=True,
+            default="ws",
+        )
+    else:
+        method = "ws"
+
+    # specify params ?  
+    if click.confirm(
+        click.style(f"Specify {method} segmentation parameters?", **DEFAULT_SEG_STYLE),
+        default=False,
+    ):
+        params = check_and_update(SEG_DEFAULTS[method])
+    else:
+        params = SEG_DEFAULTS[method]
+
+    return method, params
+
+
 def download_checkpoints(model_name, setup_dir):
 
     if model_name not in MODEL_URLS:
@@ -392,15 +422,15 @@ def create_training_config(volumes, parent_dir=None):
             )
 
         if '_from_' not in model_name:
-            train_config['samples'] = {
-                v["name"]: {
+            train_config['samples'] = [
+                {
                     "raw": v["raw_dataset"],
                     "labels": v["labels_dataset"],
                     "mask": v["labels_mask_dataset"],
                 }
                 for v in volumes
                 if v["labels_dataset"] is not None
-            }
+            ]
 
         configs[setup_dir] = check_and_update(train_config, style=DEFAULT_TRAIN_STYLE)
 
@@ -471,13 +501,14 @@ def create_prediction_configs(volumes, setup_dirs):
                 model_outputs = json.load(f)["outputs"]
 
             # get in and out dataset names
-            out_ds_prefix = f"predictions/{setup_name}"
+            out_ds_prefix = f"{setup_name}"
+
             if i == 0 and chain_str == "":
                 in_ds = [raw_array]
-                out_ds = [f"{out_ds_prefix}/{x}_{iteration}" for x in model_outputs]
+                out_ds = [f"{out_ds_prefix}/{iteration}/{x}" for x in model_outputs]
             else:
                 in_ds = [os.path.join(container, ds) for ds in output_datasets[-1]]
-                out_ds = [f"{out_ds_prefix}/{x}_{iteration}--from--{chain_str}" for x in model_outputs]
+                out_ds = [f"{out_ds_prefix}/{iteration}--from--{chain_str}/{x}" for x in model_outputs]
 
             output_datasets.append(out_ds)
 
@@ -487,8 +518,7 @@ def create_prediction_configs(volumes, setup_dirs):
                 "roi_offset": list(roi_offset),
                 "roi_shape": list(roi_shape),
                 "checkpoint": os.path.join(setup_dir, f"model_checkpoint_{iteration}"),
-                "output_container": container,
-                "output_datasets_prefix": out_ds_prefix,
+                "output_datasets_prefix": os.path.join(container, out_ds_prefix),
                 "chain_str": chain_str,
                 "num_workers": num_workers,
                 "num_gpus": num_gpus,
@@ -506,25 +536,20 @@ def create_prediction_configs(volumes, setup_dirs):
     }
 
 
-def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
+def create_segmentation_configs(volumes, out_affs_ds):
     
     click.echo()
     click.secho(
         f"Creating Segmentation configs for {out_affs_ds}", **DEFAULT_SEG_STYLE
     )
 
-    if setup_dir is not None:
-        setup_name = get_setup_name(setup_dir)
-    else:
-        setup_name = click.prompt(
-            click.style("Enter setup name for segmentations", **DEFAULT_SEG_STYLE),
-            default=out_affs_ds.split("/")[-2],
-            show_default=True,
-        )
+    output_prefix = os.path.dirname(out_affs_ds)
 
-    out_frags_ds = f"post/{setup_name}/fragments"
-    out_lut_dir = f"post/{setup_name}/luts"
-    out_seg_prefix = f"post/{setup_name}/segmentations"
+    method, params = choose_seg_method_params()
+
+    out_frags_ds = f"{output_prefix}/fragments_{method}"
+    out_lut_dir = f"{output_prefix}/luts_{method}"
+    out_seg_prefix = f"{output_prefix}/segmentations_{method}"
 
     configs = {}
     for volume in volumes:
@@ -574,7 +599,7 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
 
         # are raw masks available ?
         if volume["raw_mask_dataset"] is not None:
-            mask_dataset = os.path.join(volumes["output_container"], volumes["raw_mask_dataset"])
+            mask_dataset = volumes["raw_mask_dataset"]
         else:
             mask_dataset = None
 
@@ -582,8 +607,7 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
             "affs_dataset": affs_array,
             "fragments_dataset": frags_array,
             "lut_dir": lut_dir,
-            "seg_container": container,
-            "seg_dataset_prefix": out_seg_prefix,
+            "seg_dataset_prefix": os.path.join(container, out_seg_prefix),
             "mask_dataset": mask_dataset,
             # "roi_offset": roi_offset,
             # "roi_shape": roi_shape,
@@ -591,12 +615,13 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
             "context": block_shape,
             "blockwise": do_blockwise,
             "num_workers": num_workers,
+            f"{method}_params": params,
         }
 
         # get RAG db config
         if do_blockwise:
             sqlite_path = os.path.join(
-                container, f"post/{setup_name}/rag.db"
+                container, f"{output_prefix}/rag_{method}.db"
             )
 
             # SQLite or not ?
@@ -618,23 +643,14 @@ def create_segmentation_configs(volumes, out_affs_ds, setup_dir=None):
     return {"out_seg_prefix": out_seg_prefix, "configs": configs}
 
 
-def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=None):
+def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets):
     
     click.echo()
     click.secho(
         f"Evaluation configs", **DEFAULT_EVAL_STYLE
     )
 
-    if setup_dir is not None:
-        setup_name = get_setup_name(setup_dir)
-    else:
-        setup_name = click.prompt(
-            click.style("Enter setup name for evaluation outputs", **DEFAULT_SEG_STYLE),
-            default=out_seg_prefix.split("/")[-2],
-            show_default=True,
-        )
-
-    out_eval_dir = f"post/{setup_name}/eval"
+    output_prefix = os.path.dirname(out_seg_prefix)
 
     configs = {}
     for volume in volumes:
@@ -705,17 +721,8 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=
             pred_type = pred_ds.split('/')[-1][3:7]
             assert pred_type in ["lsds", "affs"]
 
-            pred_error_map_ds = os.path.join(
-                container, out_eval_dir, f"{pred_type}_error_map"
-            )
-            pred_error_mask_ds = os.path.join(
-                container, out_eval_dir, f"{pred_type}_error_mask"
-            )
-
         else:
             pred_ds = None
-            pred_error_map_ds = None
-            pred_error_mask_ds = None
 
         # are raw masks available ?
         if volume["raw_mask_dataset"] is not None:
@@ -727,9 +734,8 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=
         # roi_offset, roi_shape, voxel_size = get_roi(in_array=out_segs)
 
         eval_config = {
-            "out_dir": os.path.join(container, out_eval_dir),
-            "seg_container": container,
-            "seg_datasets_prefix": out_seg_prefix,
+            "out_result_dir": os.path.join(container, output_prefix),
+            "seg_datasets_prefix": os.path.join(container, out_seg_prefix),
             "mask_dataset": mask_dataset,
             # "roi_offset": roi_offset,
             # "roi_shape": roi_shape,
@@ -738,8 +744,6 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=
         if pred_ds is not None:
             eval_config["self"] = {
                 "pred_dataset": os.path.join(container, pred_ds),
-                "out_map_dataset": pred_error_map_ds,
-                "out_mask_dataset": pred_error_mask_ds,
                 "thresholds": [0.1, 1.0],
             }
 
@@ -751,27 +755,18 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, setup_dir=
 
         configs[volume_name] = check_and_update(eval_config, style=DEFAULT_EVAL_STYLE)
 
-    return {"out_eval_dir": out_eval_dir, "configs": configs}
+    return {"out_eval_dir": output_prefix, "configs": configs}
 
 
-def create_filter_configs(volumes, out_seg_prefix, eval_dir, setup_dir=None):
+def create_filter_configs(volumes, in_seg_prefix, eval_dir):
 
     click.echo()
     click.secho(
         f"Filter configs", **DEFAULT_FILTER_STYLE
     )
 
-    if setup_dir is not None:
-        setup_name = get_setup_name(setup_dir)
-    else:
-        setup_name = click.prompt(
-            click.style("Enter setup name for filtered segmentations", **DEFAULT_SEG_STYLE),
-            default=out_seg_prefix.split("/")[-2],
-            show_default=True,
-        )
-
-    out_seg_ds = f"pseudo_gt/{setup_name}/ids"
-    out_mask_ds = f"pseudo_gt/{setup_name}/mask"
+    out_seg_ds_prefix = in_seg_prefix.replace("/segmentations_", "/pseudo_gt_ids_")
+    out_mask_ds_prefix = in_seg_prefix.replace("/segmentations_", "/pseudo_gt_mask_")
 
     out_volumes = []
 
@@ -779,18 +774,17 @@ def create_filter_configs(volumes, out_seg_prefix, eval_dir, setup_dir=None):
     for volume in volumes:
         container = volume["output_container"]
         volume_name = volume["name"]
-        out_seg_ds_path = os.path.join(container, out_seg_ds)
-        out_mask_ds_path = os.path.join(container, out_mask_ds)
+        out_seg_ds = os.path.join(container, out_seg_ds_prefix)
+        out_mask_ds = os.path.join(container, out_mask_ds_prefix)
 
         # get filter ROI TODO: get from eval config
         # roi_offset, roi_shape, _ = get_roi(in_array=out_segs)
 
         filter_config = {
-            "seg_container": container,
-            "seg_datasets_prefix": out_seg_prefix,
+            "seg_datasets_prefix": os.path.join(container, in_seg_prefix),
             "eval_dir": os.path.join(container, eval_dir),
-            "out_seg_dataset": out_seg_ds_path,
-            "out_mask_dataset": out_mask_ds_path,
+            "out_seg_dataset_prefix": out_seg_ds,
+            "out_mask_dataset_prefix": out_mask_ds,
             # "roi_offset": roi_offset,
             # "roi_shape": roi_shape,
             "dust_filter": 500,
@@ -808,8 +802,8 @@ def create_filter_configs(volumes, out_seg_prefix, eval_dir, setup_dir=None):
                 "name": volume_name,
                 "raw_dataset": volume["raw_dataset"],
                 "raw_mask_dataset": volume["raw_mask_dataset"],
-                "labels_dataset": out_seg_ds_path,
-                "labels_mask_dataset": out_mask_ds_path,
+                "labels_dataset": out_seg_ds,
+                "labels_mask_dataset": out_mask_ds,
                 "voxel_size": volume["voxel_size"],
                 "previous_labels_datasets": [volume['labels_dataset'],] + volume.get("previous_labels_datasets", []),
                 "previous_labels_mask_datasets": [volume['labels_mask_dataset'],] + volume.get("previous_labels_mask_datasets", [])
