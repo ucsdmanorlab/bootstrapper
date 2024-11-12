@@ -3,7 +3,7 @@ import click
 import logging
 from pprint import pprint
 import yaml
-from ast  import literal_eval
+from ast import literal_eval
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -24,7 +24,7 @@ DEFAULTS = {
         "bias": None,
     },
     "mws" : {
-        "neighborhood": [[1, 0, 0], [0, 1, 0], [0, 0, 1], [2, 0, 0], [0, 8, 0], [0, 0, 8]],
+        "aff_neighborhood": [[1, 0, 0], [0, 1, 0], [0, 0, 1], [2, 0, 0], [0, 8, 0], [0, 0, 8]],
         "bias": [-0.5, -0.5, -0.5, -0.9, -0.9, -0.9],
         "sigma": None,
         "noise_eps": None,

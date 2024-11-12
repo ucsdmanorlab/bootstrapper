@@ -22,7 +22,7 @@ def get_seg_datasets(seg_datasets_prefix):
     return seg_datasets
 
 
-def get_eval_config(yaml_file, **kwargs):
+def get_eval_config(yaml_file, mode, **kwargs):
     with open(yaml_file, "r") as f:
         config = yaml.safe_load(f)
     
@@ -32,7 +32,7 @@ def get_eval_config(yaml_file, **kwargs):
             config[key] = value
 
     if "out_result" not in config:
-        config["out_result"] = yaml_file.replace(".yaml", "_results.json")
+        config["out_result"] = yaml_file.replace(".yaml", f"_{mode}_results.json")
     
     return config
 
@@ -69,6 +69,7 @@ def run_self_evaluation(config, seg_ds):
 
     pred_dataset = config["self"]["pred_dataset"]
     thresholds = tuple(config["self"]["thresholds"])
+    params = config["self"].get("params", {})
 
     pred_name = os.path.basename(pred_dataset)
     out_map_dataset = seg_ds + f"__vs__{pred_name}"
@@ -82,6 +83,7 @@ def run_self_evaluation(config, seg_ds):
         out_mask_dataset,
         thresholds=thresholds,
         return_arrays=False,
+        **params
     )
 
     stats = {
@@ -99,7 +101,7 @@ def run_self_evaluation(config, seg_ds):
 
 
 def run_evaluation(yaml_file, mode="pred", **kwargs):
-    config = get_eval_config(yaml_file, **kwargs)
+    config = get_eval_config(yaml_file, mode, **kwargs)
     if "seg_datasets" in config:
         seg_datasets = [ds.rstrip("/") for ds in config["seg_datasets"]]
     else:
@@ -120,8 +122,8 @@ def run_evaluation(yaml_file, mode="pred", **kwargs):
 
     out_result = kwargs.get("out_result") or config["out_result"]
     logger.info(f"Saving stats to {out_result}")
-    with open(out_result, "a") as f:
-        json.dump({mode: seg_stats}, f, indent=4)
+    with open(out_result, "w") as f:
+        json.dump(seg_stats, f, indent=4)
 
 
 @click.command()

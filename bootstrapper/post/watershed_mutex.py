@@ -25,7 +25,7 @@ def simple_mutex(config):
     roi_shape = config.get("roi_shape", None)
 
     # required mws params
-    neighborhood = config.get("neighborhood", None)
+    neighborhood = config.get("aff_neighborhood", None)
     bias = config.get("bias", None)
 
     # optional mws params

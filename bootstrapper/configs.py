@@ -7,6 +7,7 @@ from pprint import pprint
 import requests
 from tqdm import tqdm
 import zipfile
+from ast import literal_eval
 
 from funlib.geometry import Roi
 from funlib.persistence import open_ds
@@ -73,6 +74,14 @@ def copy_model_scripts(model_name, setup_dir):
     src = os.path.abspath(os.path.join(BS_DIR, "models", model_name))
     click.secho(f"Copying {src} to {setup_dir}", **DEFAULT_TRAIN_STYLE)
     copytree(src, setup_dir, dirs_exist_ok=True)
+
+    # edit net config ?
+    net_config_path = os.path.join(setup_dir, "net_config.json")
+    if click.confirm(
+        click.style(f"Edit {net_config_path}?", **DEFAULT_TRAIN_STYLE),
+        default=False,
+    ):
+        click.edit(filename=net_config_path)
 
 
 def get_sub_roi(in_array, offset=None, shape=None, style=DEFAULT_PROMPT_STYLE):
@@ -249,77 +258,14 @@ def choose_models():
     return model_names
 
 
-def choose_seg_method_params():
-    # choose method and params ?
-    if click.confirm(
-        click.style("Specify segmentation method?", **DEFAULT_SEG_STYLE),
-        default=False,
-    ):
-        # specify method ?
-        method = click.prompt(
-            click.style("Enter segmentation method", **DEFAULT_SEG_STYLE),
-            type=click.Choice(["ws", "mws", "cc"]),
-            show_choices=True,
-            default="ws",
-        )
-    else:
-        method = "ws"
-
-    # specify params ?  
-    if click.confirm(
-        click.style(f"Specify {method} segmentation parameters?", **DEFAULT_SEG_STYLE),
-        default=False,
-    ):
-        params = check_and_update(SEG_DEFAULTS[method])
-    else:
-        params = SEG_DEFAULTS[method]
-
-    return method, params
-
-
-def download_checkpoints(model_name, setup_dir):
-
-    if model_name not in MODEL_URLS:
-        raise ValueError(f"Unknown model: {model_name}")
-    
-    url = MODEL_URLS[model_name]
-    file_path = os.path.join(setup_dir, "checkpoints.zip")
-    
-    click.secho(f"Downloading {model_name} checkpoints zip to {setup_dir}...", **DEFAULT_INFO_STYLE)
-    response = requests.get(url, stream=True)
-    total_size = int(response.headers.get("content-length", 0))
-    
-    with open(file_path, "wb") as file, tqdm(
-        desc=model_name,
-        total=total_size,
-        unit="iB",
-        unit_scale=True,
-        unit_divisor=1024,
-    ) as progress_bar:
-        for data in response.iter_content(chunk_size=1024):
-            size = file.write(data)
-            progress_bar.update(size)
-    
-    # unzip checkpoints
-    click.secho(f"Unzipping {model_name} checkpoints in {setup_dir}...", **DEFAULT_INFO_STYLE)
-    with zipfile.ZipFile(file_path, 'r') as zip_ref:
-        zip_ref.extractall(setup_dir)
-
-    # clean up
-    os.remove(file_path)
-
-
-def create_training_config(volumes, parent_dir=None):
-
-    click.echo()
-    click.secho(
-        f"Creating training configs", **DEFAULT_TRAIN_STYLE
-    )
+def setup_models(model_names, parent_dir=None):
+    setup_dirs = [] # corresponding setup dirs for each model
+    setups_to_train = [] # list of tuples (model_name, setup_dir)
 
     if parent_dir is None:
         parent_dir = os.getcwd()
 
-    # get max setup number from existing setup dirs
+    # get max setup number from existing setup dirs in parent_dir
     setup_num = max(
         [int(d.split('_')[-1]) for d in os.listdir(parent_dir)
          if os.path.isdir(os.path.join(parent_dir, d))
@@ -327,11 +273,6 @@ def create_training_config(volumes, parent_dir=None):
         default=0
     ) + 1
 
-    # get model names and setup dirs
-    model_names = choose_models() # sequence of model names, with output of one being input to the next
-    setup_dirs = [] # corresponding setup dirs
-    setups_to_train = [] # list of tuples (model_name, setup_dir)
-    
     # get setup dirs for each model
     for i, model_name in enumerate(model_names):
         if i == 0:
@@ -393,13 +334,85 @@ def create_training_config(volumes, parent_dir=None):
         setup_dirs.append(setup_dir)
         setup_num += 1
 
-    # create training configs
+    return setup_dirs, setups_to_train
+
+
+def choose_seg_method_params(aff_neighborhood=None):
+    # choose method and params ?
+    if click.confirm(
+        click.style("Specify segmentation method?", **DEFAULT_SEG_STYLE),
+        default=False,
+    ):
+        # specify method ?
+        method = click.prompt(
+            click.style("Enter segmentation method", **DEFAULT_SEG_STYLE),
+            type=click.Choice(["ws", "mws", "cc"]),
+            show_choices=True,
+            default="ws",
+        )
+    else:
+        method = "ws"
+
+    params = SEG_DEFAULTS[method]
+
+    # update neighborhod if specified
+    if aff_neighborhood is not None and method == "mws":
+        params["aff_neighborhood"] = aff_neighborhood
+
+    params = check_and_update(params, style=DEFAULT_SEG_STYLE)
+
+    return method, params
+
+
+def download_checkpoints(model_name, setup_dir):
+
+    if model_name not in MODEL_URLS:
+        raise ValueError(f"Unknown model: {model_name}")
+    
+    url = MODEL_URLS[model_name]
+    file_path = os.path.join(setup_dir, "checkpoints.zip")
+    
+    click.secho(f"Downloading {model_name} checkpoints zip to {setup_dir}...", **DEFAULT_INFO_STYLE)
+    response = requests.get(url, stream=True)
+    total_size = int(response.headers.get("content-length", 0))
+    
+    with open(file_path, "wb") as file, tqdm(
+        desc=model_name,
+        total=total_size,
+        unit="iB",
+        unit_scale=True,
+        unit_divisor=1024,
+    ) as progress_bar:
+        for data in response.iter_content(chunk_size=1024):
+            size = file.write(data)
+            progress_bar.update(size)
+    
+    # unzip checkpoints
+    click.secho(f"Unzipping {model_name} checkpoints in {setup_dir}...", **DEFAULT_INFO_STYLE)
+    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+        zip_ref.extractall(setup_dir)
+
+    # clean up
+    os.remove(file_path)
+
+
+def create_training_config(volumes, parent_dir=None):
+
+    click.echo()
+    click.secho(
+        f"Creating training configs", **DEFAULT_TRAIN_STYLE
+    )
+
+    # get model names and setup dirs
+    model_names = choose_models() # sequence of model names, with output of one being input to the next
+    setup_dirs, setups_to_train = setup_models(model_names, parent_dir)
+
     # get voxel size from volumes, assume all volumes have same voxel size
     voxel_size = volumes[0]["voxel_size"]
     configs = {}
 
+    # create training configs
     for model_name, setup_dir in setups_to_train:
-
         max_iterations = click.prompt(click.style(f"Enter max iterations for {model_name}", **DEFAULT_TRAIN_STYLE), default=30001, type=int)
         save_checkpoints_every = click.prompt(
             click.style(f"Enter save checkpoints every for {model_name}", **DEFAULT_TRAIN_STYLE), default=5000, type=int
@@ -415,11 +428,6 @@ def create_training_config(volumes, parent_dir=None):
             "save_checkpoints_every": save_checkpoints_every,
             "save_snapshots_every": save_snapshots_every,
         }
-
-        if "lsd" in model_name:
-            train_config["sigma"] = click.prompt(
-                click.style("Enter sigma for LSD model", **DEFAULT_TRAIN_STYLE), default=10 * voxel_size[-1], type=int
-            )
 
         if '_from_' not in model_name:
             train_config['samples'] = [
@@ -505,10 +513,16 @@ def create_prediction_configs(volumes, setup_dirs):
 
             if i == 0 and chain_str == "":
                 in_ds = [raw_array]
-                out_ds = [f"{out_ds_prefix}/{iteration}/{x}" for x in model_outputs]
+                out_ds = {
+                    f"{out_ds_prefix}/{iteration}/{x}" : model_outputs[x]
+                    for x in model_outputs
+                }
             else:
                 in_ds = [os.path.join(container, ds) for ds in output_datasets[-1]]
-                out_ds = [f"{out_ds_prefix}/{iteration}--from--{chain_str}/{x}" for x in model_outputs]
+                out_ds = {
+                    f"{out_ds_prefix}/{iteration}--from--{chain_str}/{x}" : model_outputs[x]
+                    for x in model_outputs
+                }
 
             output_datasets.append(out_ds)
 
@@ -526,17 +540,17 @@ def create_prediction_configs(volumes, setup_dirs):
 
         configs[volume_name] = check_and_update(pred_config, style=DEFAULT_PRED_STYLE)
 
-    print(output_datasets)
+    pprint(output_datasets)
     out_affs_ds = [ds for x in output_datasets for ds in x if ds.split('/')[-1].startswith("3d_affs")][-1]
 
     return {
         "out_affs_dataset": out_affs_ds, # final 3d affs dataset to segment
-        "out_pred_datasets": [ds for x in output_datasets for ds in x], # sequence of pred datasets
+        "out_pred_datasets": {ds: x[ds] for x in output_datasets for ds in x}, # flattened dict of pred datasets, assuming prefixes are unique for setups
         "configs": configs,
     }
 
 
-def create_segmentation_configs(volumes, out_affs_ds):
+def create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=None):
     
     click.echo()
     click.secho(
@@ -545,7 +559,7 @@ def create_segmentation_configs(volumes, out_affs_ds):
 
     output_prefix = os.path.dirname(out_affs_ds)
 
-    method, params = choose_seg_method_params()
+    method, params = choose_seg_method_params(aff_neighborhood)
 
     out_frags_ds = f"{output_prefix}/fragments_{method}"
     out_lut_dir = f"{output_prefix}/luts_{method}"
@@ -708,9 +722,9 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets):
             pred_choices = [ds for ds in pred_datasets if ds.split('/')[-1].startswith("3d_")]
 
             if len(pred_choices) == 1:
-                pred_ds = pred_choices[0]
+                pred_ds_name = pred_choices[0]
             else:
-                pred_ds = click.prompt(
+                pred_ds_name = click.prompt(
                     click.style(f"Select {volume_name} predictions to self-evaluate with:", **DEFAULT_EVAL_STYLE),
                     type=click.Choice(pred_choices),
                     default=pred_choices[-1],
@@ -718,11 +732,31 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets):
                     show_choices=True,
                 )
 
-            pred_type = pred_ds.split('/')[-1][3:7]
-            assert pred_type in ["lsds", "affs"]
+            pred_type = pred_ds_name.split('/')[-1][3:7]
+            pred_ds = pred_datasets[pred_ds_name]
 
+            # check pred type, params
+            if pred_type == "lsds":
+                if "sigma" not in pred_ds:
+                    pred_ds["sigma"] = literal_eval(click.prompt(
+                        click.style(f"Enter sigma (in world units, as int or tuple of int) for {pred_ds_name}", **DEFAULT_EVAL_STYLE),
+                        default=str(volume["voxel_size"][-1]*10),
+                    ))
+            elif pred_type == "affs":
+                if "neighborhood" not in pred_ds:
+                    default_nbhd_str = "[[1, 0, 0], [0, 1, 0], [0, 0, 1], [2, 0, 0], [0, 8, 0], [0, 0, 8]]"
+                    aff_neighborhood = literal_eval(click.prompt(
+                        click.style(f"Enter literal string of list of offsets to compute affinities from segmentation", **DEFAULT_EVAL_STYLE),
+                        default=default_nbhd_str,
+                    ))
+                else:
+                    if not isinstance(pred_ds["neighborhood"], list) or not all(isinstance(x, list) and all(isinstance(y, int) for y in x) for x in pred_ds["neighborhood"]):
+                        raise ValueError(f"{pred_ds_name}'s neighborhood must be a list of lists of int, not {pred_ds['neighborhood']}")
+            else:
+                raise ValueError(f"Unknown prediction type for {pred_ds_name}")
         else:
             pred_ds = None
+            pred_ds_name = None
 
         # are raw masks available ?
         if volume["raw_mask_dataset"] is not None:
@@ -743,9 +777,17 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets):
 
         if pred_ds is not None:
             eval_config["self"] = {
-                "pred_dataset": os.path.join(container, pred_ds),
+                "pred_dataset": os.path.join(container, pred_ds_name),
                 "thresholds": [0.1, 1.0],
             }
+            if pred_type == "lsds":
+                eval_config["self"]["params"] = {
+                    "lsd_sigma": pred_ds["sigma"]
+                }
+            else:
+                eval_config["self"]["params"] = {
+                    "aff_neighborhood": pred_ds["neighborhood"]
+                }
 
         if gt_labels_ds is not None or gt_skeletons_file is not None:
             eval_config["gt"] = {
@@ -823,7 +865,6 @@ def make_round_configs(volumes, round_dir):
     )
     os.makedirs(run_dir, exist_ok=True)
 
-    # training configs
     train_config = create_training_config(volumes, round_dir)
     for i, setup_dir in enumerate(train_config["configs"]):
         save_config(
@@ -841,7 +882,8 @@ def make_round_configs(volumes, round_dir):
 
     out_affs_ds = pred_config["out_affs_dataset"]
     out_pred_datasets = pred_config["out_pred_datasets"]
-    seg_configs = create_segmentation_configs(volumes, out_affs_ds)
+    out_aff_neighborhood = out_pred_datasets[out_affs_ds]["neighborhood"]
+    seg_configs = create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=out_aff_neighborhood)
     for volume_name in pred_config["configs"]:
         save_config(
             seg_configs["configs"][volume_name],
@@ -850,7 +892,9 @@ def make_round_configs(volumes, round_dir):
 
     out_seg_prefix = seg_configs["out_seg_prefix"]
     eval_configs = create_evaluation_configs(
-        volumes, out_seg_prefix, out_pred_datasets
+        volumes, 
+        out_seg_prefix, 
+        out_pred_datasets,
     )
     for volume_name in pred_config["configs"]:
         save_config(

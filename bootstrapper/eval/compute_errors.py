@@ -37,6 +37,7 @@ def compute_errors(
     roi_offset=None,
     roi_shape=None,
     return_arrays=False,
+    **kwargs,
 ):
 
     # array keys
@@ -57,6 +58,29 @@ def compute_errors(
         mask = None
         mask_roi = pred_ds.roi
 
+    # determine error type
+    pred_name = os.path.basename(pred_dataset)
+    if "3d_lsds_" in pred_name:
+        error_type = "lsd"
+        sigma = kwargs.get("lsd_sigma", int(pred_ds.voxel_size[-1] * 10))
+        logging.info(f"Computing LSD errors with sigma={sigma}")
+    elif "3d_affs_" in pred_name:
+        error_type = "aff"
+        num_aff_offsets = pred_ds.shape[0]
+        neighborhood = kwargs.get("aff_neighborhood",[
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [2, 0, 0],
+            [0, 8, 0],
+            [0, 0, 8],
+            ]
+        )
+        neighborhood = neighborhood[:num_aff_offsets]
+        logging.info(f"Computing Affinities errors with neighborhood={neighborhood}")
+    else:
+        raise ValueError(f"Unknown type for {pred_dataset}")
+
     # get rois
     roi = pred_ds.roi.intersect(seg_ds.roi).intersect(mask_roi)
     if roi_offset is not None:
@@ -64,7 +88,7 @@ def compute_errors(
         roi_shape  = Coordinate(roi_shape)
         roi = Roi(roi_offset, roi_shape).intersect(roi)
         
-    # io shapes
+    # io shapes #TODO: unhardcode shapes, use chunk shape
     output_shape = Coordinate((8, 256, 256))
     input_shape = Coordinate((12, 384, 384))
     voxel_size = pred_ds.voxel_size
@@ -123,9 +147,7 @@ def compute_errors(
 
     pipeline += gp.Normalize(pred)
 
-    if "3d_lsds" in pred_dataset and "_from_" not in pred_dataset:
-        sigma = 80  # TODO: unhardcode this
-
+    if error_type == "lsd":
         pipeline += AddLSDErrors(
             seg,
             seg_pred,
@@ -154,16 +176,7 @@ def compute_errors(
                 else None
             ),
         )
-    elif "3d_affs" in pred_dataset:
-        neighborhood = [
-            [1, 0, 0],
-            [0, 1, 0],
-            [0, 0, 1],
-            [2, 0, 0],
-            [0, 8, 0],
-            [0, 0, 8],
-        ]  # TODO: unhardcode this
-
+    else:
         pipeline += AddAffErrors(
             seg,
             seg_pred,
@@ -191,8 +204,6 @@ def compute_errors(
                 else None
             ),
         )
-    else:
-        raise ValueError(f"Unknown prediction type: {pred_dataset}")
 
     pipeline += gp.IntensityScaleShift(error_map, 255, 0)
     pipeline += gp.AsType(error_map, np.uint8)
