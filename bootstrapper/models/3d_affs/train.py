@@ -12,7 +12,7 @@ from funlib.persistence import open_ds
 from bootstrapper.gp import SmoothAugment, CreateMask, Renumber
 from model import Model, WeightedMSELoss
 
-logging.basicConfig(level=logging.INFO)
+logging.getLogger().setLevel(logging.INFO)
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
 torch.backends.cudnn.benchmark = True

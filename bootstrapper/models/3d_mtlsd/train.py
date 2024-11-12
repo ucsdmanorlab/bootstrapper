@@ -13,7 +13,7 @@ from lsd.train.gp import AddLocalShapeDescriptor
 from bootstrapper.gp import SmoothAugment, CreateMask, Renumber, calc_max_padding
 from model import Model, WeightedMSELoss
 
-logging.basicConfig(level=logging.INFO)
+logging.getLogger().setLevel(logging.INFO)
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
 torch.backends.cudnn.benchmark = True

@@ -17,8 +17,7 @@ from bootstrapper.gp import (
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
-logging.basicConfig(level=logging.INFO)
-
+logging.getLogger().setLevel(logging.INFO)
 torch.backends.cudnn.benchmark = True
 
 
