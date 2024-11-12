@@ -73,14 +73,14 @@ def train(
     source = tuple(
         (
             (
-                gp.ArraySource(raw, open_ds(os.path.join(sample, ds_names["raw"])), True),
-                gp.ArraySource(labels, open_ds(os.path.join(sample, ds_names["labels"])), False),
-                gp.ArraySource(unlabelled, open_ds(os.path.join(sample, ds_names["mask"])), False),
+                gp.ArraySource(raw, open_ds(sample["raw"]), True),
+                gp.ArraySource(labels, open_ds(sample["labels"]), False),
+                gp.ArraySource(unlabelled, open_ds(sample["mask"]), False),
             ) + gp.MergeProvider() 
-            if "mask" in ds_names and ds_names["mask"] is not None
+            if "mask" in sample and sample["mask"] is not None
             else (
-                gp.ArraySource(raw, open_ds(os.path.join(sample, ds_names["raw"])), True),
-                gp.ArraySource(labels, open_ds(os.path.join(sample, ds_names["labels"])), False),
+                gp.ArraySource(raw, open_ds(sample["raw"]), True),
+                gp.ArraySource(labels, open_ds(sample["labels"]), False),
             ) + gp.MergeProvider() + CreateMask(labels, unlabelled)
         )
         + gp.Normalize(raw)
@@ -91,7 +91,7 @@ def train(
         + gp.Pad(unlabelled, context)
         + gp.RandomLocation()
         + gp.Reject(mask=unlabelled, min_masked=0.05)
-        for sample, ds_names in samples.items()
+        for sample in samples
     )
 
     pipeline = source + gp.RandomProvider()
