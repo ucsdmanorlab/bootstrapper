@@ -733,7 +733,10 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets):
                 )
 
             pred_type = pred_ds_name.split('/')[-1][3:7]
-            pred_ds = pred_datasets[pred_ds_name]
+            try:
+                pred_ds = pred_datasets[pred_ds_name]
+            except:
+                pred_ds = {}
 
             # check pred type, params
             if pred_type == "lsds":
@@ -745,7 +748,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets):
             elif pred_type == "affs":
                 if "neighborhood" not in pred_ds:
                     default_nbhd_str = "[[1, 0, 0], [0, 1, 0], [0, 0, 1], [2, 0, 0], [0, 8, 0], [0, 0, 8]]"
-                    aff_neighborhood = literal_eval(click.prompt(
+                    pred_ds["neighborhood"] = literal_eval(click.prompt(
                         click.style(f"Enter literal string of list of offsets to compute affinities from segmentation", **DEFAULT_EVAL_STYLE),
                         default=default_nbhd_str,
                     ))
