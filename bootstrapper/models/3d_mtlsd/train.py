@@ -22,7 +22,6 @@ torch.backends.cudnn.benchmark = True
 def train(
     setup_dir,
     voxel_size,
-    sigma,
     max_iterations,
     samples,
     save_checkpoints_every,
@@ -56,7 +55,12 @@ def train(
         )
         net_config = json.load(f)
 
-    neighborhood = net_config["neighborhood"]
+    # get affs neighborhood
+    neighborhood = net_config["outputs"]["3d_affs"]["neighborhood"]
+
+    # get lsd sigma
+    sigma = net_config["outputs"]["3d_lsds"]["sigma"]
+
     shape_increase = [0, 0, 0]  # net_config["shape_increase"]
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
     output_shape = [x + y for x, y in zip(shape_increase, net_config["output_shape"])]

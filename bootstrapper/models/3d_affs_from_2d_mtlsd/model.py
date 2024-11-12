@@ -11,7 +11,6 @@ with open(os.path.join(setup_dir, "net_config.json")) as f:
     net_config = json.load(f)
 
 in_channels = net_config["in_channels"]
-neighborhood = net_config["out_neighborhood"]
 num_fmaps = net_config["num_fmaps"]
 fmap_inc_factor = net_config["fmap_inc_factor"]
 downsample_factors = eval(
@@ -23,6 +22,9 @@ kernel_size_down = eval(
 kernel_size_up = eval(
     repr(net_config["kernel_size_up"]).replace("[", "(").replace("]", ")")
 )
+inputs = net_config["inputs"]
+assert sum(inputs[i]["dims"] for i in inputs) == in_channels
+outputs = net_config["outputs"]
 
 
 class AffsUNet(torch.nn.Module):
@@ -35,7 +37,7 @@ class AffsUNet(torch.nn.Module):
         downsample_factors=downsample_factors,
         kernel_size_down=kernel_size_down,
         kernel_size_up=kernel_size_up,
-        neighborhood=neighborhood,
+        outputs=outputs,
     ):
 
         super().__init__()
@@ -52,7 +54,7 @@ class AffsUNet(torch.nn.Module):
         )
 
         self.affs_head = ConvPass(
-            num_fmaps, len(neighborhood), [[1, 1, 1]], activation="Sigmoid"
+            num_fmaps, outputs["3d_affs"]["dims"], [[1, 1, 1]], activation="Sigmoid"
         )
 
     def forward(self, input_lsds, input_affs):

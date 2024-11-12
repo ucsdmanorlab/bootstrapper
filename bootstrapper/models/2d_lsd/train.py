@@ -20,7 +20,6 @@ torch.backends.cudnn.benchmark = True
 def train(
     setup_dir,
     voxel_size,
-    sigma,
     max_iterations,
     samples,
     save_checkpoints_every,
@@ -48,6 +47,10 @@ def train(
             "Reading setup config from %s" % os.path.join(setup_dir, "net_config.json")
         )
         net_config = json.load(f)
+
+    # get lsd sigma
+    sigma = net_config["outputs"]["2d_lsds"]["sigma"]
+    sigma = (0, sigma, sigma) # add z-dimension since pipeline is 3D
 
     shape_increase = [0, 0]  # net_config["shape_increase"]
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
@@ -121,7 +124,7 @@ def train(
         gt_lsds,
         unlabelled=unlabelled,
         lsds_mask=lsds_weights,
-        sigma=(0, sigma, sigma),
+        sigma=sigma,
         downsample=2,
     )
 

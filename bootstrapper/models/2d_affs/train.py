@@ -51,7 +51,8 @@ def train(
         )
         net_config = json.load(f)
 
-    neighborhood = net_config["neighborhood"]
+    # get affs neighborhood
+    neighborhood = net_config["outputs"]["2d_affs"]["neighborhood"]
     neighborhood = [
         [0, *x] for x in neighborhood
     ]  # add z-dimension since pipeline is 3D

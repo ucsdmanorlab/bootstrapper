@@ -1,6 +1,5 @@
 {
     "in_channels": 1,
-    "neighborhood": [[1, 0, 0], [0, 1, 0], [0, 0, 1], [2, 0, 0], [0, 8, 0], [0, 0, 8]],
     "num_fmaps": 12,
     "fmap_inc_factor": 5,
     "downsample_factors": [[1, 2, 2], [1, 2, 2], [1, 2, 2]],
@@ -16,6 +15,14 @@
     "input_shape": [20, 212, 212],
     "output_shape": [4, 120, 120],
     "shape_increase": [0, 240, 240],
+    "inputs": {
+        "raw": {"dims": 1}
+    },
     "outputs": {
-        "3d_affs": {"dtype": "uint8", "dims": 6}}
+        "3d_affs": {
+            "dtype": "uint8",
+            "dims": 6,
+            "neighborhood": [[1, 0, 0], [0, 1, 0], [0, 0, 1], [2, 0, 0], [0, 8, 0], [0, 0, 8]]
+        }
+    }
 }

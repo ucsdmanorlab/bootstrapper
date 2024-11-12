@@ -15,6 +15,10 @@
     "input_shape": [20, 212, 212],
     "output_shape": [4, 120, 120],
     "shape_increase": [0, 240, 240],
+    "inputs": {
+        "raw": {"dims": 1}
+    },
     "outputs": {
-        "3d_lsds": {"dtype": "uint8", "dims": 10}}
+        "3d_lsds": {"dtype": "uint8", "dims": 10, "sigma": 80}
+    }
 }

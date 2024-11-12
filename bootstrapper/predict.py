@@ -79,6 +79,7 @@ def get_pred_config(yaml_file, setup_id, **kwargs):
         net_config = json.load(f)
 
     # validate number of input datasets
+    assert len(input_datasets) == len(net_config["inputs"]), f"number of input datasets ({len(input_datasets)}) does not match number of network inputs ({net_config['inputs']})"
 
     # get input, output shapes
     shape_increase = net_config["shape_increase"]
