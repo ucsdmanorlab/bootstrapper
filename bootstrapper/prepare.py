@@ -125,7 +125,7 @@ def make_configs(base_dir):
     click.secho("All configs created successfully!", fg="cyan", bold=True)
 
 
-class OrderedGroup(click.Group):
+class PrepareGroup(click.Group):
     def list_commands(self, ctx):
         return [
             "volumes",
@@ -135,9 +135,33 @@ class OrderedGroup(click.Group):
             "eval",
             "filter",
         ]
+    
+    def get_command(self, ctx, cmd_name):
+        ret = click.Group.get_command(self, ctx, cmd_name)
+        if ret is not None:
+            return ret
+
+        aliases = {
+            'vols': 'volumes',
+            'vol': 'volumes',
+            'v': 'volumes',
+            'train': 'train',
+            't': 'train',
+            'pred': 'predict',
+            'p': 'predict',
+            'seg': 'segment',
+            's': 'segment',
+            'eval': 'evaluate',
+            'e': 'eval',
+            'f': 'filter',
+        }
+
+        if cmd_name in aliases:
+            return click.Group.get_command(self, ctx, aliases[cmd_name])
+        return None
 
 
-@click.group(invoke_without_command=True, cls=OrderedGroup, chain=True)
+@click.group(invoke_without_command=True, cls=PrepareGroup, chain=True)
 @click.pass_context
 def prepare(ctx):
     """
@@ -286,7 +310,7 @@ def prep_segment_config():
         save_config(config, config_path)
 
 
-@prepare.command("eval")
+@prepare.command("evaluate")
 def prep_eval_config():
     """Create evaluation config files."""
     volumes = get_volumes()
