@@ -218,7 +218,7 @@ def prepare_volume(volume_path):
         try:
             path = click.prompt(
                 click.style(
-                    f"Enter path to input RAW tif directory, tif stack, or zarr array for {volume_name}",
+                    f"Enter path to input RAW 3D image, directory of 2D images, or zarr array for {volume_name}",
                     **DEFAULT_PROMPT_STYLE,
                 ),
                 type=click.Path(exists=True),
@@ -233,7 +233,7 @@ def prepare_volume(volume_path):
     # process labels
     path = click.prompt(
         click.style(
-            f"Enter path to input LABELS tif directory, tif stack, or zarr container for {volume_name} (enter to skip)",
+            f"Enter path to input LABELS 3D image, directory of 2D images, or zarr container for {volume_name} (enter to skip)",
             **DEFAULT_PROMPT_STYLE,
         ),
         default=" ",

@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 def read_from(in_path):
-    def load_tif_files(paths):
-        logger.info(f"Loading {len(paths)} TIFF files")
+    def load_images(paths):
+        logger.info(f"Loading {len(paths)} images")
         full_array = np.zeros(
             (len(paths), *imread(paths[0]).shape)
         )  # assume all images have same shape
@@ -26,25 +26,18 @@ def read_from(in_path):
             full_array[i] = im
         return full_array
 
-    def load_single_tif(path):
-        logger.info(f"Loading single TIFF file: {path}")
+    def load_single_image(path):
+        logger.info(f"Loading single image: {path}")
         im = imread(path)
         if len(im.shape) == 4 and im.shape[-1] == 3:
             im = im[..., 0]
         return im
 
-    if os.path.isdir(in_path):  # load all tif files in directory
-        in_paths = sorted(glob.glob(os.path.join(in_path, "*.tif")))
-        return load_tif_files(in_paths)
-    elif in_path.endswith(".tif"):  # load single tif file
-        return load_single_tif(in_path)
-    else:
-        logger.error(
-            "Unsupported file format. Supported formats are .tif and .tif directories"
-        )
-        raise ValueError(
-            "Unsupported file format. Supported formats are .tif and .tif directories"
-        )
+    if os.path.isdir(in_path):  # load all images in directory
+        in_paths = sorted(glob.glob(os.path.join(in_path, "*.*")))
+        return load_images(in_paths)
+    else:  # load single tif file
+        return load_single_image(in_path)
 
 
 @click.command()
@@ -53,7 +46,7 @@ def read_from(in_path):
     "-i",
     type=click.Path(exists=True, dir_okay=True, file_okay=True),
     required=True,
-    help="Path to input TIFF stack, directory of TIFF files",
+    help="Path to input 3D image, or directory of 2D images",
     prompt="Enter the path to the input file or directory",
 )
 @click.option(
@@ -111,7 +104,7 @@ def read_from(in_path):
 def convert(
     in_path, out_array, dtype, voxel_size, voxel_offset, axis_names, units, crop
 ):
-    """Convert a TIFF stack or directory of TIFF files to a Zarr array."""
+    """Convert a 3D image or directory of 2D images to a Zarr array."""
 
     # load
     logger.info(
