@@ -19,7 +19,7 @@ def setup_train(yaml_file, **kwargs):
     
     # check training samples
     out_samples = []
-    for sample in samples.items():
+    for sample in samples:
         raw = sample["raw"]
         labels = sample["labels"]
         mask = sample["mask"]
