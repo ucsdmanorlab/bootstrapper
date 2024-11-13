@@ -16,11 +16,16 @@ from .configs import (
 from .data.volumes import prepare_volume
 
 
-def make_volumes():
+def make_volumes(round_dir=None):
     """Prepare volumes for bootstrapping."""
 
+    if round_dir is None:
+        round_dir = os.getcwd()
+    else:
+        assert os.path.isdir(round_dir)
+
     num_volumes = click.prompt(
-        click.style("Enter number of volumes to prepare", fg="cyan"),
+        click.style(f"Enter number of volumes to prepare in {round_dir}", fg="cyan"),
         default=1,
         type=int,
     )
@@ -29,11 +34,12 @@ def make_volumes():
     for i in range(num_volumes):
         click.echo()
         click.secho(f"Processing volume {i+1}", fg="cyan", bold=True)
-        container = click.prompt(
-            click.style("Enter path to output container", fg="cyan"),
-            type=click.Path(),
+        vol_name = click.prompt(
+            click.style(f"Enter name of volume {i+1} in {round_dir}", fg="cyan"),
+            type=str,
+            default=f"volume_{i+1}",
         )
-        volume_info = prepare_volume(container)
+        volume_info = prepare_volume(os.path.join(round_dir, f"{vol_name}.zarr"))
         if volume_info:
             volumes.append(volume_info)
 
@@ -69,7 +75,7 @@ def get_volumes(round_dir=None):
             volumes = yaml.safe_load(f)
             click.secho(f"Loaded volumes from {volumes_yaml}", fg="cyan", bold=True)
     else:
-        volumes = make_volumes()
+        volumes = make_volumes(round_dir)
 
     return check_and_update(volumes)
 

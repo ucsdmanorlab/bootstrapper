@@ -211,13 +211,7 @@ def prepare_volume(volume_path):
         raise ValueError(f"Volume (output container) path must end in .zarr")
     
     # get volume name
-    volume_name = click.prompt(
-        click.style("Enter volume name", **DEFAULT_PROMPT_STYLE),
-        default=os.path.basename(volume_path).split(".zarr")[0],
-        type=str,
-        show_default=True,
-        prompt_suffix=DEFAULT_PROMPT_SUFFIX,
-    )
+    volume_name = os.path.basename(volume_path).split(".zarr")[0]
 
     # procress raw
     while True:
