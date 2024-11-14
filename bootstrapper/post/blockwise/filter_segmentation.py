@@ -2,7 +2,7 @@ from tqdm import tqdm
 import os
 import time
 import sys
-import yaml
+import toml
 from funlib.persistence import open_ds, prepare_ds
 from funlib.geometry import Roi, Coordinate
 import daisy
@@ -268,6 +268,6 @@ def filter_segmentation(
 if __name__ == "__main__":
     config_file = sys.argv[1]
     with open(config_file, "r") as f:
-        yaml_config = yaml.safe_load(f)
-    config = yaml_config
+        config = toml.load(f)
+
     filter_segmentation(**config)

@@ -1,6 +1,6 @@
 import click
 import os
-import yaml
+import toml
 import json
 import daisy
 import logging
@@ -45,10 +45,10 @@ def call_predict(config):
     subprocess.run(["python", config['worker'], *config['args']])
 
 
-def get_pred_config(yaml_file, setup_id, **kwargs):
-    # load yaml config
-    with open(yaml_file, "r") as f:
-        config = yaml.safe_load(f)[setup_id]
+def get_pred_config(config_file, setup_id, **kwargs):
+    # load config
+    with open(config_file, "r") as f:
+        config = toml.load(f)[setup_id]
 
     # override config values with provided kwargs
     for key, value in kwargs.items():
@@ -179,10 +179,10 @@ def get_pred_config(yaml_file, setup_id, **kwargs):
         }
 
 
-def run_prediction(yaml_file, setup_ids=None, **kwargs):
+def run_prediction(config_file, setup_ids=None, **kwargs):
 
-    with open(yaml_file, "r") as f:
-        all_setup_ids = list(yaml.safe_load(f).keys())
+    with open(config_file, "r") as f:
+        all_setup_ids = list(toml.load(f).keys())
 
     valid_setups = {
         **{s.split("-")[0]: s for s in all_setup_ids},
@@ -196,7 +196,7 @@ def run_prediction(yaml_file, setup_ids=None, **kwargs):
         if s_id not in valid_setups:
             raise ValueError(f"Setup ID {s_id} not found in {all_setup_ids}")
         
-        config = get_pred_config(yaml_file, valid_setups[s_id], **kwargs)
+        config = get_pred_config(config_file, valid_setups[s_id], **kwargs)
         pprint(config)
 
         if config['num_gpus'] > 1:
@@ -206,15 +206,15 @@ def run_prediction(yaml_file, setup_ids=None, **kwargs):
 
 
 @click.command()
-@click.argument("yaml_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
 @click.option("--setup-id", "-s", type=str, help="Setup ID(s) to run prediction for. 01, 02, etc.")
 @click.option("--roi-offset", "-ro", type=str, help="Offset of ROI in world units (space separated integers)")
 @click.option("--roi-shape", "-rs", type=str, help="Shape of ROI in world units (space separated integers)")
 @click.option("--num-workers", "-nw", type=int, help="Number of workers")
 @click.option("--num-gpus", "-ng", type=int, help="Number of GPUs to use")
-def predict(yaml_file, setup_id, **kwargs):
-    """Run prediction for a setup or all setups in a prediction YAML file. """
-    run_prediction(yaml_file, setup_id, **kwargs)
+def predict(config_file, setup_id, **kwargs):
+    """Run prediction for a setup or all setups in a prediction config file. """
+    run_prediction(config_file, setup_id, **kwargs)
 
 if __name__ == "__main__":
     predict()

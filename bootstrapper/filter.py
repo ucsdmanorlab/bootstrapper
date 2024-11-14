@@ -1,5 +1,5 @@
 import click
-import yaml
+import toml
 import json
 import os
 from ast import literal_eval
@@ -47,10 +47,10 @@ def get_best_seg_from_eval(eval_file):
     return best_seg
 
 
-def get_filter_config(yaml_file, **kwargs):
+def get_filter_config(config_file, **kwargs):
     # load config
-    with open(yaml_file, "r") as f:
-        config = yaml.safe_load(f)
+    with open(config_file, "r") as f:
+        config = toml.load(f)
 
     for key, value in kwargs.items():
         if key != "param" and value is not None:

@@ -4,7 +4,7 @@ from funlib.persistence import open_ds
 from model import Model, WeightedMSELoss
 
 import sys
-import yaml
+import toml
 import json
 import logging
 import numpy as np
@@ -218,7 +218,7 @@ if __name__ == "__main__":
 
     config_file = sys.argv[1]
     with open(config_file, "r") as f:
-        config = yaml.safe_load(f)
+        config = toml.load(f)
 
     assert config["setup_dir"] in setup_dir, "model directories do not match"
     config["setup_dir"] = setup_dir

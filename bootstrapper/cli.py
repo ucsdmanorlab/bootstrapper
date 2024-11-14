@@ -1,5 +1,5 @@
 import click
-import yaml
+import toml
 
 from . import (
     prepare,
@@ -69,21 +69,21 @@ def run(ctx, config_path):
 
     # load config
     with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
+        config = toml.load(f)
 
     # determine command to run
     if "samples" in config:
         click.secho(f"Running train command on {config_path}")
-        ctx.invoke(train, yaml_file=config_path)
+        ctx.invoke(train, config_file=config_path)
     elif "chain_str" in config[config.keys()[0]]:
         click.secho(f"Running predict command on {config_path}")
-        ctx.invoke(predict, yaml_file=config_path)
+        ctx.invoke(predict, config_file=config_path)
     elif "affs_dataset" in config:
         click.secho(f"Running segment command on {config_path}")
-        ctx.invoke(segment, yaml_file=config_path)
+        ctx.invoke(segment, config_file=config_path)
     elif "out_result_dir" in config or "self" in config or "gt" in config:
         click.secho(f"Running evaluate command on {config_path}")
-        ctx.invoke(evaluate, yaml_file=config_path)
+        ctx.invoke(evaluate, config_file=config_path)
     elif "eval_dir" in config or "seg__dataset_prefix" in config or "seg_datasets" in config:
         click.secho(f"Running filter command on {config_path}")
         ctx.invoke(filter, config_file=config_path)

@@ -1,6 +1,6 @@
 import daisy
 import click
-import yaml
+import toml
 import logging
 import numpy as np
 import os
@@ -127,7 +127,7 @@ def extract(config_file, **kwargs):
     """
 
     with open(config_file, "r") as f:
-        config = yaml.safe_load(f)
+        config = toml.load(f)
 
     start = time.time()
     extract_segmentations(config)

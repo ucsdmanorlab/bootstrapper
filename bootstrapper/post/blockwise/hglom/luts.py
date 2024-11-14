@@ -1,5 +1,5 @@
 import click
-import yaml
+import toml
 import os
 import time
 import logging
@@ -148,7 +148,7 @@ def luts(config_file):
     """
 
     with open(config_file, "r") as f:
-        config = yaml.safe_load(f)
+        config = toml.load(f)
 
     start = time.time()
     find_segments(config)

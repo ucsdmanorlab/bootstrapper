@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import sys
-import yaml
+import toml
 
 import torch
 import gunpowder as gp
@@ -190,7 +190,7 @@ if __name__ == "__main__":
 
     config_file = sys.argv[1]
     with open(config_file, "r") as f:
-        config = yaml.safe_load(f)
+        config = toml.load(f)
 
     assert config["setup_dir"] in setup_dir, "model directories do not match"
     config["setup_dir"] = setup_dir

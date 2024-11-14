@@ -1,6 +1,6 @@
 import click
 import os
-import yaml
+import toml
 
 from .configs import (
     save_config,
@@ -47,26 +47,26 @@ def make_volumes(round_dir=None):
 
 
 def get_volumes(round_dir=None):
-    """Get volumes from yaml file if exists, else ask for volumes info"""
+    """Get volumes from config file if exists, else ask for volumes info"""
     volumes = []
 
-    if round_dir is not None and os.path.exists(os.path.join(round_dir, "volumes.yaml")):
-        volumes_yaml = os.path.abspath(os.path.join(round_dir, "volumes.yaml"))
+    if round_dir is not None and os.path.exists(os.path.join(round_dir, "volumes.toml")):
+        volume_list = os.path.abspath(os.path.join(round_dir, "volumes.toml"))
         load_volumes = click.confirm(
-            click.style(f"Load volumes from {volumes_yaml}?", fg="cyan"), default=True
+            click.style(f"Load volumes from {volume_list}?", fg="cyan"), default=True
         )
-    elif os.path.exists(os.path.join(os.getcwd(), "volumes.yaml")):
-        volumes_yaml = os.path.abspath(os.path.join(os.getcwd(), "volumes.yaml"))
+    elif os.path.exists(os.path.join(os.getcwd(), "volumes.toml")):
+        volume_list = os.path.abspath(os.path.join(os.getcwd(), "volumes.toml"))
         load_volumes = click.confirm(
-            click.style(f"Load volumes from {volumes_yaml}?", fg="cyan"), default=True
+            click.style(f"Load volumes from {volume_list}?", fg="cyan"), default=True
         )
     else:
         load_volumes = False
 
     if load_volumes:
-        with open(volumes_yaml) as f:
-            volumes = yaml.safe_load(f)
-            click.secho(f"Loaded volumes from {volumes_yaml}", fg="cyan", bold=True)
+        with open(volume_list) as f:
+            volumes = toml.load(f)
+            click.secho(f"Loaded volumes from {volume_list}", fg="cyan", bold=True)
     else:
         volumes = make_volumes(round_dir)
 
@@ -107,9 +107,9 @@ def make_configs(base_dir):
             ]
 
         click.secho(
-            f"Writing volumes to {round_dir}/volumes.yaml", fg="cyan", bold=True
+            f"Writing volumes to {round_dir}/volumes.toml", fg="cyan", bold=True
         )
-        save_config(volumes, os.path.join(round_dir, "volumes.yaml"))
+        save_config(volumes, os.path.join(round_dir, "volumes.toml"))
 
         out_volumes = make_round_configs(volumes, round_dir)
 
@@ -203,13 +203,13 @@ def prep_vol():
     """Prepare a single volume."""
     volumes = make_volumes()
     click.echo()
-    if click.confirm(click.style("Save volumes.yaml?", fg="cyan"), default=True):
-        volumes_yaml = click.prompt(
-            click.style("Enter path for new volumes.yaml file", fg="cyan"),
+    if click.confirm(click.style("Save volumes.toml?", fg="cyan"), default=True):
+        volume_list = click.prompt(
+            click.style("Enter path for new volumes.config file", fg="cyan"),
             type=click.Path(),
-            default=os.path.join(os.getcwd(), "volumes.yaml"),
+            default=os.path.join(os.getcwd(), "volumes.toml"),
         )
-        save_config(volumes, volumes_yaml)
+        save_config(volumes, volume_list)
 
 
 @prepare.command("train")
@@ -224,7 +224,7 @@ def prep_train_config():
         config_path = click.prompt(
             click.style(f"Enter path to save train config file for {setup_dir}", fg="cyan"),
             type=click.Path(),
-            default=os.path.join(os.getcwd(), f"train_{os.path.basename(setup_dir)}.yaml"),
+            default=os.path.join(os.getcwd(), f"train_{os.path.basename(setup_dir)}.toml"),
         )
         save_config(ret["configs"][setup_dir], config_path)
 
@@ -280,7 +280,7 @@ def prep_predict_config():
                 f"Enter path to save predict config for {volume_name}", fg="cyan"
             ),
             type=click.Path(),
-            default=os.path.join(os.getcwd(), f"predict_{volume_name}.yaml"),
+            default=os.path.join(os.getcwd(), f"predict_{volume_name}.toml"),
         )
         save_config(config, config_path)
 
@@ -304,7 +304,7 @@ def prep_segment_config():
                 f"Enter path to save segment config for {volume_name}", fg="cyan"
             ),
             type=click.Path(),
-            default=os.path.join(os.getcwd(), f"seg_{volume_name}.yaml"),
+            default=os.path.join(os.getcwd(), f"seg_{volume_name}.toml"),
         )
         save_config(config, config_path)
 
@@ -331,7 +331,7 @@ def prep_eval_config():
         config_path = click.prompt(
             click.style(f"Enter path to save eval config for {volume_name}", fg="cyan"),
             type=click.Path(),
-            default=os.path.join(os.getcwd(), f"eval_{volume_name}.yaml"),
+            default=os.path.join(os.getcwd(), f"eval_{volume_name}.toml"),
         )
         save_config(config, config_path)
 
@@ -359,6 +359,6 @@ def prep_filter_config():
                 f"Enter path to save filter config for {volume_name}", fg="cyan"
             ),
             type=click.Path(),
-            default=os.path.join(os.getcwd(), f"filter_{volume_name}.yaml"),
+            default=os.path.join(os.getcwd(), f"filter_{volume_name}.toml"),
         )
         save_config(config, config_path)

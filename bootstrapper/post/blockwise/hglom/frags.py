@@ -2,7 +2,7 @@ import os
 import click
 import time
 import logging
-import yaml
+import toml
 from functools import partial
 from pathlib import Path
 from pprint import pprint
@@ -446,7 +446,7 @@ def frags(config_file):
 
     # Load config file
     with open(config_file, "r") as f:
-        config = yaml.safe_load(f)
+        config = toml.load(f)
 
     start = time.time()
     extract_fragments(config)

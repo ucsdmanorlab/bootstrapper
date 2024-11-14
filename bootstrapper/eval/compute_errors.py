@@ -1,11 +1,6 @@
-import time
-import json
 import logging
-import sys
 import numpy as np
-import yaml
 import os
-import pprint
 
 import gunpowder as gp
 from funlib.persistence import prepare_ds, open_ds

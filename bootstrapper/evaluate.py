@@ -1,9 +1,8 @@
 import click
-import yaml
+import toml
 import glob
 import os
 import logging
-import zarr
 import json
 from pprint import pprint
 
@@ -22,9 +21,9 @@ def get_seg_datasets(seg_datasets_prefix):
     return seg_datasets
 
 
-def get_eval_config(yaml_file, mode, **kwargs):
-    with open(yaml_file, "r") as f:
-        config = yaml.safe_load(f)
+def get_eval_config(config_file, mode, **kwargs):
+    with open(config_file, "r") as f:
+        config = toml.load(f)
     
     # Override config values with provided kwargs
     for key, value in kwargs.items():
@@ -32,7 +31,7 @@ def get_eval_config(yaml_file, mode, **kwargs):
             config[key] = value
 
     if "out_result" not in config:
-        config["out_result"] = yaml_file.replace(".yaml", f"_{mode}_results.json")
+        config["out_result"] = config_file.replace(".toml", f"_{mode}_results.json")
     
     return config
 
@@ -100,8 +99,8 @@ def run_self_evaluation(config, seg_ds):
     return stats
 
 
-def run_evaluation(yaml_file, mode="pred", **kwargs):
-    config = get_eval_config(yaml_file, mode, **kwargs)
+def run_evaluation(config_file, mode="pred", **kwargs):
+    config = get_eval_config(config_file, mode, **kwargs)
     if "seg_datasets" in config:
         seg_datasets = [ds.rstrip("/") for ds in config["seg_datasets"]]
     else:
@@ -127,19 +126,19 @@ def run_evaluation(yaml_file, mode="pred", **kwargs):
 
 
 @click.command()
-@click.argument("yaml_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
 @click.option("--gt","-gt", is_flag=True, help="Evaluate only against ground-truth")
 @click.option("--pred","-p", is_flag=True, help="Evaluate only against predictions")
 @click.option("--out_result", "-o", type=click.Path())
-def evaluate(yaml_file, gt, pred, out_result=None):
+def evaluate(config_file, gt, pred, out_result=None):
     """
     Evaluate segmentations as specified in the config file.
     """
 
     eval_modes = []
 
-    with open(yaml_file, "r") as f:
-        config = yaml.safe_load(f)
+    with open(config_file, "r") as f:
+        config = toml.load(f)
         mode_configs = [
             config.get(mode, None) for mode in ["gt", "self"]
         ]
@@ -153,4 +152,4 @@ def evaluate(yaml_file, gt, pred, out_result=None):
         eval_modes = ["pred"]
 
     for mode in eval_modes:
-        run_evaluation(yaml_file, mode, out_result=out_result)
+        run_evaluation(config_file, mode, out_result=out_result)

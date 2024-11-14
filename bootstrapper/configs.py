@@ -1,5 +1,5 @@
 import click
-import yaml
+import toml
 import json
 import os
 from shutil import copytree
@@ -58,15 +58,14 @@ def check_and_update(configs, style=DEFAULT_PROMPT_STYLE):
     if not click.confirm(
         click.style("Enter confirmation for values above (y/n)", **style), default=True
     ):
-        if edited_yaml := click.edit(yaml.dump_all(configs)):
-            configs = list(yaml.safe_load_all(edited_yaml))
-
+        if edited_configs := click.edit(toml.dumps(configs)):
+            configs = toml.loads(edited_configs)
     return configs[0] if not multiple else configs
 
 
 def save_config(config, filename, style=DEFAULT_INFO_STYLE):
     with open(filename, "w") as f:
-        yaml.dump(config, f)
+        toml.dump(config, f)
     click.secho(f"{filename} saved successfully.", **style)
 
 
@@ -872,7 +871,7 @@ def make_round_configs(volumes, round_dir):
     for i, setup_dir in enumerate(train_config["configs"]):
         save_config(
             train_config["configs"][setup_dir],
-            os.path.join(run_dir, f"01_train_{str(i).zfill(2)}.yaml"),
+            os.path.join(run_dir, f"01_train_{str(i).zfill(2)}.toml"),
         )
 
     setup_dirs = train_config["setup_dirs"]
@@ -880,7 +879,7 @@ def make_round_configs(volumes, round_dir):
     for volume_name in pred_config["configs"]:
         save_config(
             pred_config["configs"][volume_name],
-            os.path.join(run_dir, f"02_pred_{volume_name}.yaml"),
+            os.path.join(run_dir, f"02_pred_{volume_name}.toml"),
         )
 
     out_affs_ds = pred_config["out_affs_dataset"]
@@ -890,7 +889,7 @@ def make_round_configs(volumes, round_dir):
     for volume_name in pred_config["configs"]:
         save_config(
             seg_configs["configs"][volume_name],
-            os.path.join(run_dir, f"03_seg_{volume_name}.yaml"),
+            os.path.join(run_dir, f"03_seg_{volume_name}.toml"),
         )
 
     out_seg_prefix = seg_configs["out_seg_prefix"]
@@ -902,7 +901,7 @@ def make_round_configs(volumes, round_dir):
     for volume_name in pred_config["configs"]:
         save_config(
             eval_configs["configs"][volume_name],
-            os.path.join(run_dir, f"04_eval_{volume_name}.yaml"),
+            os.path.join(run_dir, f"04_eval_{volume_name}.toml"),
         )
 
     out_eval_dir = eval_configs["out_eval_dir"]
@@ -910,7 +909,7 @@ def make_round_configs(volumes, round_dir):
     for volume_name in pred_config["configs"]:
         save_config(
             filter_configs["configs"][volume_name],
-            os.path.join(run_dir, f"05_filter_{volume_name}.yaml"),
+            os.path.join(run_dir, f"05_filter_{volume_name}.toml"),
         )
 
     out_volumes = filter_configs["out_volumes"]

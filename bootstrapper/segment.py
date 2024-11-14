@@ -2,7 +2,7 @@ import os
 import click
 import logging
 from pprint import pprint
-import yaml
+import toml
 from ast import literal_eval
 
 logger = logging.getLogger(__name__)
@@ -62,10 +62,10 @@ def get_method_params(method, params):
     return ret
 
 
-def get_seg_config(yaml_file, method, **kwargs):
-    # load yaml config
-    with open(yaml_file, "r") as f:
-        config = yaml.safe_load(f)
+def get_seg_config(config_file, method, **kwargs):
+    # load config
+    with open(config_file, "r") as f:
+        config = toml.load(f)
 
     # override config values with provided kwargs, except method specific params
     for key, value in kwargs.items():
@@ -94,8 +94,8 @@ def get_seg_config(yaml_file, method, **kwargs):
     return config | params
 
 
-def run_segmentation(yaml_file, mode="ws", **kwargs):
-    config = get_seg_config(yaml_file, mode, **kwargs)
+def run_segmentation(config_file, mode="ws", **kwargs):
+    config = get_seg_config(config_file, mode, **kwargs)
     pprint(config)
 
     if mode == "ws":
@@ -112,7 +112,7 @@ def run_segmentation(yaml_file, mode="ws", **kwargs):
 
 
 @click.command()
-@click.argument("yaml_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
 @click.option("--ws", "-ws", is_flag=True, help="Watershed segmentation (waterz)")
 @click.option("--mws", "-mws", is_flag=True, help="Mutex watershed segmentation")
 @click.option("--cc", "-cc", is_flag=True, help="Connected componenents segmentation")
@@ -124,14 +124,14 @@ def run_segmentation(yaml_file, mode="ws", **kwargs):
 @click.option("--block-shape","-bs", type=str, help="Block shape, for blockwise segmentation (space separated integers or 'roi')")
 @click.option("--block-context","-bc", type=str, help="Block context, for blockwise segmentation (space separated integers)")
 @click.option("--param", "-p", multiple=True, help="Method specific parameters to override in config (e.g. -p 'thresholds=[0.2,0.3]')")
-def segment(yaml_file, ws, mws, cc, **kwargs):
+def segment(config_file, ws, mws, cc, **kwargs):
     """
-    Segment affinities as specified in YAML_FILE.
+    Segment affinities as specified in config_file.
     """
     methods = []
 
-    with open(yaml_file, "r") as f:
-        config = yaml.safe_load(f)
+    with open(config_file, "r") as f:
+        config = toml.load(f)
         method_params = [
             config.get(f"{method}_params", None) for method in ["ws", "mws", "cc"]
         ]
@@ -146,4 +146,4 @@ def segment(yaml_file, ws, mws, cc, **kwargs):
         methods = ["ws"]
 
     for method in methods:
-        run_segmentation(yaml_file, method, **kwargs)
+        run_segmentation(config_file, method, **kwargs)

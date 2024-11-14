@@ -1,5 +1,5 @@
 import glob
-import yaml
+import toml
 import subprocess
 import os
 import click
@@ -8,14 +8,14 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 
-def setup_train(yaml_file, **kwargs):
-    with open(yaml_file, "r") as file:
-        config = yaml.safe_load(file)
+def setup_train(config_file, **kwargs):
+    with open(config_file, "r") as file:
+        config = toml.load(file)
 
     # get training samples
     samples = config["samples"]
     if not samples:
-        raise ValueError(f"No training samples provided in {yaml_file}")
+        raise ValueError(f"No training samples provided in {config_file}")
     
     # check training samples
     out_samples = []
@@ -71,18 +71,18 @@ def setup_train(yaml_file, **kwargs):
     config["samples"] = out_samples
 
     # Override config values with provided kwargs
-    config_file = yaml_file
+    config_file = config_file
     if any(kwargs.values()):
         for key, value in kwargs.items():
             if value is not None:
                 config[key] = value
 
-        base_name = yaml_file.replace(".yaml", "_modified.yaml")
+        base_name = config_file.replace(".toml", "_modified.toml")
         counter = 0
 
         # write updated config
         while True:
-            config_file = f"{base_name}_{counter}.yaml"
+            config_file = f"{base_name}_{counter}.toml"
             if not os.path.exists(config_file):
                 break
             counter += 1
@@ -90,15 +90,15 @@ def setup_train(yaml_file, **kwargs):
     # write updated config
     logging.info(f"Using updated config {config_file}")
     with open(config_file, "w") as file:
-        yaml.dump(config, file)
+        toml.dump(config, file)
 
     train_script = os.path.join(config['setup_dir'], 'train.py')
     return train_script, config_file
 
 
-def run_training(yaml_file, **kwargs):
+def run_training(config_file, **kwargs):
 
-    train_script, config_file = setup_train(yaml_file, **kwargs)
+    train_script, config_file = setup_train(config_file, **kwargs)
 
     # Run the training script with the temporary config file
     command = ["python", train_script, config_file]
@@ -114,7 +114,7 @@ def run_training(yaml_file, **kwargs):
 
 
 @click.command()
-@click.argument("yaml_file", type=click.Path(exists=True))
+@click.argument("config_file", type=click.Path(exists=True))
 @click.option("--max_iterations", "-i", type=int, help="Number of training iterations")
 @click.option(
     "--output_dir",
@@ -136,7 +136,7 @@ def run_training(yaml_file, **kwargs):
 )
 @click.option("--sigma", "-s", type=int, help="Sigma value for LSD models")
 def train(
-    yaml_file,
+    config_file,
     max_iterations,
     output_dir,
     save_checkpoints_every,
@@ -154,7 +154,7 @@ def train(
         voxel_size = [int(v) for v in voxel_size.strip().split()]
 
     run_training(
-        yaml_file,
+        config_file,
         max_iterations=max_iterations,
         output_dir=output_dir,
         save_checkpoints_every=save_checkpoints_every,
