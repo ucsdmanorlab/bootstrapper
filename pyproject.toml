@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bootstrapper"
+version = "0.2.0"
+description = "Bootstrap volume segmentations from sparse annotations"
+readme = "README.md"
+authors = [
+    {name = "Vijay Venu Thiyagarajan", email = "vvenu@utexas.edu"}
+]
+license = {text = "MIT"}
+dependencies = [
+    "gunpowder>=1.4",
+    "daisy>=1.2",
+    "funlib.evaluate",
+    "numpy",
+    "scipy",
+    "scikit-image",
+    "torch",
+    "zarr",
+    "waterz",
+    "neuroglancer",
+    "click"
+]
+
+[project.urls]
+Homepage = "https://github.com/ucsdmanorlab/bootstrapper"
+
+[project.scripts]
+bs = "bootstrapper.cli:cli"
