@@ -59,7 +59,7 @@ def cc_affs(config):
         mask = None
 
     if mask is not None:
-        affs_data *= (mask > 0).astype(np.uint8) 
+        affs_data *= (mask > 0).astype(np.uint8)
 
     # add shift and noise
     if sigma is not None or noise_eps is not None:
@@ -93,9 +93,7 @@ def cc_affs(config):
     if remove_debris > 0:
         fragments_dtype = fragments_data.dtype
         fragments_data = fragments_data.astype(np.int64)
-        fragments_data = remove_small_objects(
-            fragments_data, min_size=remove_debris
-        )
+        fragments_data = remove_small_objects(fragments_data, min_size=remove_debris)
         fragments_data = fragments_data.astype(fragments_dtype)
 
     # write segmentation
@@ -111,6 +109,7 @@ def cc_affs(config):
     )
     seg[roi] = fragments_data
 
+
 def cc_segmentation(config):
     # blockwise or not
     blockwise = config.get("blockwise", False)
@@ -119,8 +118,8 @@ def cc_segmentation(config):
     roi_shape = config.get("roi_shape", None)
 
     if roi_offset is not None:
-        config['roi_offset'] = list(map(int, roi_offset.strip().split(" ")))
-        config['roi_shape'] = list(map(int, roi_shape.strip().split(" ")))
+        config["roi_offset"] = list(map(int, roi_offset.strip().split(" ")))
+        config["roi_shape"] = list(map(int, roi_shape.strip().split(" ")))
 
     if blockwise:
         cc_blockwise(config)

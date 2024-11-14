@@ -39,10 +39,12 @@ class AddAffErrors(BatchFilter):
         self.array_specs = {} if array_specs is None else array_specs
 
         # get max offset in each dimension from neighborhood
-        self.context = Coordinate([
-            max(abs(offset[dim]) for offset in self.affinity_neighborhood)
-            for dim in range(3)
-        ])
+        self.context = Coordinate(
+            [
+                max(abs(offset[dim]) for offset in self.affinity_neighborhood)
+                for dim in range(3)
+            ]
+        )
 
     # def setup(self):
     #     spec = self.spec[self.segmentation].copy()
@@ -109,15 +111,13 @@ class AddAffErrors(BatchFilter):
         deps = BatchRequest()
 
         # increase segmentation ROI to fit neighborhood
-        grown_roi = request[self.seg_affs].roi.grow(
-            -self.padding_neg, self.padding_pos
-        )
+        grown_roi = request[self.seg_affs].roi.grow(-self.padding_neg, self.padding_pos)
         deps[self.segmentation] = request[self.seg_affs].copy()
         deps[self.segmentation].dtype = None
         deps[self.segmentation].roi = grown_roi
 
         deps[self.pred_affs] = request[self.seg_affs].copy()
-        deps[self.pred_affs].dtype = None #np.float32
+        deps[self.pred_affs].dtype = None  # np.float32
         deps[self.pred_affs].roi = grown_roi
 
         if self.labels_mask:
@@ -128,7 +128,9 @@ class AddAffErrors(BatchFilter):
     def process(self, batch, request):
 
         seg_array = batch[self.segmentation]
-        seg_affs = seg_to_affgraph(seg_array.data, self.affinity_neighborhood).astype(np.float32)
+        seg_affs = seg_to_affgraph(seg_array.data, self.affinity_neighborhood).astype(
+            np.float32
+        )
 
         # crop affinities to requested ROI
         seg_affs_spec = self.spec[self.seg_affs].copy()
@@ -136,14 +138,10 @@ class AddAffErrors(BatchFilter):
         seg_affs_array = Array(seg_affs, seg_affs_spec)
         seg_affs_array = seg_affs_array.crop(request[self.seg_affs].roi)
 
-        pred_affs_array = batch[self.pred_affs].crop(
-            request[self.seg_affs].roi
-        )
+        pred_affs_array = batch[self.pred_affs].crop(request[self.seg_affs].roi)
 
         if self.labels_mask:
-            mask_array = batch[self.labels_mask].crop(
-                request[self.seg_affs].roi
-            )
+            mask_array = batch[self.labels_mask].crop(request[self.seg_affs].roi)
         else:
             mask_array = None
 

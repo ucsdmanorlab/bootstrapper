@@ -51,12 +51,18 @@ def make_volumes(round_dir=None, style="prepare"):
 def get_volumes(round_dir=None, style="prepare"):
     """Get volumes from config file if exists, else ask for volumes info"""
 
-    if round_dir is not None and os.path.exists(os.path.join(round_dir, "volumes.toml")):
+    if round_dir is not None and os.path.exists(
+        os.path.join(round_dir, "volumes.toml")
+    ):
         volumes_doc = os.path.abspath(os.path.join(round_dir, "volumes.toml"))
-        load_volumes = cli_confirm(f"Load volumes from {volumes_doc}?", style, default=True)
+        load_volumes = cli_confirm(
+            f"Load volumes from {volumes_doc}?", style, default=True
+        )
     elif os.path.exists(os.path.join(os.getcwd(), "volumes.toml")):
         volumes_doc = os.path.abspath(os.path.join(os.getcwd(), "volumes.toml"))
-        load_volumes = cli_confirm(f"Load volumes from {volumes_doc}?", style, default=True)
+        load_volumes = cli_confirm(
+            f"Load volumes from {volumes_doc}?", style, default=True
+        )
     else:
         load_volumes = False
 
@@ -100,7 +106,12 @@ def make_configs(base_dir):
             volumes = get_volumes(round_dir=round_dir)
         else:
             volumes = {
-                vol_name: vol_info | {"output_container": os.path.join(round_dir, f"{vol_info['name']}.zarr")}
+                vol_name: vol_info
+                | {
+                    "output_container": os.path.join(
+                        round_dir, f"{vol_info['name']}.zarr"
+                    )
+                }
                 for vol_name, vol_info in out_volumes.items()
             }
 
@@ -110,7 +121,9 @@ def make_configs(base_dir):
         out_volumes = make_round_configs(volumes, round_dir)
 
         click.echo()
-        if not cli_confirm("Make configs for next round?", style="prepare", default=False):
+        if not cli_confirm(
+            "Make configs for next round?", style="prepare", default=False
+        ):
             break
         i += 1
 
@@ -128,25 +141,25 @@ class PrepareGroup(click.Group):
             "eval",
             "filter",
         ]
-    
+
     def get_command(self, ctx, cmd_name):
         ret = click.Group.get_command(self, ctx, cmd_name)
         if ret is not None:
             return ret
 
         aliases = {
-            'vols': 'volumes',
-            'vol': 'volumes',
-            'v': 'volumes',
-            'train': 'train',
-            't': 'train',
-            'pred': 'predict',
-            'p': 'predict',
-            'seg': 'segment',
-            's': 'segment',
-            'eval': 'evaluate',
-            'e': 'eval',
-            'f': 'filter',
+            "vols": "volumes",
+            "vol": "volumes",
+            "v": "volumes",
+            "train": "train",
+            "t": "train",
+            "pred": "predict",
+            "p": "predict",
+            "seg": "segment",
+            "s": "segment",
+            "eval": "evaluate",
+            "e": "eval",
+            "f": "filter",
         }
 
         if cmd_name in aliases:
@@ -181,7 +194,8 @@ def prepare(ctx):
     allowing for refinement of the segmentations over time.
     """
     if ctx.invoked_subcommand is None:
-        base_dir = cli_prompt("Enter path to base directory",
+        base_dir = cli_prompt(
+            "Enter path to base directory",
             style="prepare",
             type=click.Path(),
             default=os.getcwd(),
@@ -219,7 +233,9 @@ def prep_train_config():
             f"Enter path to save train config file for {setup_dir}",
             style="train",
             type=click.Path(),
-            default=os.path.join(os.getcwd(), f"train_{os.path.basename(setup_dir)}.toml"),
+            default=os.path.join(
+                os.getcwd(), f"train_{os.path.basename(setup_dir)}.toml"
+            ),
         )
         save_config(ret["configs"][setup_dir], config_path, style="train")
 
@@ -230,29 +246,41 @@ def prep_predict_config():
     volumes = get_volumes(style="predict")
 
     # get list of setup directories
-    setup_dirs = cli_prompt(f"Enter setups paths for prediction in order (comma-separated)", style="predict")
-    setup_dirs = [x.strip() for x in setup_dirs.split(',')]
+    setup_dirs = cli_prompt(
+        f"Enter setups paths for prediction in order (comma-separated)", style="predict"
+    )
+    setup_dirs = [x.strip() for x in setup_dirs.split(",")]
 
     # check if all setup directories exist
     for i, setup_dir in enumerate(setup_dirs):
         if not os.path.isdir(setup_dir):
-            # accept just names of '_from_' models. for example, '3d_affs_from_2d_affs' 
-            if '_from_' in setup_dir:
+            # accept just names of '_from_' models. for example, '3d_affs_from_2d_affs'
+            if "_from_" in setup_dir:
                 setup_dir = os.path.join(os.path.dirname(__file__), "models", setup_dir)
                 if not os.path.isdir(setup_dir):
-                    raise ValueError(f"Invalid setup: directory {setup_dir} does not exist")
-                
+                    raise ValueError(
+                        f"Invalid setup: directory {setup_dir} does not exist"
+                    )
+
                 checkpoints = [
-                    c for c in os.listdir(setup_dir) if 'model_checkpoint_' in c
+                    c for c in os.listdir(setup_dir) if "model_checkpoint_" in c
                 ]
                 if not checkpoints:
                     cli_echo(f"No checkpoints found in {setup_dir}", style="predict")
-                    download = cli_confirm(f"Download pretrained checkpoints for {os.path.basename(setup_dir)}?", style="predict", default=False)
+                    download = cli_confirm(
+                        f"Download pretrained checkpoints for {os.path.basename(setup_dir)}?",
+                        style="predict",
+                        default=False,
+                    )
                     if download:
-                        download_checkpoints(os.path.basename(setup_dir), setup_dir, style="predict")
+                        download_checkpoints(
+                            os.path.basename(setup_dir), setup_dir, style="predict"
+                        )
                     else:
-                        raise ValueError(f"Please either download checkpoints or train from scratch")
-                
+                        raise ValueError(
+                            f"Please either download checkpoints or train from scratch"
+                        )
+
                 # replace setup_dir with setup_dir from bootstrapper source directory
                 setup_dirs[i] = setup_dir
 
@@ -278,7 +306,9 @@ def prep_predict_config():
 def prep_segment_config():
     """Create segmentation config files."""
     volumes = get_volumes(style="segment")
-    out_affs_ds = cli_prompt("Enter name of output affinities dataset inside zarr", style="segment")
+    out_affs_ds = cli_prompt(
+        "Enter name of output affinities dataset inside zarr", style="segment"
+    )
     ret = create_segmentation_configs(volumes, out_affs_ds)
 
     for volume_name, config in ret["configs"].items():
@@ -296,8 +326,12 @@ def prep_segment_config():
 def prep_eval_config():
     """Create evaluation config files."""
     volumes = get_volumes(style="evaluate")
-    out_segs_prefix = cli_prompt("Enter prefix for segmentation datasets", style="evaluate")
-    pred_datasets = cli_prompt("Enter prediction datasets (comma-separated)", style="evaluate")
+    out_segs_prefix = cli_prompt(
+        "Enter prefix for segmentation datasets", style="evaluate"
+    )
+    pred_datasets = cli_prompt(
+        "Enter prediction datasets (comma-separated)", style="evaluate"
+    )
     pred_datasets = [x.strip() for x in pred_datasets.split(",")]
 
     ret = create_evaluation_configs(volumes, out_segs_prefix, pred_datasets)
@@ -317,7 +351,9 @@ def prep_eval_config():
 def prep_filter_config():
     """Create config files for filtering segmentations."""
     volumes = get_volumes(style="filter")
-    out_segs_prefix = cli_prompt("Enter prefix for segmentation datasets", style="filter")
+    out_segs_prefix = cli_prompt(
+        "Enter prefix for segmentation datasets", style="filter"
+    )
     eval_dir = cli_prompt("Enter path to evaluation directory", style="filter")
     ret = create_filter_configs(volumes, out_segs_prefix, eval_dir)
 

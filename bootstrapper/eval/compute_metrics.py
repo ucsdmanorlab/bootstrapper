@@ -4,7 +4,6 @@ from tqdm import tqdm
 import numpy as np
 import networkx as nx
 
-from funlib.segment.arrays import replace_values
 from funlib.evaluate import (
     rand_voi,
     expected_run_length,
@@ -72,17 +71,17 @@ def read_skeletons(gt_skeletons_file, roi):
 
 
 def compute_metrics(
-        seg_dataset,
-        gt_labels_dataset,
-        gt_skeletons_file,
-        mask_dataset=None,
-        roi_offset=None,
-        roi_shape=None,
+    seg_dataset,
+    gt_labels_dataset,
+    gt_skeletons_file,
+    mask_dataset=None,
+    roi_offset=None,
+    roi_shape=None,
 ):
     seg_ds = open_ds(seg_dataset)
     gt_labels_ds = None if gt_labels_dataset is None else open_ds(gt_labels_dataset)
     mask_ds = None if mask_dataset is None else open_ds(mask_dataset)
-    
+
     # get roi
     roi = seg_ds.roi
     if gt_labels_ds:
@@ -91,13 +90,15 @@ def compute_metrics(
         roi = roi.intersect(mask_ds.roi)
     if roi_offset is not None:
         roi_offset = Coordinate(roi_offset)
-        roi_shape  = Coordinate(roi_shape)
+        roi_shape = Coordinate(roi_shape)
         roi = Roi(roi_offset, roi_shape).intersect(roi)
 
     print(seg_ds.roi, roi)
 
     # read gt skeletons
-    gt_skeletons = None if gt_skeletons_file is None else read_skeletons(gt_skeletons_file, roi) 
+    gt_skeletons = (
+        None if gt_skeletons_file is None else read_skeletons(gt_skeletons_file, roi)
+    )
 
     # load and mask seg
     seg = seg_ds[roi]
@@ -129,17 +130,17 @@ def compute_metrics(
         # get node segment lut
         for node in tqdm(gt_skeletons.nodes):
             try:
-                gt_skeletons.nodes[node]["pred_seg_id"] = int(seg_ds[
-                    Coordinate(
-                        gt_skeletons.nodes[node]["position_z"],
-                        gt_skeletons.nodes[node]["position_y"],
-                        gt_skeletons.nodes[node]["position_x"],
-                    )
-                ])
-            except:
-                raise Exception(
-                    f" node {gt_skeletons.nodes[node]} is not in seg_ds"
+                gt_skeletons.nodes[node]["pred_seg_id"] = int(
+                    seg_ds[
+                        Coordinate(
+                            gt_skeletons.nodes[node]["position_z"],
+                            gt_skeletons.nodes[node]["position_y"],
+                            gt_skeletons.nodes[node]["position_x"],
+                        )
+                    ]
                 )
+            except:
+                raise Exception(f" node {gt_skeletons.nodes[node]} is not in seg_ds")
 
         erl, stats = expected_run_length(
             gt_skeletons,
@@ -158,7 +159,7 @@ def compute_metrics(
             skeleton_lengths=skeleton_lengths,
             return_merge_split_stats=True,
         )
-        
+
         merge_stats = stats["merge_stats"]
         n_mergers = sum([len(v) for v in merge_stats.values()])
 
@@ -170,7 +171,7 @@ def compute_metrics(
         n_splits = sum([len(v) for v in split_stats.values()])
 
         nerl = erl / max_erl
-            
+
         metrics["skel"] = {
             "erl": erl,
             "nerl": nerl,

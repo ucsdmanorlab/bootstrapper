@@ -16,17 +16,19 @@ logger.setLevel(logging.INFO)
 
 def predict_blockwise(config):
 
-    logger.info(f"Starting block-wise processing with predict_worker: {config['worker']}...")
+    logger.info(
+        f"Starting block-wise processing with predict_worker: {config['worker']}..."
+    )
 
     # process block-wise
     task = daisy.Task(
         "PredictBlockwiseTask",
-        config['total_roi'],
-        config['read_roi'],
-        config['write_roi'],
+        config["total_roi"],
+        config["read_roi"],
+        config["write_roi"],
         process_function=lambda: call_predict(config),
         check_function=None,
-        num_workers=config['num_workers'],
+        num_workers=config["num_workers"],
         read_write_conflict=False,
         max_retries=5,
         fit="overhang",
@@ -42,7 +44,7 @@ def predict_blockwise(config):
 def call_predict(config):
     worker_id = daisy.Context.from_env()["worker_id"]
     os.environ["CUDA_VISIBLE_DEVICES"] = f"{int(worker_id) % config['num_gpus']}"
-    subprocess.run(["python", config['worker'], *config['args']])
+    subprocess.run(["python", config["worker"], *config["args"]])
 
 
 def get_pred_config(config_file, setup_id, **kwargs):
@@ -52,7 +54,7 @@ def get_pred_config(config_file, setup_id, **kwargs):
 
     # override config values with provided kwargs
     for key, value in kwargs.items():
-        if value is not None:# and len(value) > 0:
+        if value is not None:  # and len(value) > 0:
             config[key] = value
 
     setup_dir = config["setup_dir"]
@@ -68,9 +70,11 @@ def get_pred_config(config_file, setup_id, **kwargs):
     # try reading all input datasets, get voxel size
     in_channels_sum = 0
     for in_ds_path in input_datasets[::-1]:
-        in_ds = open_ds(in_ds_path, 'r')
-        in_channels_sum += in_ds.shape[0] if len(in_ds.shape) > 3 else 1 # channels first, 3D
-    in_ds = open_ds(input_datasets[0], 'r')
+        in_ds = open_ds(in_ds_path, "r")
+        in_channels_sum += (
+            in_ds.shape[0] if len(in_ds.shape) > 3 else 1
+        )  # channels first, 3D
+    in_ds = open_ds(input_datasets[0], "r")
     voxel_size = in_ds.voxel_size
 
     # load net config
@@ -79,7 +83,9 @@ def get_pred_config(config_file, setup_id, **kwargs):
         net_config = json.load(f)
 
     # validate number of input datasets
-    assert len(input_datasets) == len(net_config["inputs"]), f"number of input datasets ({len(input_datasets)}) does not match number of network inputs ({net_config['inputs']})"
+    assert len(input_datasets) == len(
+        net_config["inputs"]
+    ), f"number of input datasets ({len(input_datasets)}) does not match number of network inputs ({net_config['inputs']})"
 
     # get input, output shapes
     shape_increase = net_config["shape_increase"]
@@ -88,11 +94,15 @@ def get_pred_config(config_file, setup_id, **kwargs):
 
     # add z-dimension for 2D networks
     if len(input_shape) == 2:
-        input_shape = [net_config['in_channels'], *input_shape] # support for "3ch" models
+        input_shape = [
+            net_config["in_channels"],
+            *input_shape,
+        ]  # support for "3ch" models
         output_shape = [1, *output_shape]
     else:
-        assert in_channels_sum == net_config['in_channels'], f"sum of channels of input datasets ({in_channels_sum}) does not match network's number of input channels ({net_config['in_channels']})"
-    
+        assert (
+            in_channels_sum == net_config["in_channels"]
+        ), f"sum of channels of input datasets ({in_channels_sum}) does not match network's number of input channels ({net_config['in_channels']})"
 
     # get block input and output ROIs
     input_size = Coordinate(input_shape) * voxel_size
@@ -111,12 +121,16 @@ def get_pred_config(config_file, setup_id, **kwargs):
 
     # get output dataset names and prepare output datasets if using daisy
     output_datasets = []
-    iteration = checkpoint.split('_')[-1]
-    for output_name, val in net_config['outputs'].items():
-        output_dims = val['dims']
-        output_dtype = val['dtype']
+    iteration = checkpoint.split("_")[-1]
+    for output_name, val in net_config["outputs"].items():
+        output_dims = val["dims"]
+        output_dtype = val["dtype"]
 
-        out_ds = f"{iteration}/{output_name}" if chain_str == "" else f"{iteration}--from--{chain_str}/{output_name}"
+        out_ds = (
+            f"{iteration}/{output_name}"
+            if chain_str == ""
+            else f"{iteration}--from--{chain_str}/{output_name}"
+        )
 
         output_dataset = os.path.join(output_datasets_prefix, out_ds)
         output_datasets.append(output_dataset)
@@ -163,9 +177,9 @@ def get_pred_config(config_file, setup_id, **kwargs):
             "num_workers": num_workers,
             "num_gpus": num_gpus,
             "worker": worker,
-            "args": args
+            "args": args,
         }
-    
+
     else:
         args.extend(["-n", str(num_workers)])
         args.extend(["-ro", " ".join(map(str, output_roi.offset))])
@@ -187,34 +201,49 @@ def run_prediction(config_file, setup_ids=None, **kwargs):
     valid_setups = {
         **{s.split("-")[0]: s for s in all_setup_ids},
         **{s.split("-")[-1]: s for s in all_setup_ids},
-        **{s: s for s in all_setup_ids}
+        **{s: s for s in all_setup_ids},
     }
 
-    setups = (sorted(setup_ids.strip().split()) if setup_ids else all_setup_ids)
+    setups = sorted(setup_ids.strip().split()) if setup_ids else all_setup_ids
 
     for s_id in setups:
         if s_id not in valid_setups:
             raise ValueError(f"Setup ID {s_id} not found in {all_setup_ids}")
-        
+
         config = get_pred_config(config_file, valid_setups[s_id], **kwargs)
         pprint(config)
 
-        if config['num_gpus'] > 1:
+        if config["num_gpus"] > 1:
             predict_blockwise(config)
         else:
-            subprocess.run(["python", config['worker'], *config['args']])
+            subprocess.run(["python", config["worker"], *config["args"]])
 
 
 @click.command()
-@click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
-@click.option("--setup-id", "-s", type=str, help="Setup ID(s) to run prediction for. 01, 02, etc.")
-@click.option("--roi-offset", "-ro", type=str, help="Offset of ROI in world units (space separated integers)")
-@click.option("--roi-shape", "-rs", type=str, help="Shape of ROI in world units (space separated integers)")
+@click.argument(
+    "config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False)
+)
+@click.option(
+    "--setup-id", "-s", type=str, help="Setup ID(s) to run prediction for. 01, 02, etc."
+)
+@click.option(
+    "--roi-offset",
+    "-ro",
+    type=str,
+    help="Offset of ROI in world units (space separated integers)",
+)
+@click.option(
+    "--roi-shape",
+    "-rs",
+    type=str,
+    help="Shape of ROI in world units (space separated integers)",
+)
 @click.option("--num-workers", "-nw", type=int, help="Number of workers")
 @click.option("--num-gpus", "-ng", type=int, help="Number of GPUs to use")
 def predict(config_file, setup_id, **kwargs):
-    """Run prediction for a setup or all setups in a prediction config file. """
+    """Run prediction for a setup or all setups in a prediction config file."""
     run_prediction(config_file, setup_id, **kwargs)
+
 
 if __name__ == "__main__":
     predict()

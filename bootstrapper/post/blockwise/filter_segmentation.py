@@ -1,5 +1,4 @@
 from tqdm import tqdm
-import os
 import time
 import sys
 import toml
@@ -216,7 +215,9 @@ def filter_segmentation(
         mode="w",
     )
 
-    print(f"Filtering input segmentation {seg_dataset} into {out_labels_dataset} and {out_mask_dataset}")
+    print(
+        f"Filtering input segmentation {seg_dataset} into {out_labels_dataset} and {out_mask_dataset}"
+    )
 
     read_roi = Roi((0,) * in_labels.roi.dims, block_size).grow(context, context)
     write_roi = Roi((0,) * in_labels.roi.dims, block_size)

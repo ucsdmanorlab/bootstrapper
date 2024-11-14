@@ -10,7 +10,13 @@ import logging
 import numpy as np
 import os
 
-from bootstrapper.gp import SmoothAugment, Add2DLSDs, CreateMask, Renumber, calc_max_padding
+from bootstrapper.gp import (
+    SmoothAugment,
+    Add2DLSDs,
+    CreateMask,
+    Renumber,
+    calc_max_padding,
+)
 
 logging.getLogger().setLevel(logging.INFO)
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
@@ -62,7 +68,7 @@ def train(
 
     # get lsd sigma
     sigma = net_config["outputs"]["2d_lsds"]["sigma"]
-    sigma = (0, sigma, sigma) # add z-dimension since pipeline is 3D
+    sigma = (0, sigma, sigma)  # add z-dimension since pipeline is 3D
 
     shape_increase = [0, 0]  # net_config["shape_increase"]
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
@@ -92,12 +98,15 @@ def train(
                 gp.ArraySource(raw, open_ds(sample["raw"]), True),
                 gp.ArraySource(labels, open_ds(sample["labels"]), False),
                 gp.ArraySource(unlabelled, open_ds(sample["mask"]), False),
-            ) + gp.MergeProvider() 
+            )
+            + gp.MergeProvider()
             if "mask" in sample and sample["mask"] is not None
             else (
                 gp.ArraySource(raw, open_ds(sample["raw"]), True),
                 gp.ArraySource(labels, open_ds(sample["labels"]), False),
-            ) + gp.MergeProvider() + CreateMask(labels, unlabelled)
+            )
+            + gp.MergeProvider()
+            + CreateMask(labels, unlabelled)
         )
         + gp.Normalize(raw)
         + Renumber(labels)

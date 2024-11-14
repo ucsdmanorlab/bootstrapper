@@ -34,7 +34,7 @@ def simple_watershed(config):
     roi_shape = config.get("roi_shape", None)
 
     # optional waterz params
-    thresholds = config.get("thresholds", [0.2,0.35,0.5])
+    thresholds = config.get("thresholds", [0.2, 0.35, 0.5])
     fragments_in_xy = config.get("fragments_in_xy", True)
     min_seed_distance = config.get("min_seed_distance", 10)
     merge_function = config.get("merge_function", "mean")
@@ -82,7 +82,7 @@ def simple_watershed(config):
         mask = None
 
     if mask is not None:
-        affs_data *= (mask > 0).astype(np.uint8) 
+        affs_data *= (mask > 0).astype(np.uint8)
 
     # shift affs with noise, smoothing, and bias
     if sigma is not None or noise_eps is not None or bias is not None:
@@ -100,10 +100,8 @@ def simple_watershed(config):
                 bias = [bias] * affs_data.shape[0]
             else:
                 assert len(bias) == affs_data.shape[0]
-            
-            shift += np.array([bias]).reshape(
-                (-1, *((1,) * (len(affs.shape) - 1)))
-            )
+
+            shift += np.array([bias]).reshape((-1, *((1,) * (len(affs.shape) - 1))))
 
         affs_data += shift
 
@@ -132,7 +130,7 @@ def simple_watershed(config):
         affs_data,
         thresholds=thresholds,
         fragments=fragments_data.copy(),
-        scoring_function=waterz_merge_function
+        scoring_function=waterz_merge_function,
     )
 
     for threshold, segmentation in zip(thresholds, generator):
@@ -159,12 +157,12 @@ def watershed_segmentation(config):
     block_shape = config.get("block_shape", None)
 
     if roi_offset is not None:
-        config['roi_offset'] = list(map(int, roi_offset.strip().split(" ")))
-        config['roi_shape'] = list(map(int, roi_shape.strip().split(" ")))
+        config["roi_offset"] = list(map(int, roi_offset.strip().split(" ")))
+        config["roi_shape"] = list(map(int, roi_shape.strip().split(" ")))
 
     if blockwise:
         if block_shape == "roi":
-            config['blockwise'] = False
+            config["blockwise"] = False
         waterz_pipeline(config)
     else:
         simple_watershed(config)

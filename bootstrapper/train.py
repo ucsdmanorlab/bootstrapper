@@ -16,7 +16,7 @@ def setup_train(config_file, **kwargs):
     samples = config["samples"]
     if not samples:
         raise ValueError(f"No training samples provided in {config_file}")
-    
+
     # check training samples
     out_samples = []
     for sample in samples:
@@ -35,9 +35,16 @@ def setup_train(config_file, **kwargs):
             raise ValueError(f"Labels dataset path {labels} does not exist")
         elif ".zarray" not in os.listdir(labels):
             # recursively search for all arrays matching the prefix
-            labels_datasets = [os.path.dirname(x) for x in glob.glob(os.path.join(labels, "**", ".zarray"), recursive=True)]
+            labels_datasets = [
+                os.path.dirname(x)
+                for x in glob.glob(
+                    os.path.join(labels, "**", ".zarray"), recursive=True
+                )
+            ]
             if len(labels_datasets) == 0:
-                raise ValueError(f"Labels dataset prefix {labels} does not contain any array")
+                raise ValueError(
+                    f"Labels dataset prefix {labels} does not contain any array"
+                )
         else:
             labels_datasets = [labels]
 
@@ -47,15 +54,24 @@ def setup_train(config_file, **kwargs):
                 raise ValueError(f"Labels dataset path {labels} does not exist")
             elif ".zarray" not in os.listdir(mask):
                 # recursively search for all arrays matching the prefix
-                mask_datasets = [os.path.dirname(x) for x in glob.glob(os.path.join(mask, "**", ".zarray"), recursive=True)]
+                mask_datasets = [
+                    os.path.dirname(x)
+                    for x in glob.glob(
+                        os.path.join(mask, "**", ".zarray"), recursive=True
+                    )
+                ]
                 if len(mask_datasets) == 0:
-                    raise ValueError(f"Mask dataset prefix {mask} does not contain any array")
+                    raise ValueError(
+                        f"Mask dataset prefix {mask} does not contain any array"
+                    )
             else:
                 mask_datasets = [mask]
         else:
             mask_datasets = [None for _ in labels_datasets]
 
-        assert len(labels_datasets) == len(mask_datasets), "Number of labels and mask datasets must be equal"
+        assert len(labels_datasets) == len(
+            mask_datasets
+        ), "Number of labels and mask datasets must be equal"
 
         # update sample
         for labels_ds, mask_ds in zip(labels_datasets, mask_datasets):
@@ -92,7 +108,7 @@ def setup_train(config_file, **kwargs):
     with open(config_file, "w") as file:
         toml.dump(config, file)
 
-    train_script = os.path.join(config['setup_dir'], 'train.py')
+    train_script = os.path.join(config["setup_dir"], "train.py")
     return train_script, config_file
 
 

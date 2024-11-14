@@ -141,7 +141,9 @@ def get_connected_components(
 
 
 @click.command()
-@click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.argument(
+    "config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False)
+)
 def luts(config_file):
     """
     Find connected components of region graph and store lookup tables.

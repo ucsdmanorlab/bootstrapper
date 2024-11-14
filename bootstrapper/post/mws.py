@@ -47,9 +47,7 @@ def mwatershed_from_affinities(
         shift += gaussian_filter(affs, sigma=sigma) - affs
 
     #######################
-    shift += np.array([bias]).reshape(
-        (-1, *((1,) * (len(affs.shape) - 1)))
-    )
+    shift += np.array([bias]).reshape((-1, *((1,) * (len(affs.shape) - 1))))
 
     fragments_data = mws.agglom(
         (affs + shift).astype(np.float64),
@@ -59,4 +57,3 @@ def mwatershed_from_affinities(
     )
 
     return fragments_data
-

@@ -1,4 +1,3 @@
-import os
 import click
 import time
 import logging
@@ -45,7 +44,6 @@ def watershed_in_block(
 
     from bootstrapper.post.ws import watershed_from_affinities
 
-
     # load data
     affs_data = affs[block.read_roi][:3]
 
@@ -63,9 +61,9 @@ def watershed_in_block(
 
     # shift affs with noise, smoothing, and bias
     if shift is not None:
-        sigma = shift['sigma']
-        noise_eps = shift['noise_eps']
-        bias = shift['bias']
+        sigma = shift["sigma"]
+        noise_eps = shift["noise_eps"]
+        bias = shift["bias"]
 
         shift = np.zeros_like(affs_data)
 
@@ -81,10 +79,8 @@ def watershed_in_block(
                 bias = [bias] * affs_data.shape[0]
             else:
                 assert len(bias) == affs_data.shape[0]
-            
-            shift += np.array([bias]).reshape(
-                (-1, *((1,) * (len(affs.shape) - 1)))
-            )
+
+            shift += np.array([bias]).reshape((-1, *((1,) * (len(affs.shape) - 1))))
 
         affs_data += shift
 
@@ -348,10 +344,7 @@ def extract_fragments(config):
     )
 
     # get mask
-    if (
-        "mask_dataset" in config
-        and config["mask_dataset"] is not None
-    ):
+    if "mask_dataset" in config and config["mask_dataset"] is not None:
         mask_array = open_ds(config["mask_dataset"])
     else:
         mask_array = None
@@ -438,7 +431,9 @@ def extract_fragments(config):
 
 
 @click.command()
-@click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.argument(
+    "config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False)
+)
 def frags(config_file):
     """
     Extract fragments from affinities using daisy.

@@ -34,7 +34,7 @@ MODEL_URLS = {
 
 def get_setup_name(setup_dir):
     setup_name = os.path.basename(setup_dir)
-    if '_from_' in setup_name:
+    if "_from_" in setup_name:
         return MODEL_SHORT_NAMES[setup_name]
     else:
         return setup_name
@@ -76,7 +76,7 @@ def get_sub_roi(in_array, offset=None, shape=None, style=None):
 
     if offset is None:
         offset = cli_prompt(
-            f"Enter voxel offset as space-separated integers in {in_array.axis_names}", 
+            f"Enter voxel offset as space-separated integers in {in_array.axis_names}",
             style,
             default="0 0 0",
         )
@@ -110,7 +110,11 @@ def get_sub_roi(in_array, offset=None, shape=None, style=None):
     roi = Roi(roi_offset, roi_shape)
     if not full_roi.contains(roi):
         roi = roi.intersect(full_roi)
-        cli_echo("ROI is not contained within the full volume's ROI. Cropping to {roi}..", style, "warning")
+        cli_echo(
+            "ROI is not contained within the full volume's ROI. Cropping to {roi}..",
+            style,
+            "warning",
+        )
 
     return roi.offset, roi.shape, voxel_size
 
@@ -120,7 +124,9 @@ def get_rag_db_config(sqlite_path=None, style="segment"):
     edges_table = cli_prompt("Enter RAG edges table name", style, default="edges")
 
     if sqlite_path:
-        db_file = cli_prompt(f"Enter SQLite RAG database file", style, default=sqlite_path)
+        db_file = cli_prompt(
+            f"Enter SQLite RAG database file", style, default=sqlite_path
+        )
         return {
             "db_file": db_file,
             "nodes_table": nodes_table,
@@ -134,10 +140,16 @@ def get_rag_db_config(sqlite_path=None, style="segment"):
         db_port = os.environ.get("RAG_DB_PORT")
 
         if not all([db_host, db_user, db_password, db_port]):
-            cli_echo("PgSQL Database credentials not found in environment variables..", style)
+            cli_echo(
+                "PgSQL Database credentials not found in environment variables..", style
+            )
             db_host = cli_prompt("Enter PgSQL RAG database host", style)
             db_user = cli_prompt("Enter PgSQL RAG database user", style)
-            db_password = cli_prompt("Enter PgSQL RAG database password (input is hidden)", style, hide_input=True)
+            db_password = cli_prompt(
+                "Enter PgSQL RAG database password (input is hidden)",
+                style,
+                hide_input=True,
+            )
             db_port = cli_prompt("Enter PgSQL RAG database port", style, type=int)
 
         db_name = cli_prompt("Enter PgSQL RAG database name", style)
@@ -164,41 +176,50 @@ def choose_models(style="train"):
     # models that take raw image as input
     image_models = sorted(
         [
-            d for d in os.listdir(MODEL_DIR) 
-            if os.path.isdir(os.path.join(MODEL_DIR, d))
-            and "_from_" not in d
+            d
+            for d in os.listdir(MODEL_DIR)
+            if os.path.isdir(os.path.join(MODEL_DIR, d)) and "_from_" not in d
         ]
     )
 
     # models that take output from another model as input
     pred_models = sorted(
         [
-            d for d in os.listdir(MODEL_DIR)
-            if os.path.isdir(os.path.join(MODEL_DIR, d))
-            and "_from_" in d
+            d
+            for d in os.listdir(MODEL_DIR)
+            if os.path.isdir(os.path.join(MODEL_DIR, d)) and "_from_" in d
         ]
     )
 
     # get first model
     i = 0
-    previous_model = cli_prompt(f"Enter model name", style, type=click.Choice(image_models), show_choices=True)
+    previous_model = cli_prompt(
+        f"Enter model name", style, type=click.Choice(image_models), show_choices=True
+    )
     model_names.append(previous_model)
 
     while True:
         # check if a pred_model exists that can take prev model's output(s)
         compatible_pred_models = [
-            m for m in pred_models if m.split('_from_')[1] in previous_model.split('_from_')[0]
+            m
+            for m in pred_models
+            if m.split("_from_")[1] in previous_model.split("_from_")[0]
         ]
-        
+
         if not compatible_pred_models:
             break
 
         if len(compatible_pred_models) == 1:
             pred_model = compatible_pred_models[0]
         else:
-            pred_model = cli_prompt(f"Enter model {i+2} name", style, type=click.Choice(compatible_pred_models), show_choices=True)
+            pred_model = cli_prompt(
+                f"Enter model {i+2} name",
+                style,
+                type=click.Choice(compatible_pred_models),
+                show_choices=True,
+            )
 
-        if cli_confirm(f"Add {pred_model} to training config?", style, default=True): 
+        if cli_confirm(f"Add {pred_model} to training config?", style, default=True):
             model_names.append(pred_model)
             previous_model = pred_model
             i += 1
@@ -207,25 +228,31 @@ def choose_models(style="train"):
 
 
 def setup_models(model_names, parent_dir=None, style="train"):
-    setup_dirs = [] # corresponding setup dirs for each model
-    setups_to_train = [] # list of tuples (model_name, setup_dir)
+    setup_dirs = []  # corresponding setup dirs for each model
+    setups_to_train = []  # list of tuples (model_name, setup_dir)
 
     if parent_dir is None:
         parent_dir = os.getcwd()
 
     # get max setup number from existing setup dirs in parent_dir
-    setup_num = max(
-        [int(d.split('_')[-1]) for d in os.listdir(parent_dir)
-         if os.path.isdir(os.path.join(parent_dir, d))
-         and os.path.exists(os.path.join(parent_dir, d, 'net_config.json'))],
-        default=0
-    ) + 1
+    setup_num = (
+        max(
+            [
+                int(d.split("_")[-1])
+                for d in os.listdir(parent_dir)
+                if os.path.isdir(os.path.join(parent_dir, d))
+                and os.path.exists(os.path.join(parent_dir, d, "net_config.json"))
+            ],
+            default=0,
+        )
+        + 1
+    )
 
     # get setup dirs for each model
     for i, model_name in enumerate(model_names):
         if i == 0:
             setup_dir = cli_prompt(
-                f"Enter setup dir for {model_name}", 
+                f"Enter setup dir for {model_name}",
                 style,
                 default=os.path.join(parent_dir, f"setup_{str(setup_num).zfill(2)}"),
                 type=click.Path(),
@@ -235,7 +262,7 @@ def setup_models(model_names, parent_dir=None, style="train"):
             setups_to_train.append((model_name, setup_dir))
         else:
             choice = cli_prompt(
-                f"Use pretrained {model_name} or train from scratch?", 
+                f"Use pretrained {model_name} or train from scratch?",
                 style,
                 type=click.Choice(["pretrained", "new"]),
                 default="pretrained",
@@ -243,18 +270,22 @@ def setup_models(model_names, parent_dir=None, style="train"):
             )
             if choice == "new":
                 setup_dir = cli_prompt(
-                    f"Enter new setup dir for {model_name}", 
+                    f"Enter new setup dir for {model_name}",
                     style,
-                    default=os.path.join(parent_dir, f"setup_{str(setup_num).zfill(2)}"),
+                    default=os.path.join(
+                        parent_dir, f"setup_{str(setup_num).zfill(2)}"
+                    ),
                     type=click.Path(),
                 )
                 setup_dir = os.path.abspath(setup_dir)
                 copy_model_scripts(model_name, setup_dir)
                 setups_to_train.append((model_name, setup_dir))
             elif choice == "pretrained":
-                setup_dir = os.path.join(os.path.dirname(__file__), "models", model_name)
+                setup_dir = os.path.join(
+                    os.path.dirname(__file__), "models", model_name
+                )
                 setup_dir = cli_prompt(
-                    f"Enter existing setup dir for {model_name}", 
+                    f"Enter existing setup dir for {model_name}",
                     style,
                     default=setup_dir,
                     type=click.Path(exists=True, file_okay=False, dir_okay=True),
@@ -264,22 +295,26 @@ def setup_models(model_names, parent_dir=None, style="train"):
 
                 # check if pretrained model checkpoints exist
                 checkpoints = [
-                    c for c in os.listdir(setup_dir) if 'model_checkpoint_' in c
+                    c for c in os.listdir(setup_dir) if "model_checkpoint_" in c
                 ]
 
                 if not checkpoints:
                     cli_echo(f"No pretrained checkpoints found in {setup_dir}", style)
 
                     download = cli_confirm(
-                        click.style(f"Download pretrained checkpoints for {model_name}?", style),
+                        click.style(
+                            f"Download pretrained checkpoints for {model_name}?", style
+                        ),
                         default=True,
                     )
 
                     if download:
                         download_checkpoints(model_name, setup_dir)
                     else:
-                        raise ValueError(f"Please either download checkpoints or train from scratch")
-                
+                        raise ValueError(
+                            f"Please either download checkpoints or train from scratch"
+                        )
+
         setup_dirs.append(setup_dir)
         setup_num += 1
         click.echo()
@@ -291,7 +326,7 @@ def choose_seg_method_params(aff_neighborhood=None, style="segment"):
     # choose method and params ?
     if cli_confirm("Specify segmentation method?", style, default=False):
         method = cli_prompt(
-            "Enter segmentation method", 
+            "Enter segmentation method",
             style,
             type=click.Choice(["ws", "mws", "cc"]),
             show_choices=True,
@@ -314,14 +349,14 @@ def choose_seg_method_params(aff_neighborhood=None, style="segment"):
 def download_checkpoints(model_name, setup_dir, style="prepare"):
     if model_name not in MODEL_URLS:
         raise ValueError(f"Unknown model: {model_name}")
-    
+
     url = MODEL_URLS[model_name]
     file_path = os.path.join(setup_dir, "checkpoints.zip")
-    
+
     cli_echo(f"Downloading {model_name} checkpoints zip to {setup_dir}...", style)
     response = requests.get(url, stream=True)
     total_size = int(response.headers.get("content-length", 0))
-    
+
     with open(file_path, "wb") as file, tqdm(
         desc=model_name,
         total=total_size,
@@ -332,10 +367,10 @@ def download_checkpoints(model_name, setup_dir, style="prepare"):
         for data in response.iter_content(chunk_size=1024):
             size = file.write(data)
             progress_bar.update(size)
-    
+
     # unzip checkpoints
     cli_echo(f"Unzipping {model_name} checkpoints in {setup_dir}...", style)
-    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+    with zipfile.ZipFile(file_path, "r") as zip_ref:
         zip_ref.extractall(setup_dir)
 
     # clean up
@@ -345,12 +380,12 @@ def download_checkpoints(model_name, setup_dir, style="prepare"):
 def create_training_config(volumes, parent_dir=None, style="train"):
 
     click.echo()
-    cli_echo(
-        f"Creating training configs..", style
-    )
+    cli_echo(f"Creating training configs..", style)
 
     # get model names and setup dirs
-    model_names = choose_models() # sequence of model names, with output of one being input to the next
+    model_names = (
+        choose_models()
+    )  # sequence of model names, with output of one being input to the next
     setup_dirs, setups_to_train = setup_models(model_names, parent_dir)
 
     # get voxel size from volumes, assume all volumes have same voxel size
@@ -359,9 +394,21 @@ def create_training_config(volumes, parent_dir=None, style="train"):
 
     # create training configs
     for model_name, setup_dir in setups_to_train:
-        max_iterations = cli_prompt(f"Enter max iterations for {model_name}", style, default=30001, type=int)
-        save_checkpoints_every = cli_prompt(f"Enter save checkpoints every for {model_name}", style, default=5000, type=int)
-        save_snapshots_every = cli_prompt(f"Enter save snapshots every for {model_name}", style, default=1000, type=int)
+        max_iterations = cli_prompt(
+            f"Enter max iterations for {model_name}", style, default=30001, type=int
+        )
+        save_checkpoints_every = cli_prompt(
+            f"Enter save checkpoints every for {model_name}",
+            style,
+            default=5000,
+            type=int,
+        )
+        save_snapshots_every = cli_prompt(
+            f"Enter save snapshots every for {model_name}",
+            style,
+            default=1000,
+            type=int,
+        )
 
         train_config = {
             "setup_dir": setup_dir,
@@ -371,12 +418,16 @@ def create_training_config(volumes, parent_dir=None, style="train"):
             "save_snapshots_every": save_snapshots_every,
         }
 
-        if '_from_' not in model_name:
-            train_config['samples'] = [
+        if "_from_" not in model_name:
+            train_config["samples"] = [
                 {
                     "raw": v["raw_dataset"],
                     "labels": v["labels_dataset"],
-                    "mask": None if "labels_mask_dataset" not in v else v["labels_mask_dataset"],
+                    "mask": (
+                        None
+                        if "labels_mask_dataset" not in v
+                        else v["labels_mask_dataset"]
+                    ),
                 }
                 for _, v in volumes.items()
                 if v["labels_dataset"] is not None
@@ -384,10 +435,7 @@ def create_training_config(volumes, parent_dir=None, style="train"):
 
         configs[setup_dir] = check_and_update(train_config, style=style)
 
-    return {
-        'setup_dirs': setup_dirs,
-        'configs': configs
-    }
+    return {"setup_dirs": setup_dirs, "configs": configs}
 
 
 def create_prediction_configs(volumes, setup_dirs, style="predict"):
@@ -399,17 +447,25 @@ def create_prediction_configs(volumes, setup_dirs, style="predict"):
     iterations = []
     setup_names = []
     for i, setup_dir in enumerate(setup_dirs):
-        iteration = cli_prompt(f"Enter checkpoint iteration for model {i+1}: {os.path.basename(setup_dir)}", 
+        iteration = cli_prompt(
+            f"Enter checkpoint iteration for model {i+1}: {os.path.basename(setup_dir)}",
             style,
             type=int,
-            default=5000*len(volumes) if i == 0 else 3000,
+            default=5000 * len(volumes) if i == 0 else 3000,
             show_default=True,
         )
         iterations.append(iteration)
-        setup_names.append(get_setup_name(setup_dir)) 
+        setup_names.append(get_setup_name(setup_dir))
 
-    num_gpus = cli_prompt("Enter number of GPUs to use for prediction", style, type=int, default=1)
-    num_workers = cli_prompt("Enter number of CPU workers to use for prediction", style, type=int, default=num_gpus)
+    num_gpus = cli_prompt(
+        "Enter number of GPUs to use for prediction", style, type=int, default=1
+    )
+    num_workers = cli_prompt(
+        "Enter number of CPU workers to use for prediction",
+        style,
+        type=int,
+        default=num_gpus,
+    )
 
     # loop over volumes
     configs = {}
@@ -423,7 +479,7 @@ def create_prediction_configs(volumes, setup_dirs, style="predict"):
         cli_echo(f"Creating prediction configs for {volume_name}", style)
 
         roi_offset, roi_shape, _ = get_sub_roi(in_array=raw_array, style=style)
-        output_datasets = [] # list of lists of output datasets per setup per volume
+        output_datasets = []  # list of lists of output datasets per setup per volume
 
         # loop over setups
         for i, setup_dir in enumerate(setup_dirs):
@@ -444,13 +500,15 @@ def create_prediction_configs(volumes, setup_dirs, style="predict"):
             if i == 0 and chain_str == "":
                 in_ds = [raw_array]
                 out_ds = {
-                    f"{out_ds_prefix}/{iteration}/{x}" : model_outputs[x]
+                    f"{out_ds_prefix}/{iteration}/{x}": model_outputs[x]
                     for x in model_outputs
                 }
             else:
                 in_ds = [os.path.join(container, ds) for ds in output_datasets[-1]]
                 out_ds = {
-                    f"{out_ds_prefix}/{iteration}--from--{chain_str}/{x}" : model_outputs[x]
+                    f"{out_ds_prefix}/{iteration}--from--{chain_str}/{x}": model_outputs[
+                        x
+                    ]
                     for x in model_outputs
                 }
 
@@ -471,17 +529,26 @@ def create_prediction_configs(volumes, setup_dirs, style="predict"):
         configs[volume_name] = check_and_update(pred_config, style)
 
     pprint(output_datasets)
-    out_affs_ds = [ds for x in output_datasets for ds in x if ds.split('/')[-1].startswith("3d_affs")][-1]
+    out_affs_ds = [
+        ds
+        for x in output_datasets
+        for ds in x
+        if ds.split("/")[-1].startswith("3d_affs")
+    ][-1]
 
     return {
-        "out_affs_dataset": out_affs_ds, # final 3d affs dataset to segment
-        "out_pred_datasets": {ds: x[ds] for x in output_datasets for ds in x}, # flattened dict of pred datasets, assuming prefixes are unique for setups
+        "out_affs_dataset": out_affs_ds,  # final 3d affs dataset to segment
+        "out_pred_datasets": {
+            ds: x[ds] for x in output_datasets for ds in x
+        },  # flattened dict of pred datasets, assuming prefixes are unique for setups
         "configs": configs,
     }
 
 
-def create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=None, style="segment"):
-    
+def create_segmentation_configs(
+    volumes, out_affs_ds, aff_neighborhood=None, style="segment"
+):
+
     click.echo()
     cli_echo(f"Creating segmentation configs for {out_affs_ds}", style)
 
@@ -511,14 +578,21 @@ def create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=None, sty
         if cli_confirm(f"Do blockwise = {do_blockwise}. Switch?", style, default=False):
             do_blockwise = not do_blockwise
 
-        if do_blockwise and cli_confirm(f"Set block shape and context?", style, default=False):
-            block_shape = cli_prompt("Enter block shape in voxels (e.g. 128,128,128), or 'roi' for single block with daisy", style)
+        if do_blockwise and cli_confirm(
+            f"Set block shape and context?", style, default=False
+        ):
+            block_shape = cli_prompt(
+                "Enter block shape in voxels (e.g. 128,128,128), or 'roi' for single block with daisy",
+                style,
+            )
             context = cli_prompt("Enter context in voxels (e.g. 128,128,128)", style)
             if block_shape is not None and block_shape != "roi":
                 block_shape = [int(x) for x in block_shape.split(",")]
             if context:
                 context = [int(x) for x in context.split(",")]
-            num_workers = cli_prompt("Enter number of workers", style, default=10, type=int)
+            num_workers = cli_prompt(
+                "Enter number of workers", style, default=10, type=int
+            )
         else:
             block_shape = None
             context = None
@@ -547,14 +621,12 @@ def create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=None, sty
 
         # get RAG db config
         if do_blockwise:
-            sqlite_path = os.path.join(
-                container, f"{output_prefix}/rag_{method}.db"
-            )
+            sqlite_path = os.path.join(container, f"{output_prefix}/rag_{method}.db")
 
             # SQLite or not ?
             use_sqlite = not do_blockwise
             if cli_confirm(
-                f"Use SQLite for RAG = {use_sqlite}. Switch?", 
+                f"Use SQLite for RAG = {use_sqlite}. Switch?",
                 style,
                 default=False,
                 show_default=True,
@@ -564,7 +636,7 @@ def create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=None, sty
             sqlite_path = sqlite_path if use_sqlite else None
 
             # get rag db config
-            seg_config["db"] = get_rag_db_config(sqlite_path) 
+            seg_config["db"] = get_rag_db_config(sqlite_path)
 
         configs[volume_name] = check_and_update(seg_config, style)
 
@@ -572,7 +644,7 @@ def create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=None, sty
 
 
 def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="evaluate"):
-    
+
     click.echo()
     cli_echo(f"Creating evaluation configs..", style)
 
@@ -588,43 +660,51 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
 
         # gt labels evaluation ?
         if cli_confirm(
-            "Are ground truth labels available for {volume_name}?", 
+            "Are ground truth labels available for {volume_name}?",
             style,
             default=False,
         ):
-            gt_labels_ds = os.path.abspath(cli_prompt(
-                "Enter path to ground truth labels dataset (press enter to skip)", 
-                style,
-                type=click.Path(exists=True, dir_okay=True, file_okay=False),
-                default=None,
-            ))
+            gt_labels_ds = os.path.abspath(
+                cli_prompt(
+                    "Enter path to ground truth labels dataset (press enter to skip)",
+                    style,
+                    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+                    default=None,
+                )
+            )
         else:
             gt_labels_ds = None
 
         # gt skeletons evaluation ?
         if cli_confirm(
-            "Are ground truth skeletons available for {volume_name}?", 
+            "Are ground truth skeletons available for {volume_name}?",
             style,
             default=False,
         ):
-            gt_skeletons_file = os.path.abspath(cli_prompt(
-                "Enter path to ground truth skeletons file (.graphml format) (press enter to skip)", 
-                style,
-                type=click.Path(exists=True, dir_okay=False, file_okay=True),
-                default=None,
-            ))
+            gt_skeletons_file = os.path.abspath(
+                cli_prompt(
+                    "Enter path to ground truth skeletons file (.graphml format) (press enter to skip)",
+                    style,
+                    type=click.Path(exists=True, dir_okay=False, file_okay=True),
+                    default=None,
+                )
+            )
         else:
             gt_skeletons_file = None
 
         # self pred evaluation ?
-        if cli_confirm(f"Compute prediction errors for {volume_name}?", style, default=True):
-            pred_choices = [ds for ds in pred_datasets if ds.split('/')[-1].startswith("3d_")]
+        if cli_confirm(
+            f"Compute prediction errors for {volume_name}?", style, default=True
+        ):
+            pred_choices = [
+                ds for ds in pred_datasets if ds.split("/")[-1].startswith("3d_")
+            ]
 
             if len(pred_choices) == 1:
                 pred_ds_name = pred_choices[0]
             elif len(pred_choices) > 1:
                 pred_ds_name = cli_prompt(
-                    f"Select {volume_name} predictions to self-evaluate with", 
+                    f"Select {volume_name} predictions to self-evaluate with",
                     style,
                     type=click.Choice(pred_choices),
                     default=pred_choices[-1],
@@ -633,7 +713,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
             else:
                 pred_ds_name = None
 
-            pred_type = pred_ds_name.split('/')[-1][3:7]
+            pred_type = pred_ds_name.split("/")[-1][3:7]
             try:
                 pred_ds = pred_datasets[pred_ds_name]
             except:
@@ -642,18 +722,31 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
             # check pred type, params
             if pred_type == "lsds":
                 if "sigma" not in pred_ds:
-                    pred_ds["sigma"] = literal_eval(cli_prompt(
-                        f"Enter sigma (in world units, as int or tuple of int) for {pred_ds_name}", style, default=str(volume["voxel_size"][-1]*10),
-                    ))
+                    pred_ds["sigma"] = literal_eval(
+                        cli_prompt(
+                            f"Enter sigma (in world units, as int or tuple of int) for {pred_ds_name}",
+                            style,
+                            default=str(volume["voxel_size"][-1] * 10),
+                        )
+                    )
             elif pred_type == "affs":
                 if "neighborhood" not in pred_ds:
                     default_nbhd_str = "[[1, 0, 0], [0, 1, 0], [0, 0, 1], [2, 0, 0], [0, 8, 0], [0, 0, 8]]"
-                    pred_ds["neighborhood"] = literal_eval(cli_prompt(
-                        f"Enter literal string of list of offsets to compute affinities from segmentation", style, default=default_nbhd_str,
-                    ))
+                    pred_ds["neighborhood"] = literal_eval(
+                        cli_prompt(
+                            f"Enter literal string of list of offsets to compute affinities from segmentation",
+                            style,
+                            default=default_nbhd_str,
+                        )
+                    )
                 else:
-                    if not isinstance(pred_ds["neighborhood"], list) or not all(isinstance(x, list) and all(isinstance(y, int) for y in x) for x in pred_ds["neighborhood"]):
-                        raise ValueError(f"{pred_ds_name}'s neighborhood must be a list of lists of int, not {pred_ds['neighborhood']}")
+                    if not isinstance(pred_ds["neighborhood"], list) or not all(
+                        isinstance(x, list) and all(isinstance(y, int) for y in x)
+                        for x in pred_ds["neighborhood"]
+                    ):
+                        raise ValueError(
+                            f"{pred_ds_name}'s neighborhood must be a list of lists of int, not {pred_ds['neighborhood']}"
+                        )
             else:
                 raise ValueError(f"Unknown prediction type for {pred_ds_name}")
         else:
@@ -683,9 +776,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
                 "thresholds": [0.1, 1.0],
             }
             if pred_type == "lsds":
-                eval_config["self"]["params"] = {
-                    "lsd_sigma": pred_ds["sigma"]
-                }
+                eval_config["self"]["params"] = {"lsd_sigma": pred_ds["sigma"]}
             else:
                 eval_config["self"]["params"] = {
                     "aff_neighborhood": pred_ds["neighborhood"]
@@ -746,9 +837,15 @@ def create_filter_configs(volumes, in_seg_prefix, eval_dir, style="filter"):
             "labels_dataset": out_seg_ds,
             "labels_mask_dataset": out_mask_ds,
             "voxel_size": volume["voxel_size"],
-            "previous_labels_datasets": [volume['labels_dataset'],] + volume.get("previous_labels_datasets", []),
-            "previous_labels_mask_datasets": [volume['labels_mask_dataset'],] + volume.get("previous_labels_mask_datasets", [])
-        }   
+            "previous_labels_datasets": [
+                volume["labels_dataset"],
+            ]
+            + volume.get("previous_labels_datasets", []),
+            "previous_labels_mask_datasets": [
+                volume["labels_mask_dataset"],
+            ]
+            + volume.get("previous_labels_mask_datasets", []),
+        }
 
     return {"out_volumes": out_volumes, "configs": configs}
 
@@ -779,7 +876,9 @@ def make_round_configs(volumes, round_dir):
     out_affs_ds = pred_config["out_affs_dataset"]
     out_pred_datasets = pred_config["out_pred_datasets"]
     out_aff_neighborhood = out_pred_datasets[out_affs_ds]["neighborhood"]
-    seg_configs = create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=out_aff_neighborhood)
+    seg_configs = create_segmentation_configs(
+        volumes, out_affs_ds, aff_neighborhood=out_aff_neighborhood
+    )
     for volume_name in pred_config["configs"]:
         save_config(
             seg_configs["configs"][volume_name],
@@ -789,8 +888,8 @@ def make_round_configs(volumes, round_dir):
 
     out_seg_prefix = seg_configs["out_seg_prefix"]
     eval_configs = create_evaluation_configs(
-        volumes, 
-        out_seg_prefix, 
+        volumes,
+        out_seg_prefix,
         out_pred_datasets,
     )
     for volume_name in pred_config["configs"]:

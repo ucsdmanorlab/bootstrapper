@@ -62,14 +62,16 @@ def compute_errors(
     elif "3d_affs_" in pred_name:
         error_type = "aff"
         num_aff_offsets = pred_ds.shape[0]
-        neighborhood = kwargs.get("aff_neighborhood",[
-            [1, 0, 0],
-            [0, 1, 0],
-            [0, 0, 1],
-            [2, 0, 0],
-            [0, 8, 0],
-            [0, 0, 8],
-            ]
+        neighborhood = kwargs.get(
+            "aff_neighborhood",
+            [
+                [1, 0, 0],
+                [0, 1, 0],
+                [0, 0, 1],
+                [2, 0, 0],
+                [0, 8, 0],
+                [0, 0, 8],
+            ],
         )
         neighborhood = neighborhood[:num_aff_offsets]
         logging.info(f"Computing Affinities errors with neighborhood={neighborhood}")
@@ -80,9 +82,9 @@ def compute_errors(
     roi = pred_ds.roi.intersect(seg_ds.roi).intersect(mask_roi)
     if roi_offset is not None:
         roi_offset = Coordinate(roi_offset)
-        roi_shape  = Coordinate(roi_shape)
+        roi_shape = Coordinate(roi_shape)
         roi = Roi(roi_offset, roi_shape).intersect(roi)
-        
+
     # io shapes #TODO: unhardcode shapes, use chunk shape
     output_shape = Coordinate((8, 256, 256))
     input_shape = Coordinate((12, 384, 384))
@@ -233,7 +235,6 @@ def compute_errors(
 
 
 def compute_stats(array):
-
 
     total_voxels = int(np.prod(array.shape))
     num_nonzero_voxels = array[array > 0].size

@@ -43,9 +43,13 @@ def simple_mutex(config):
         raise ValueError("Affinities neighborrhood must be provided")
     if bias is None:
         raise ValueError("Affinities bias must be provided")
-    
-    assert len(neighborhood) == affs.shape[0], "Number of offsets must match number of affinities channels"
-    assert len(neighborhood) == len(bias), "Numbes of biases must match number of affinities channels"
+
+    assert (
+        len(neighborhood) == affs.shape[0]
+    ), "Number of offsets must match number of affinities channels"
+    assert len(neighborhood) == len(
+        bias
+    ), "Numbes of biases must match number of affinities channels"
 
     # get total ROI
     if roi_offset is not None:
@@ -70,17 +74,11 @@ def simple_mutex(config):
         mask = None
 
     if mask is not None:
-        affs_data *= (mask > 0).astype(np.uint8) 
+        affs_data *= (mask > 0).astype(np.uint8)
 
     # watershed
     fragments_data = mwatershed_from_affinities(
-        affs_data,
-        neighborhood,
-        bias,
-        sigma,
-        noise_eps,
-        strides,
-        randomized_strides
+        affs_data, neighborhood, bias, sigma, noise_eps, strides, randomized_strides
     )
 
     # write fragments
@@ -99,13 +97,11 @@ def simple_mutex(config):
     if remove_debris > 0:
         fragments_dtype = fragments_data.dtype
         fragments_data = fragments_data.astype(np.int64)
-        fragments_data = remove_small_objects(
-            fragments_data, min_size=remove_debris
-        )
+        fragments_data = remove_small_objects(fragments_data, min_size=remove_debris)
         fragments_data = fragments_data.astype(fragments_dtype)
 
     # write segmentation
-    bias_str = '_'.join([str(int(x*10)) for x in bias])
+    bias_str = "_".join([str(int(x * 10)) for x in bias])
     seg_ds_name = os.path.join(seg_ds_prefix, bias_str)
     seg = prepare_ds(
         seg_ds_name,
@@ -128,12 +124,12 @@ def mutex_watershed_segmentation(config):
     block_shape = config.get("block_shape", None)
 
     if roi_offset is not None:
-        config['roi_offset'] = list(map(int, roi_offset.strip().split(" ")))
-        config['roi_shape'] = list(map(int, roi_shape.strip().split(" ")))
+        config["roi_offset"] = list(map(int, roi_offset.strip().split(" ")))
+        config["roi_shape"] = list(map(int, roi_shape.strip().split(" ")))
 
     if blockwise:
         if block_shape == "roi":
-            config['blockwise'] = False
+            config["blockwise"] = False
         volara_pipeline(config)
     else:
         simple_mutex(config)

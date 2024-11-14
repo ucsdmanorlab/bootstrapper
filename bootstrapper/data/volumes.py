@@ -11,11 +11,19 @@ def process_zarr(path, output_zarr, type, style="prepare"):
     cli_echo(f"Processing {path}", style)
     in_array = zarr.open(path)
 
-    do_bbox = cli_confirm("Perform bounding box crop?", style, default=False if type == "raw" else True)
-    copy_to_output = cli_confirm(f"Copy {path} to output container {output_zarr}?", style, default=False)
+    do_bbox = cli_confirm(
+        "Perform bounding box crop?", style, default=False if type == "raw" else True
+    )
+    copy_to_output = cli_confirm(
+        f"Copy {path} to output container {output_zarr}?", style, default=False
+    )
 
     if do_bbox or copy_to_output:
-        out_ds_path = cli_prompt(f"Enter output {type.upper()} dataset path", style, default=os.path.join(output_zarr, type))
+        out_ds_path = cli_prompt(
+            f"Enter output {type.upper()} dataset path",
+            style,
+            default=os.path.join(output_zarr, type),
+        )
     else:
         out_ds_path = path
 
@@ -36,7 +44,13 @@ def process_zarr(path, output_zarr, type, style="prepare"):
             return out_ds_path, in_array.attrs["voxel_size"]
 
         # copy contents of in_array into a new zarr array at out_ds_path, with attrs
-        out_array = zarr.open(out_ds_path, mode='w', shape=in_array.shape, chunks=in_array.chunks, dtype=in_array.dtype)
+        out_array = zarr.open(
+            out_ds_path,
+            mode="w",
+            shape=in_array.shape,
+            chunks=in_array.chunks,
+            dtype=in_array.dtype,
+        )
         out_array.attrs.update(in_array.attrs)
         out_array[:] = in_array[:]
 
@@ -46,13 +60,13 @@ def process_zarr(path, output_zarr, type, style="prepare"):
 def process_non_zarr(path, output_zarr, type, style="prepare"):
 
     dataset_name = cli_prompt(
-        f"Enter output {type.upper()} dataset path", 
+        f"Enter output {type.upper()} dataset path",
         style,
         default=f"{type}",
     )
     out_array = os.path.join(output_zarr, dataset_name)
     dtype = cli_prompt(
-        "Enter data type", 
+        "Enter data type",
         style,
         default="uint32" if type == "labels" else "uint8",
     )
@@ -65,24 +79,20 @@ def process_non_zarr(path, output_zarr, type, style="prepare"):
     )
     voxel_offset = tuple(
         cli_prompt(
-            "Enter voxel offset (space separated integers)", 
+            "Enter voxel offset (space separated integers)",
             style,
             default="0 0 0",
         ).split()
     )
     axis_names = tuple(
         cli_prompt(
-            click.style(
-                "Enter axis names (space separated strings)", style
-            ),
+            click.style("Enter axis names (space separated strings)", style),
             default="z y x",
         ).split()
     )
     units = tuple(
         cli_prompt(
-            click.style(
-                "Enter units (space separated strings)", style
-            ),
+            click.style("Enter units (space separated strings)", style),
             default="nm nm nm",
         ).split()
     )
@@ -127,21 +137,39 @@ def process_dataset(path, output_zarr, type, style="prepare"):
     if os.path.isdir(path) and os.path.exists(os.path.join(path, ".zarray")):
         ds_name, vs = process_zarr(path, output_zarr, type)
     elif os.path.isdir(path) and path.endswith(".zarr") or path.endswith(".zarr/"):
-        raise ValueError(f"{path} is not a valid zarr dataset, it must contain a .zarray file")
+        raise ValueError(
+            f"{path} is not a valid zarr dataset, it must contain a .zarray file"
+        )
     else:
         ds_name, vs = process_non_zarr(path, output_zarr, type)
 
     out_ds_name = f"{ds_name}"
 
     # make or provide mask
-    if cli_confirm(f"Make or provide {type} mask?", style, default=False,):
+    if cli_confirm(
+        f"Make or provide {type} mask?",
+        style,
+        default=False,
+    ):
         if cli_confirm("Make mask?", style, default=False):
             mask_ds_name = out_ds_name.replace(type, f"{type}_mask")
             subprocess.run(
-                ["bs", "utils", "mask", "-i", out_ds_name, "-o", mask_ds_name, "-m", type]
+                [
+                    "bs",
+                    "utils",
+                    "mask",
+                    "-i",
+                    out_ds_name,
+                    "-o",
+                    mask_ds_name,
+                    "-m",
+                    type,
+                ]
             )
         elif cli_confirm("Provide mask?", style, default=False):
-            mask_ds_name = cli_prompt("Enter path to mask dataset", style, type=click.Path(exists=True))
+            mask_ds_name = cli_prompt(
+                "Enter path to mask dataset", style, type=click.Path(exists=True)
+            )
     else:
         mask_ds_name = None
 
@@ -154,14 +182,18 @@ def prepare_volume(volume_path, style="prepare"):
         output_zarr = os.path.abspath(volume_path)
     else:
         raise ValueError(f"Volume (output container) path must end in .zarr")
-    
+
     # get volume name
     volume_name = os.path.basename(volume_path).split(".zarr")[0]
 
     # procress raw
     while True:
         try:
-            path = cli_prompt(f"Enter path to input RAW 3D image, directory of 2D images, or zarr array for {volume_name}", style, type=click.Path(exists=True))
+            path = cli_prompt(
+                f"Enter path to input RAW 3D image, directory of 2D images, or zarr array for {volume_name}",
+                style,
+                type=click.Path(exists=True),
+            )
             path = os.path.abspath(path)
             raw_ds, raw_mask, raw_vs = process_dataset(path, output_zarr, "raw")
             break
@@ -172,7 +204,12 @@ def prepare_volume(volume_path, style="prepare"):
 
     # process labels
     click.echo()
-    path = cli_prompt(f"Enter path to input LABELS 3D image, directory of 2D images, or zarr container for {volume_name} (enter to skip)", style, default=" ", show_default=False)
+    path = cli_prompt(
+        f"Enter path to input LABELS 3D image, directory of 2D images, or zarr container for {volume_name} (enter to skip)",
+        style,
+        default=" ",
+        show_default=False,
+    )
     path = None if path == " " else os.path.abspath(path)
     obj_ds, obj_mask, obj_vs = process_dataset(path, output_zarr, "labels")
 

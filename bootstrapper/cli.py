@@ -25,26 +25,27 @@ class CommandGroup(click.Group):
             "filter",
             "view",
             "utils",
-            "run"
+            "run",
         ]
-    
+
     def get_command(self, ctx, cmd_name):
         ret = click.Group.get_command(self, ctx, cmd_name)
         if ret is not None:
             return ret
-        
+
         aliases = {
-            'prep': 'prepare',
-            'pred': 'predict',
-            'infer': 'predict',
-            'seg': 'segment',
-            'eval': 'evaluate',
-            'refine': 'filter',       
+            "prep": "prepare",
+            "pred": "predict",
+            "infer": "predict",
+            "seg": "segment",
+            "eval": "evaluate",
+            "refine": "filter",
         }
 
         if cmd_name in aliases:
             return click.Group.get_command(self, ctx, aliases[cmd_name])
         return None
+
 
 @click.group(cls=CommandGroup)
 def cli():
@@ -60,6 +61,7 @@ cli.add_command(segment)
 cli.add_command(evaluate)
 cli.add_command(filter)
 cli.add_command(utils)
+
 
 @cli.command()
 @click.argument("config_path", type=click.Path(exists=True))
@@ -84,9 +86,12 @@ def run(ctx, config_path):
     elif "out_result_dir" in config or "self" in config or "gt" in config:
         click.secho(f"Running evaluate command on {config_path}")
         ctx.invoke(evaluate, config_file=config_path)
-    elif "eval_dir" in config or "seg__dataset_prefix" in config or "seg_datasets" in config:
+    elif (
+        "eval_dir" in config
+        or "seg__dataset_prefix" in config
+        or "seg_datasets" in config
+    ):
         click.secho(f"Running filter command on {config_path}")
         ctx.invoke(filter, config_file=config_path)
     else:
         raise ValueError(f"Unable to determine command for {config_path}")
-

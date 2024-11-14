@@ -82,12 +82,15 @@ def train(
                 gp.ArraySource(raw, open_ds(sample["raw"]), True),
                 gp.ArraySource(labels, open_ds(sample["labels"]), False),
                 gp.ArraySource(unlabelled, open_ds(sample["mask"]), False),
-            ) + gp.MergeProvider() 
+            )
+            + gp.MergeProvider()
             if "mask" in sample and sample["mask"] is not None
             else (
                 gp.ArraySource(raw, open_ds(sample["raw"]), True),
                 gp.ArraySource(labels, open_ds(sample["labels"]), False),
-            ) + gp.MergeProvider() + CreateMask(labels, unlabelled)
+            )
+            + gp.MergeProvider()
+            + CreateMask(labels, unlabelled)
         )
         + gp.Normalize(raw)
         + Renumber(labels)

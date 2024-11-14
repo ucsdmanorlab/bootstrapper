@@ -48,7 +48,7 @@ def train(
 
     # get lsd sigma
     sigma = net_config["outputs"]["2d_lsds"]["sigma"]
-    sigma = (0, sigma, sigma) # add z-dimension since pipeline is 3D
+    sigma = (0, sigma, sigma)  # add z-dimension since pipeline is 3D
 
     shape_increase = [0, 0, 0]  # net_config["shape_increase"]
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]

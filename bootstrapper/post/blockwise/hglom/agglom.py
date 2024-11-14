@@ -1,4 +1,3 @@
-import os
 import click
 import time
 import logging
@@ -11,6 +10,7 @@ from funlib.persistence import open_ds
 import daisy
 
 logging.basicConfig(level=logging.INFO)
+
 
 def agglomerate_in_block(affs, fragments, db_config, shift, merge_function, block):
 
@@ -75,9 +75,9 @@ def agglomerate_in_block(affs, fragments, db_config, shift, merge_function, bloc
         affs_data = affs_data.astype(np.float32)
 
     if shift is not None:
-        sigma = shift['sigma']
-        noise_eps = shift['noise_eps']
-        bias = shift['bias']
+        sigma = shift["sigma"]
+        noise_eps = shift["noise_eps"]
+        bias = shift["bias"]
 
         shift = np.zeros_like(affs_data)
 
@@ -93,10 +93,8 @@ def agglomerate_in_block(affs, fragments, db_config, shift, merge_function, bloc
                 bias = [bias] * affs_data.shape[0]
             else:
                 assert len(bias) == affs_data.shape[0]
-            
-            shift += np.array([bias]).reshape(
-                (-1, *((1,) * (len(affs.shape) - 1)))
-            )
+
+            shift += np.array([bias]).reshape((-1, *((1,) * (len(affs.shape) - 1))))
 
         affs_data += shift
 
@@ -289,7 +287,9 @@ def agglomerate(config):
 
 
 @click.command()
-@click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.argument(
+    "config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False)
+)
 def agglom(config_file):
     """
     Agglomerate fragments using waterz and daisy.

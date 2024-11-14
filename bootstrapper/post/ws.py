@@ -1,7 +1,8 @@
 import numpy as np
 from scipy.ndimage import label, maximum_filter, gaussian_filter, distance_transform_edt
 from skimage.segmentation import watershed as skimage_watershed
-#from mahotas import cwatershed
+
+# from mahotas import cwatershed
 
 
 def watershed_from_boundary_distance(
@@ -22,8 +23,10 @@ def watershed_from_boundary_distance(
 
     seeds[seeds != 0] += id_offset
 
-    fragments = skimage_watershed(boundary_distances.max() - boundary_distances, seeds, mask=boundary_mask)
-    #fragments = cwatershed(boundary_distances.max() - boundary_distances, seeds)
+    fragments = skimage_watershed(
+        boundary_distances.max() - boundary_distances, seeds, mask=boundary_mask
+    )
+    # fragments = cwatershed(boundary_distances.max() - boundary_distances, seeds)
 
     ret = (fragments.astype(np.uint64), n + id_offset)
     if return_seeds:

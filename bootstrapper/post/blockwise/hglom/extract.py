@@ -90,7 +90,9 @@ def extract_segmentations(config):
         )
 
         # read LUT
-        lut_filename = f"{config["db"]['edges_table']}_{str(int(threshold*100)).zfill(2)}"
+        lut_filename = (
+            f"{config["db"]['edges_table']}_{str(int(threshold*100)).zfill(2)}"
+        )
         lut = os.path.join(lut_dir, lut_filename + ".npz")
         assert os.path.exists(path=lut), f"{lut} does not exist"
         lut = np.load(file=lut)["fragment_segment_lut"]
@@ -120,7 +122,9 @@ def extract_segmentations(config):
 
 
 @click.command()
-@click.argument("config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.argument(
+    "config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False)
+)
 def extract(config_file, **kwargs):
     """
     Extracts segmentations from fragments using LUTs
