@@ -5,12 +5,7 @@ def create_style_palette(base_color):
     return {
         "info": {"fg": base_color, "dim": True},
         "prompt": {"fg": base_color, "italic": True},
-        "success": {
-            "fg": f"bright_{base_color}",
-            "bg": "green",
-            "bold": True,
-            "dim": True,
-        },
+        "success": {"fg": f"bright_{base_color}", "bold": True},
         "error": {"fg": f"bright_{base_color}", "bg": "red", "bold": True},
         "warning": {"fg": f"bright_{base_color}", "bg": "yellow", "bold": True},
     }

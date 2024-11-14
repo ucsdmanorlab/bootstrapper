@@ -219,7 +219,7 @@ def choose_models(style="train"):
                 show_choices=True,
             )
 
-        if cli_confirm(f"Add {pred_model} to training config?", style, default=True):
+        if cli_confirm(f"Enter whether to add {pred_model} to training config?", style, default=True):
             model_names.append(pred_model)
             previous_model = pred_model
             i += 1
@@ -262,7 +262,7 @@ def setup_models(model_names, parent_dir=None, style="train"):
             setups_to_train.append((model_name, setup_dir))
         else:
             choice = cli_prompt(
-                f"Use pretrained {model_name} or train from scratch?",
+                f"Enter whether to use pretrained {model_name} or train from scratch?",
                 style,
                 type=click.Choice(["pretrained", "new"]),
                 default="pretrained",
@@ -302,9 +302,8 @@ def setup_models(model_names, parent_dir=None, style="train"):
                     cli_echo(f"No pretrained checkpoints found in {setup_dir}", style)
 
                     download = cli_confirm(
-                        click.style(
-                            f"Download pretrained checkpoints for {model_name}?", style
-                        ),
+                        f"Enter whether to download pretrained checkpoints for {model_name}?", 
+                        style,
                         default=True,
                     )
 
@@ -324,16 +323,13 @@ def setup_models(model_names, parent_dir=None, style="train"):
 
 def choose_seg_method_params(aff_neighborhood=None, style="segment"):
     # choose method and params ?
-    if cli_confirm("Specify segmentation method?", style, default=False):
-        method = cli_prompt(
-            "Enter segmentation method",
-            style,
-            type=click.Choice(["ws", "mws", "cc"]),
-            show_choices=True,
-            default="ws",
-        )
-    else:
-        method = "ws"
+    method = cli_prompt(
+        "Enter segmentation method",
+        style,
+        type=click.Choice(["ws", "mws", "cc"]),
+        show_choices=True,
+        default="ws",
+    )
 
     params = SEG_DEFAULTS[method]
 
@@ -704,7 +700,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
                 pred_ds_name = pred_choices[0]
             elif len(pred_choices) > 1:
                 pred_ds_name = cli_prompt(
-                    f"Select {volume_name} predictions to self-evaluate with",
+                    f"Enter {volume_name} prediction dataset to self-evaluate with",
                     style,
                     type=click.Choice(pred_choices),
                     default=pred_choices[-1],

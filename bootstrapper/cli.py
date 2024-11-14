@@ -12,6 +12,8 @@ from . import (
     utils,
 )
 
+from .segment import cli_echo
+
 
 class CommandGroup(click.Group):
     def list_commands(self, ctx):
@@ -75,23 +77,23 @@ def run(ctx, config_path):
 
     # determine command to run
     if "samples" in config:
-        click.secho(f"Running train command on {config_path}")
+        cli_echo(f"Running train command on {config_path}", "train")
         ctx.invoke(train, config_file=config_path)
     elif "chain_str" in config[config.keys()[0]]:
-        click.secho(f"Running predict command on {config_path}")
+        cli_echo(f"Running predict command on {config_path}", "predict")
         ctx.invoke(predict, config_file=config_path)
     elif "affs_dataset" in config:
-        click.secho(f"Running segment command on {config_path}")
+        cli_echo(f"Running segment command on {config_path}", "segment")
         ctx.invoke(segment, config_file=config_path)
     elif "out_result_dir" in config or "self" in config or "gt" in config:
-        click.secho(f"Running evaluate command on {config_path}")
+        cli_echo(f"Running evaluate command on {config_path}", "evaluate")
         ctx.invoke(evaluate, config_file=config_path)
     elif (
         "eval_dir" in config
-        or "seg__dataset_prefix" in config
+        or "seg_dataset_prefix" in config
         or "seg_datasets" in config
     ):
-        click.secho(f"Running filter command on {config_path}")
+        cli_echo(f"Running filter command on {config_path}", "filter")
         ctx.invoke(filter, config_file=config_path)
     else:
         raise ValueError(f"Unable to determine command for {config_path}")
