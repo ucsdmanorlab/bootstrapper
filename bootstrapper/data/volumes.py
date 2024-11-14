@@ -227,6 +227,8 @@ def prepare_volume(volume_path):
             path = os.path.abspath(path)
             raw_ds, raw_mask, raw_vs = process_dataset(path, output_zarr, "raw")
             break
+        except click.Abort:
+            raise
         except Exception as e:
             click.secho(f"{e}, try again.", **DEFAULT_INFO_STYLE)
 

@@ -51,26 +51,19 @@ def get_volumes(round_dir=None):
     volumes = []
 
     if round_dir is not None and os.path.exists(os.path.join(round_dir, "volumes.yaml")):
-        volumes_yaml = os.path.join(round_dir, "volumes.yaml")
-        if click.confirm(
+        volumes_yaml = os.path.abspath(os.path.join(round_dir, "volumes.yaml"))
+        load_volumes = click.confirm(
             click.style(f"Load volumes from {volumes_yaml}?", fg="cyan"), default=True
-        ):
-            with open(volumes_yaml) as f:
-                volumes = yaml.safe_load(f)
-                click.secho(f"Loaded volumes from {volumes_yaml}", fg="cyan", bold=True)
-    elif os.path.exists(os.path.join(os.getcwd(), "volumes.yaml")):
-        volumes_yaml = os.path.join(os.getcwd(), "volumes.yaml")
-        if click.confirm(
-            click.style(f"Load volumes from {volumes_yaml}?", fg="cyan"), default=True
-        ):
-            with open(volumes_yaml) as f:
-                volumes = yaml.safe_load(f)
-                click.secho(f"Loaded volumes from {volumes_yaml}", fg="cyan", bold=True)
-    elif click.confirm(click.style("Does volumes.yaml already exist elsewhere?", fg="cyan"), default=False):
-        volumes_yaml = click.prompt(
-            click.style("Enter path to volumes.yaml file", fg="cyan"),
-            type=click.Path(exists=True, dir_okay=False, file_okay=True),
         )
+    elif os.path.exists(os.path.join(os.getcwd(), "volumes.yaml")):
+        volumes_yaml = os.path.abspath(os.path.join(os.getcwd(), "volumes.yaml"))
+        load_volumes = click.confirm(
+            click.style(f"Load volumes from {volumes_yaml}?", fg="cyan"), default=True
+        )
+    else:
+        load_volumes = False
+
+    if load_volumes:
         with open(volumes_yaml) as f:
             volumes = yaml.safe_load(f)
             click.secho(f"Loaded volumes from {volumes_yaml}", fg="cyan", bold=True)
