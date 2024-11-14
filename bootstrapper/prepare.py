@@ -30,7 +30,7 @@ def make_volumes(round_dir=None):
         type=int,
     )
 
-    volumes = []
+    volumes = {}
     for i in range(num_volumes):
         click.echo()
         click.secho(f"Processing volume {i+1}", fg="cyan", bold=True)
@@ -41,32 +41,31 @@ def make_volumes(round_dir=None):
         )
         volume_info = prepare_volume(os.path.join(round_dir, f"{vol_name}.zarr"))
         if volume_info:
-            volumes.append(volume_info)
+            volumes[vol_name] = volume_info
 
     return volumes
 
 
 def get_volumes(round_dir=None):
     """Get volumes from config file if exists, else ask for volumes info"""
-    volumes = []
 
     if round_dir is not None and os.path.exists(os.path.join(round_dir, "volumes.toml")):
-        volume_list = os.path.abspath(os.path.join(round_dir, "volumes.toml"))
+        volumes_doc = os.path.abspath(os.path.join(round_dir, "volumes.toml"))
         load_volumes = click.confirm(
-            click.style(f"Load volumes from {volume_list}?", fg="cyan"), default=True
+            click.style(f"Load volumes from {volumes_doc}?", fg="cyan"), default=True
         )
     elif os.path.exists(os.path.join(os.getcwd(), "volumes.toml")):
-        volume_list = os.path.abspath(os.path.join(os.getcwd(), "volumes.toml"))
+        volumes_doc = os.path.abspath(os.path.join(os.getcwd(), "volumes.toml"))
         load_volumes = click.confirm(
-            click.style(f"Load volumes from {volume_list}?", fg="cyan"), default=True
+            click.style(f"Load volumes from {volumes_doc}?", fg="cyan"), default=True
         )
     else:
         load_volumes = False
 
     if load_volumes:
-        with open(volume_list) as f:
+        with open(volumes_doc) as f:
             volumes = toml.load(f)
-            click.secho(f"Loaded volumes from {volume_list}", fg="cyan", bold=True)
+            click.secho(f"Loaded volumes from {volumes_doc}", fg="cyan", bold=True)
     else:
         volumes = make_volumes(round_dir)
 
@@ -86,7 +85,7 @@ def make_configs(base_dir):
 
     click.secho(f"Existing rounds: {existing_rounds}", fg="cyan", bold=True)
 
-    out_volumes = []
+    out_volumes = {}
     i = 0
 
     while True:
@@ -101,10 +100,10 @@ def make_configs(base_dir):
         if not out_volumes:
             volumes = get_volumes(round_dir=round_dir)
         else:
-            volumes = [
-                volume | {"output_container": os.path.join(round_dir, f"{volume["name"]}.zarr")}
-                for volume in out_volumes
-            ]
+            volumes = {
+                vol_name: vol_info | {"output_container": os.path.join(round_dir, f"{vol_info['name']}.zarr")}
+                for vol_name, vol_info in out_volumes.items()
+            }
 
         click.secho(
             f"Writing volumes to {round_dir}/volumes.toml", fg="cyan", bold=True
@@ -204,12 +203,12 @@ def prep_vol():
     volumes = make_volumes()
     click.echo()
     if click.confirm(click.style("Save volumes.toml?", fg="cyan"), default=True):
-        volume_list = click.prompt(
+        volumes_doc = click.prompt(
             click.style("Enter path for new volumes.config file", fg="cyan"),
             type=click.Path(),
             default=os.path.join(os.getcwd(), "volumes.toml"),
         )
-        save_config(volumes, volume_list)
+        save_config(volumes, volumes_doc)
 
 
 @prepare.command("train")

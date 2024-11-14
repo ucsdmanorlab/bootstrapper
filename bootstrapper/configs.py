@@ -48,19 +48,15 @@ def get_setup_name(setup_dir):
 
 
 def check_and_update(configs, style=DEFAULT_PROMPT_STYLE):
-    multiple = isinstance(configs, list)
-    configs = [configs] if not multiple else configs
-
     click.echo()
-    for config in configs:
-        click.secho(pprint(config))
+    click.secho(pprint(configs))
 
     if not click.confirm(
         click.style("Enter confirmation for values above (y/n)", **style), default=True
     ):
         if edited_configs := click.edit(toml.dumps(configs)):
             configs = toml.loads(edited_configs)
-    return configs[0] if not multiple else configs
+    return configs
 
 
 def save_config(config, filename, style=DEFAULT_INFO_STYLE):
@@ -407,7 +403,7 @@ def create_training_config(volumes, parent_dir=None):
     setup_dirs, setups_to_train = setup_models(model_names, parent_dir)
 
     # get voxel size from volumes, assume all volumes have same voxel size
-    voxel_size = volumes[0]["voxel_size"]
+    voxel_size = volumes[list(volumes)[0]]["voxel_size"]
     configs = {}
 
     # create training configs
@@ -433,9 +429,9 @@ def create_training_config(volumes, parent_dir=None):
                 {
                     "raw": v["raw_dataset"],
                     "labels": v["labels_dataset"],
-                    "mask": v["labels_mask_dataset"],
+                    "mask": None if "labels_mask_dataset" not in v else v["labels_mask_dataset"],
                 }
-                for v in volumes
+                for _, v in volumes.items()
                 if v["labels_dataset"] is not None
             ]
 
@@ -480,10 +476,10 @@ def create_prediction_configs(volumes, setup_dirs):
 
     # loop over volumes
     configs = {}
-    for volume in volumes:
+    for volume_name in volumes:
         pred_config = {}
+        volume = volumes[volume_name]
         container = volume["output_container"]
-        volume_name = volume["name"]
         raw_array = volume["raw_dataset"]
 
         click.echo()
@@ -565,9 +561,9 @@ def create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=None):
     out_seg_prefix = f"{output_prefix}/segmentations_{method}"
 
     configs = {}
-    for volume in volumes:
+    for volume_name in volumes:
+        volume = volumes[volume_name]
         container = volume["output_container"]
-        volume_name = volume["name"]
         affs_array = os.path.join(container, out_affs_ds)
         frags_array = os.path.join(container, out_frags_ds)
         lut_dir = os.path.join(container, out_lut_dir)
@@ -611,7 +607,7 @@ def create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=None):
             num_workers = 1
 
         # are raw masks available ?
-        if volume["raw_mask_dataset"] is not None:
+        if "raw_mask_dataset" in volume and volume["raw_mask_dataset"] is not None:
             mask_dataset = volumes["raw_mask_dataset"]
         else:
             mask_dataset = None
@@ -666,8 +662,8 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets):
     output_prefix = os.path.dirname(out_seg_prefix)
 
     configs = {}
-    for volume in volumes:
-        volume_name = volume["name"]
+    for volume_name in volumes:
+        volume = volumes[volume_name]
         container = volume["output_container"]
 
         click.echo()
@@ -762,7 +758,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets):
 
         # are raw masks available ?
         if volume["raw_mask_dataset"] is not None:
-            mask_dataset = volumes["raw_mask_dataset"]
+            mask_dataset = volume["raw_mask_dataset"]
         else:
             mask_dataset = None
 
@@ -812,12 +808,12 @@ def create_filter_configs(volumes, in_seg_prefix, eval_dir):
     out_seg_ds_prefix = in_seg_prefix.replace("/segmentations_", "/pseudo_gt_ids_")
     out_mask_ds_prefix = in_seg_prefix.replace("/segmentations_", "/pseudo_gt_mask_")
 
-    out_volumes = []
+    out_volumes = {}
 
     configs = {}
-    for volume in volumes:
+    for volume_name in volumes:
+        volume = volumes[volume_name]
         container = volume["output_container"]
-        volume_name = volume["name"]
         out_seg_ds = os.path.join(container, out_seg_ds_prefix)
         out_mask_ds = os.path.join(container, out_mask_ds_prefix)
 
@@ -841,18 +837,17 @@ def create_filter_configs(volumes, in_seg_prefix, eval_dir):
         configs[volume_name] = check_and_update(filter_config, style=DEFAULT_FILTER_STYLE)
 
         # volumes for the next round
-        out_volumes.append(
-            {
-                "name": volume_name,
-                "raw_dataset": volume["raw_dataset"],
-                "raw_mask_dataset": volume["raw_mask_dataset"],
-                "labels_dataset": out_seg_ds,
-                "labels_mask_dataset": out_mask_ds,
-                "voxel_size": volume["voxel_size"],
-                "previous_labels_datasets": [volume['labels_dataset'],] + volume.get("previous_labels_datasets", []),
-                "previous_labels_mask_datasets": [volume['labels_mask_dataset'],] + volume.get("previous_labels_mask_datasets", [])
-            }
-        )
+        out_volumes[volume_name] = {
+            "name": volume_name,
+            "raw_dataset": volume["raw_dataset"],
+            "raw_mask_dataset": volume["raw_mask_dataset"],
+            "labels_dataset": out_seg_ds,
+            "labels_mask_dataset": out_mask_ds,
+            "voxel_size": volume["voxel_size"],
+            "previous_labels_datasets": [volume['labels_dataset'],] + volume.get("previous_labels_datasets", []),
+            "previous_labels_mask_datasets": [volume['labels_mask_dataset'],] + volume.get("previous_labels_mask_datasets", [])
+        }
+        
 
     return {"out_volumes": out_volumes, "configs": configs}
 
