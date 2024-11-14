@@ -12,7 +12,7 @@ from . import (
     utils,
 )
 
-from .segment import cli_echo
+from .styles import cli_echo
 
 
 class CommandGroup(click.Group):
