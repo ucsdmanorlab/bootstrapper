@@ -13,15 +13,8 @@ from funlib.geometry import Roi
 from funlib.persistence import open_ds
 
 from .segment import DEFAULTS as SEG_DEFAULTS
+from .styles import cli_echo, cli_prompt, cli_confirm
 
-
-DEFAULT_PROMPT_STYLE = {"fg": "cyan"}
-DEFAULT_INFO_STYLE = {"fg": "cyan", "bold": True}
-DEFAULT_TRAIN_STYLE = {"fg": "green"}
-DEFAULT_PRED_STYLE = {"fg": "yellow"}
-DEFAULT_SEG_STYLE = {"fg": "red"}
-DEFAULT_EVAL_STYLE = {"fg": "magenta"}
-DEFAULT_FILTER_STYLE = {"fg": "blue"}
 
 BS_DIR = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 MODEL_DIR = os.path.join(BS_DIR, "models")
@@ -47,39 +40,34 @@ def get_setup_name(setup_dir):
         return setup_name
 
 
-def check_and_update(configs, style=DEFAULT_PROMPT_STYLE):
+def check_and_update(configs, style=None):
     click.echo()
-    click.secho(pprint(configs))
+    cli_echo(pprint(configs))
 
-    if not click.confirm(
-        click.style("Enter confirmation for values above (y/n)", **style), default=True
-    ):
+    if cli_confirm("Edit above?", style, default=False):
         if edited_configs := click.edit(toml.dumps(configs)):
             configs = toml.loads(edited_configs)
     return configs
 
 
-def save_config(config, filename, style=DEFAULT_INFO_STYLE):
+def save_config(config, filename, style=None):
     with open(filename, "w") as f:
         toml.dump(config, f)
-    click.secho(f"{filename} saved successfully.", **style)
+    cli_echo(f"{filename} saved successfully.", style, "success")
 
 
-def copy_model_scripts(model_name, setup_dir):
+def copy_model_scripts(model_name, setup_dir, style="train"):
     src = os.path.abspath(os.path.join(BS_DIR, "models", model_name))
-    click.secho(f"Copying {src} to {setup_dir}", **DEFAULT_TRAIN_STYLE)
+    cli_echo(f"Copying {src} to {setup_dir}..", style)
     copytree(src, setup_dir, dirs_exist_ok=True)
 
     # edit net config ?
     net_config_path = os.path.join(setup_dir, "net_config.json")
-    if click.confirm(
-        click.style(f"Edit {net_config_path}?", **DEFAULT_TRAIN_STYLE),
-        default=False,
-    ):
+    if cli_confirm(f"Edit {net_config_path}?", style, default=False):
         click.edit(filename=net_config_path)
 
 
-def get_sub_roi(in_array, offset=None, shape=None, style=DEFAULT_PROMPT_STYLE):
+def get_sub_roi(in_array, offset=None, shape=None, style=None):
     """Get desired ROI within volume."""
     in_array = open_ds(in_array)
     full_roi = in_array.roi
@@ -87,23 +75,17 @@ def get_sub_roi(in_array, offset=None, shape=None, style=DEFAULT_PROMPT_STYLE):
     full_shape = [s // v for s, v in zip(in_array.roi.shape, voxel_size)]
 
     if offset is None:
-        offset = click.prompt(
-            click.style(
-                f"Enter voxel offset as space-separated integers in {in_array.axis_names}",
-                **style,
-            ),
-            type=str,
+        offset = cli_prompt(
+            f"Enter voxel offset as space-separated integers in {in_array.axis_names}", 
+            style,
             default="0 0 0",
-            show_default=False,
         )
         offset = tuple(map(int, offset.strip().split()))
 
     if shape is None:
-        shape = click.prompt(
-            click.style(
-                f"Enter required voxel shape starting from {offset} as space-separated integers in {in_array.axis_names} (skipping will get remaining available shape)",
-                **style,
-            ),
+        shape = cli_prompt(
+            f"Enter required voxel shape starting from {offset} as space-separated integers in {in_array.axis_names} (skipping will get remaining available shape)",
+            style,
             default="0 0 0",
         )
         shape = tuple(map(int, shape.strip().split())) if shape != "0 0 0" else None
@@ -127,29 +109,18 @@ def get_sub_roi(in_array, offset=None, shape=None, style=DEFAULT_PROMPT_STYLE):
 
     roi = Roi(roi_offset, roi_shape)
     if not full_roi.contains(roi):
-        click.secho(
-            "ROI is not contained within the full volume's ROI. Cropping to..",
-            **style,
-        )
         roi = roi.intersect(full_roi)
-        click.secho(f"{roi}", **style)
+        cli_echo("ROI is not contained within the full volume's ROI. Cropping to {roi}..", style, "warning")
 
     return roi.offset, roi.shape, voxel_size
 
 
-def get_rag_db_config(sqlite_path=None):
-    nodes_table = click.prompt(
-        click.style("Enter RAG nodes table name", **DEFAULT_SEG_STYLE), default="nodes", show_default=True
-    )
-    edges_table = click.prompt(
-        click.style("Enter RAG edges table name", **DEFAULT_SEG_STYLE), default="edges", show_default=True
-    )
+def get_rag_db_config(sqlite_path=None, style="segment"):
+    nodes_table = cli_prompt("Enter RAG nodes table name", style, default="nodes")
+    edges_table = cli_prompt("Enter RAG edges table name", style, default="edges")
 
     if sqlite_path:
-        db_file = click.prompt(
-            click.style(f"Enter SQLite RAG database file", **DEFAULT_SEG_STYLE), default=sqlite_path, show_default=True
-        )
-
+        db_file = cli_prompt(f"Enter SQLite RAG database file", style, default=sqlite_path)
         return {
             "db_file": db_file,
             "nodes_table": nodes_table,
@@ -163,18 +134,13 @@ def get_rag_db_config(sqlite_path=None):
         db_port = os.environ.get("RAG_DB_PORT")
 
         if not all([db_host, db_user, db_password, db_port]):
-            click.secho(
-                "PgSQL Database credentials not found in environment variables.",
-                **DEFAULT_SEG_STYLE,
-            )
-            db_host = click.prompt(click.style("Enter PgSQL RAG database host", **DEFAULT_SEG_STYLE))
-            db_user = click.prompt(click.style("Enter PgSQL RAG database user", **DEFAULT_SEG_STYLE))
-            db_password = click.prompt(
-                click.style("Enter PgSQL RAG database password (input is hidden)", **DEFAULT_SEG_STYLE), hide_input=True
-            )
-            db_port = click.prompt(click.style("Enter PgSQL RAG database port", **DEFAULT_SEG_STYLE), type=int)
+            cli_echo("PgSQL Database credentials not found in environment variables..", style)
+            db_host = cli_prompt("Enter PgSQL RAG database host", style)
+            db_user = cli_prompt("Enter PgSQL RAG database user", style)
+            db_password = cli_prompt("Enter PgSQL RAG database password (input is hidden)", style, hide_input=True)
+            db_port = cli_prompt("Enter PgSQL RAG database port", style, type=int)
 
-        db_name = click.prompt(click.style("Enter PgSQL RAG database name", **DEFAULT_SEG_STYLE))
+        db_name = cli_prompt("Enter PgSQL RAG database name", style)
         # write to env
         os.environ["RAG_DB_HOST"] = db_host
         os.environ["RAG_DB_USER"] = db_user
@@ -192,8 +158,7 @@ def get_rag_db_config(sqlite_path=None):
         }
 
 
-def choose_models():
-    
+def choose_models(style="train"):
     model_names = []
 
     # models that take raw image as input
@@ -216,12 +181,7 @@ def choose_models():
 
     # get first model
     i = 0
-    previous_model = click.prompt(
-        click.style(f"Enter model name", **DEFAULT_TRAIN_STYLE),
-        type=click.Choice(image_models),
-        show_choices=True,
-    )
-
+    previous_model = cli_prompt(f"Enter model name", style, type=click.Choice(image_models), show_choices=True)
     model_names.append(previous_model)
 
     while True:
@@ -236,16 +196,9 @@ def choose_models():
         if len(compatible_pred_models) == 1:
             pred_model = compatible_pred_models[0]
         else:
-            pred_model = click.prompt(
-                click.style(f"Enter model {i+2} name", **DEFAULT_TRAIN_STYLE),
-                type=click.Choice(compatible_pred_models),
-                show_choices=True
-            )
+            pred_model = cli_prompt(f"Enter model {i+2} name", style, type=click.Choice(compatible_pred_models), show_choices=True)
 
-        if click.confirm(
-            click.style(f"Add {pred_model} to training config?", **DEFAULT_TRAIN_STYLE),
-            default=True,
-        ): 
+        if cli_confirm(f"Add {pred_model} to training config?", style, default=True): 
             model_names.append(pred_model)
             previous_model = pred_model
             i += 1
@@ -253,7 +206,7 @@ def choose_models():
     return model_names
 
 
-def setup_models(model_names, parent_dir=None):
+def setup_models(model_names, parent_dir=None, style="train"):
     setup_dirs = [] # corresponding setup dirs for each model
     setups_to_train = [] # list of tuples (model_name, setup_dir)
 
@@ -271,37 +224,38 @@ def setup_models(model_names, parent_dir=None):
     # get setup dirs for each model
     for i, model_name in enumerate(model_names):
         if i == 0:
-            setup_dir = click.prompt(
-                click.style(f"Enter setup dir for {model_name}", **DEFAULT_TRAIN_STYLE),
+            setup_dir = cli_prompt(
+                f"Enter setup dir for {model_name}", 
+                style,
                 default=os.path.join(parent_dir, f"setup_{str(setup_num).zfill(2)}"),
                 type=click.Path(),
             )
             setup_dir = os.path.abspath(setup_dir)
             copy_model_scripts(model_name, setup_dir)
-
             setups_to_train.append((model_name, setup_dir))
-
         else:
-            choice = click.prompt(
-                click.style(f"Use pretrained {model_name} or train from scratch?", **DEFAULT_TRAIN_STYLE),
+            choice = cli_prompt(
+                f"Use pretrained {model_name} or train from scratch?", 
+                style,
                 type=click.Choice(["pretrained", "new"]),
                 default="pretrained",
                 show_choices=True,
             )
             if choice == "new":
-                setup_dir = click.prompt(
-                    click.style(f"Enter new setup dir for {model_name}", **DEFAULT_TRAIN_STYLE),
+                setup_dir = cli_prompt(
+                    f"Enter new setup dir for {model_name}", 
+                    style,
                     default=os.path.join(parent_dir, f"setup_{str(setup_num).zfill(2)}"),
                     type=click.Path(),
                 )
                 setup_dir = os.path.abspath(setup_dir)
                 copy_model_scripts(model_name, setup_dir)
                 setups_to_train.append((model_name, setup_dir))
-
             elif choice == "pretrained":
                 setup_dir = os.path.join(os.path.dirname(__file__), "models", model_name)
-                setup_dir = click.prompt(
-                    click.style(f"Enter existing setup dir for {model_name}", **DEFAULT_TRAIN_STYLE),
+                setup_dir = cli_prompt(
+                    f"Enter existing setup dir for {model_name}", 
+                    style,
                     default=setup_dir,
                     type=click.Path(exists=True, file_okay=False, dir_okay=True),
                     show_default=True,
@@ -314,10 +268,10 @@ def setup_models(model_names, parent_dir=None):
                 ]
 
                 if not checkpoints:
-                    click.secho(f"No pretrained checkpoints found in {setup_dir}", **DEFAULT_TRAIN_STYLE)
+                    cli_echo(f"No pretrained checkpoints found in {setup_dir}", style)
 
-                    download = click.confirm(
-                        click.style(f"Download pretrained checkpoints for {model_name}?", **DEFAULT_TRAIN_STYLE),
+                    download = cli_confirm(
+                        click.style(f"Download pretrained checkpoints for {model_name}?", style),
                         default=True,
                     )
 
@@ -328,19 +282,17 @@ def setup_models(model_names, parent_dir=None):
                 
         setup_dirs.append(setup_dir)
         setup_num += 1
+        click.echo()
 
     return setup_dirs, setups_to_train
 
 
-def choose_seg_method_params(aff_neighborhood=None):
+def choose_seg_method_params(aff_neighborhood=None, style="segment"):
     # choose method and params ?
-    if click.confirm(
-        click.style("Specify segmentation method?", **DEFAULT_SEG_STYLE),
-        default=False,
-    ):
-        # specify method ?
-        method = click.prompt(
-            click.style("Enter segmentation method", **DEFAULT_SEG_STYLE),
+    if cli_confirm("Specify segmentation method?", style, default=False):
+        method = cli_prompt(
+            "Enter segmentation method", 
+            style,
             type=click.Choice(["ws", "mws", "cc"]),
             show_choices=True,
             default="ws",
@@ -354,20 +306,19 @@ def choose_seg_method_params(aff_neighborhood=None):
     if aff_neighborhood is not None and method == "mws":
         params["aff_neighborhood"] = aff_neighborhood
 
-    params = check_and_update(params, style=DEFAULT_SEG_STYLE)
+    params = check_and_update(params, style)
 
     return method, params
 
 
-def download_checkpoints(model_name, setup_dir):
-
+def download_checkpoints(model_name, setup_dir, style="prepare"):
     if model_name not in MODEL_URLS:
         raise ValueError(f"Unknown model: {model_name}")
     
     url = MODEL_URLS[model_name]
     file_path = os.path.join(setup_dir, "checkpoints.zip")
     
-    click.secho(f"Downloading {model_name} checkpoints zip to {setup_dir}...", **DEFAULT_INFO_STYLE)
+    cli_echo(f"Downloading {model_name} checkpoints zip to {setup_dir}...", style)
     response = requests.get(url, stream=True)
     total_size = int(response.headers.get("content-length", 0))
     
@@ -383,7 +334,7 @@ def download_checkpoints(model_name, setup_dir):
             progress_bar.update(size)
     
     # unzip checkpoints
-    click.secho(f"Unzipping {model_name} checkpoints in {setup_dir}...", **DEFAULT_INFO_STYLE)
+    cli_echo(f"Unzipping {model_name} checkpoints in {setup_dir}...", style)
     with zipfile.ZipFile(file_path, 'r') as zip_ref:
         zip_ref.extractall(setup_dir)
 
@@ -391,11 +342,11 @@ def download_checkpoints(model_name, setup_dir):
     os.remove(file_path)
 
 
-def create_training_config(volumes, parent_dir=None):
+def create_training_config(volumes, parent_dir=None, style="train"):
 
     click.echo()
-    click.secho(
-        f"Creating training configs", **DEFAULT_TRAIN_STYLE
+    cli_echo(
+        f"Creating training configs..", style
     )
 
     # get model names and setup dirs
@@ -408,13 +359,9 @@ def create_training_config(volumes, parent_dir=None):
 
     # create training configs
     for model_name, setup_dir in setups_to_train:
-        max_iterations = click.prompt(click.style(f"Enter max iterations for {model_name}", **DEFAULT_TRAIN_STYLE), default=30001, type=int)
-        save_checkpoints_every = click.prompt(
-            click.style(f"Enter save checkpoints every for {model_name}", **DEFAULT_TRAIN_STYLE), default=5000, type=int
-        )
-        save_snapshots_every = click.prompt(
-            click.style(f"Enter save snapshots every for {model_name}", **DEFAULT_TRAIN_STYLE), default=1000, type=int
-        )
+        max_iterations = cli_prompt(f"Enter max iterations for {model_name}", style, default=30001, type=int)
+        save_checkpoints_every = cli_prompt(f"Enter save checkpoints every for {model_name}", style, default=5000, type=int)
+        save_snapshots_every = cli_prompt(f"Enter save snapshots every for {model_name}", style, default=1000, type=int)
 
         train_config = {
             "setup_dir": setup_dir,
@@ -435,7 +382,7 @@ def create_training_config(volumes, parent_dir=None):
                 if v["labels_dataset"] is not None
             ]
 
-        configs[setup_dir] = check_and_update(train_config, style=DEFAULT_TRAIN_STYLE)
+        configs[setup_dir] = check_and_update(train_config, style=style)
 
     return {
         'setup_dirs': setup_dirs,
@@ -443,19 +390,17 @@ def create_training_config(volumes, parent_dir=None):
     }
 
 
-def create_prediction_configs(volumes, setup_dirs):
+def create_prediction_configs(volumes, setup_dirs, style="predict"):
 
     click.echo()
-    click.secho(
-        f"Prediction configs for {" -> ".join(setup_dirs)}", **DEFAULT_PRED_STYLE
-    )
+    cli_echo(f"Creating prediction configs for {" -> ".join(setup_dirs)}", style)
 
     # get prediction iterations and setup names
     iterations = []
     setup_names = []
     for i, setup_dir in enumerate(setup_dirs):
-        iteration = click.prompt(
-            click.style(f"Enter checkpoint iteration for model {i+1}: {os.path.basename(setup_dir)}", **DEFAULT_PRED_STYLE),
+        iteration = cli_prompt(f"Enter checkpoint iteration for model {i+1}: {os.path.basename(setup_dir)}", 
+            style,
             type=int,
             default=5000*len(volumes) if i == 0 else 3000,
             show_default=True,
@@ -463,16 +408,8 @@ def create_prediction_configs(volumes, setup_dirs):
         iterations.append(iteration)
         setup_names.append(get_setup_name(setup_dir)) 
 
-    num_gpus = click.prompt(
-        click.style("Enter number of GPUs to use for prediction", **DEFAULT_PRED_STYLE),
-        type=int,
-        default=1,
-    )
-    num_workers = click.prompt(
-        click.style("Enter number of CPU workers to use for prediction", **DEFAULT_PRED_STYLE),
-        type=int,
-        default=num_gpus,
-    )
+    num_gpus = cli_prompt("Enter number of GPUs to use for prediction", style, type=int, default=1)
+    num_workers = cli_prompt("Enter number of CPU workers to use for prediction", style, type=int, default=num_gpus)
 
     # loop over volumes
     configs = {}
@@ -483,11 +420,9 @@ def create_prediction_configs(volumes, setup_dirs):
         raw_array = volume["raw_dataset"]
 
         click.echo()
-        click.secho(
-            f"Creating prediction configs for {volume_name}", **DEFAULT_PRED_STYLE
-        )
+        cli_echo(f"Creating prediction configs for {volume_name}", style)
 
-        roi_offset, roi_shape, _ = get_sub_roi(in_array=raw_array)
+        roi_offset, roi_shape, _ = get_sub_roi(in_array=raw_array, style=style)
         output_datasets = [] # list of lists of output datasets per setup per volume
 
         # loop over setups
@@ -533,7 +468,7 @@ def create_prediction_configs(volumes, setup_dirs):
                 "num_gpus": num_gpus,
             }
 
-        configs[volume_name] = check_and_update(pred_config, style=DEFAULT_PRED_STYLE)
+        configs[volume_name] = check_and_update(pred_config, style)
 
     pprint(output_datasets)
     out_affs_ds = [ds for x in output_datasets for ds in x if ds.split('/')[-1].startswith("3d_affs")][-1]
@@ -545,17 +480,14 @@ def create_prediction_configs(volumes, setup_dirs):
     }
 
 
-def create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=None):
+def create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=None, style="segment"):
     
     click.echo()
-    click.secho(
-        f"Creating Segmentation configs for {out_affs_ds}", **DEFAULT_SEG_STYLE
-    )
-
-    output_prefix = os.path.dirname(out_affs_ds)
+    cli_echo(f"Creating segmentation configs for {out_affs_ds}", style)
 
     method, params = choose_seg_method_params(aff_neighborhood)
 
+    output_prefix = os.path.dirname(out_affs_ds)
     out_frags_ds = f"{output_prefix}/fragments_{method}"
     out_lut_dir = f"{output_prefix}/luts_{method}"
     out_seg_prefix = f"{output_prefix}/segmentations_{method}"
@@ -569,38 +501,24 @@ def create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=None):
         lut_dir = os.path.join(container, out_lut_dir)
 
         click.echo()
-        click.secho(
-            f"Segmentation config for {volume_name}", **DEFAULT_SEG_STYLE
-        )
+        cli_echo(f"Segmentation config for {volume_name}", style)
 
         # TODO: find way to get roi from predictions
         # roi_offset, roi_shape, voxel_size = get_roi(in_array=affs_array)
 
         do_blockwise = False
 
-        if click.confirm(
-            click.style(f"Do blockwise = {do_blockwise}. Switch?", **DEFAULT_SEG_STYLE), default=False, show_default=True
-        ):
+        if cli_confirm(f"Do blockwise = {do_blockwise}. Switch?", style, default=False):
             do_blockwise = not do_blockwise
 
-        if do_blockwise and click.confirm(
-            click.style(f"Set block shape and context?", **DEFAULT_SEG_STYLE), default=False, show_default=True
-        ):
-            block_shape = click.prompt(
-                click.style("Enter block shape in voxels (e.g. 128,128,128), or 'roi' for single block with daisy", **DEFAULT_SEG_STYLE),
-                #default="128,128,128",
-                type=str,
-            )
-            context = click.prompt(
-                click.style("Enter context in voxels (e.g. 128,128,128)", **DEFAULT_SEG_STYLE),
-                #default="128,128,128",
-                type=str,
-            )
+        if do_blockwise and cli_confirm(f"Set block shape and context?", style, default=False):
+            block_shape = cli_prompt("Enter block shape in voxels (e.g. 128,128,128), or 'roi' for single block with daisy", style)
+            context = cli_prompt("Enter context in voxels (e.g. 128,128,128)", style)
             if block_shape is not None and block_shape != "roi":
                 block_shape = [int(x) for x in block_shape.split(",")]
             if context:
                 context = [int(x) for x in context.split(",")]
-            num_workers = click.prompt(click.style("Enter number of workers", **DEFAULT_SEG_STYLE), default=10, type=int)
+            num_workers = cli_prompt("Enter number of workers", style, default=10, type=int)
         else:
             block_shape = None
             context = None
@@ -635,8 +553,9 @@ def create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=None):
 
             # SQLite or not ?
             use_sqlite = not do_blockwise
-            if click.confirm(
-                click.style(f"Use SQLite for RAG = {use_sqlite}. Switch?", **DEFAULT_SEG_STYLE),
+            if cli_confirm(
+                f"Use SQLite for RAG = {use_sqlite}. Switch?", 
+                style,
                 default=False,
                 show_default=True,
             ):
@@ -647,17 +566,15 @@ def create_segmentation_configs(volumes, out_affs_ds, aff_neighborhood=None):
             # get rag db config
             seg_config["db"] = get_rag_db_config(sqlite_path) 
 
-        configs[volume_name] = check_and_update(seg_config, style=DEFAULT_SEG_STYLE)
+        configs[volume_name] = check_and_update(seg_config, style)
 
     return {"out_seg_prefix": out_seg_prefix, "configs": configs}
 
 
-def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets):
+def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="evaluate"):
     
     click.echo()
-    click.secho(
-        f"Evaluation configs", **DEFAULT_EVAL_STYLE
-    )
+    cli_echo(f"Creating evaluation configs..", style)
 
     output_prefix = os.path.dirname(out_seg_prefix)
 
@@ -667,65 +584,54 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets):
         container = volume["output_container"]
 
         click.echo()
-        click.secho(
-            f"Creating evaluation config for {out_seg_prefix}", **DEFAULT_EVAL_STYLE
-        )
+        cli_echo(f"Creating evaluation config for {out_seg_prefix}", style)
 
         # gt labels evaluation ?
-        if click.confirm(
-            click.style(f"Are ground truth labels available for {volume_name}?", **DEFAULT_EVAL_STYLE),
+        if cli_confirm(
+            "Are ground truth labels available for {volume_name}?", 
+            style,
             default=False,
-            show_default=True,
         ):
-            gt_labels_ds = os.path.abspath(
-                click.prompt(
-                    click.style(
-                        "Enter path to ground truth labels dataset (press enter to skip) >>>",
-                        **DEFAULT_EVAL_STYLE
-                    ),
-                    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-                    default=None,
-                    show_default=True,
-                )
-            )
+            gt_labels_ds = os.path.abspath(cli_prompt(
+                "Enter path to ground truth labels dataset (press enter to skip)", 
+                style,
+                type=click.Path(exists=True, dir_okay=True, file_okay=False),
+                default=None,
+            ))
         else:
             gt_labels_ds = None
 
         # gt skeletons evaluation ?
-        if click.confirm(
-            click.style(f"Are ground truth skeletons available for {volume_name}?", **DEFAULT_EVAL_STYLE),
+        if cli_confirm(
+            "Are ground truth skeletons available for {volume_name}?", 
+            style,
             default=False,
-            show_default=True,
         ):
-            gt_skeletons_file = os.path.abspath(
-                click.prompt(
-                    click.style("Enter path to ground truth skeletons file (.graphml format) (press enter to skip)", **DEFAULT_EVAL_STYLE),
-                    type=click.Path(exists=True, dir_okay=False, file_okay=True),
-                    default=None,
-                    show_default=True,
-                )
-            )
+            gt_skeletons_file = os.path.abspath(cli_prompt(
+                "Enter path to ground truth skeletons file (.graphml format) (press enter to skip)", 
+                style,
+                type=click.Path(exists=True, dir_okay=False, file_okay=True),
+                default=None,
+            ))
         else:
             gt_skeletons_file = None
 
         # self pred evaluation ?
-        if click.confirm(
-            click.style(f"Compute prediction errors for {volume_name}?", **DEFAULT_EVAL_STYLE),
-            default=True,
-            show_default=True,
-        ):
+        if cli_confirm(f"Compute prediction errors for {volume_name}?", style, default=True):
             pred_choices = [ds for ds in pred_datasets if ds.split('/')[-1].startswith("3d_")]
 
             if len(pred_choices) == 1:
                 pred_ds_name = pred_choices[0]
-            else:
-                pred_ds_name = click.prompt(
-                    click.style(f"Select {volume_name} predictions to self-evaluate with:", **DEFAULT_EVAL_STYLE),
+            elif len(pred_choices) > 1:
+                pred_ds_name = cli_prompt(
+                    f"Select {volume_name} predictions to self-evaluate with", 
+                    style,
                     type=click.Choice(pred_choices),
                     default=pred_choices[-1],
-                    show_default=True,
                     show_choices=True,
                 )
+            else:
+                pred_ds_name = None
 
             pred_type = pred_ds_name.split('/')[-1][3:7]
             try:
@@ -736,16 +642,14 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets):
             # check pred type, params
             if pred_type == "lsds":
                 if "sigma" not in pred_ds:
-                    pred_ds["sigma"] = literal_eval(click.prompt(
-                        click.style(f"Enter sigma (in world units, as int or tuple of int) for {pred_ds_name}", **DEFAULT_EVAL_STYLE),
-                        default=str(volume["voxel_size"][-1]*10),
+                    pred_ds["sigma"] = literal_eval(cli_prompt(
+                        f"Enter sigma (in world units, as int or tuple of int) for {pred_ds_name}", style, default=str(volume["voxel_size"][-1]*10),
                     ))
             elif pred_type == "affs":
                 if "neighborhood" not in pred_ds:
                     default_nbhd_str = "[[1, 0, 0], [0, 1, 0], [0, 0, 1], [2, 0, 0], [0, 8, 0], [0, 0, 8]]"
-                    pred_ds["neighborhood"] = literal_eval(click.prompt(
-                        click.style(f"Enter literal string of list of offsets to compute affinities from segmentation", **DEFAULT_EVAL_STYLE),
-                        default=default_nbhd_str,
+                    pred_ds["neighborhood"] = literal_eval(cli_prompt(
+                        f"Enter literal string of list of offsets to compute affinities from segmentation", style, default=default_nbhd_str,
                     ))
                 else:
                     if not isinstance(pred_ds["neighborhood"], list) or not all(isinstance(x, list) and all(isinstance(y, int) for y in x) for x in pred_ds["neighborhood"]):
@@ -757,7 +661,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets):
             pred_ds_name = None
 
         # are raw masks available ?
-        if volume["raw_mask_dataset"] is not None:
+        if "raw_mask_dataset" in volume and volume["raw_mask_dataset"] is not None:
             mask_dataset = volume["raw_mask_dataset"]
         else:
             mask_dataset = None
@@ -793,17 +697,15 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets):
                 "skeletons_file": gt_skeletons_file,
             }
 
-        configs[volume_name] = check_and_update(eval_config, style=DEFAULT_EVAL_STYLE)
+        configs[volume_name] = check_and_update(eval_config, style)
 
     return {"out_eval_dir": output_prefix, "configs": configs}
 
 
-def create_filter_configs(volumes, in_seg_prefix, eval_dir):
+def create_filter_configs(volumes, in_seg_prefix, eval_dir, style="filter"):
 
     click.echo()
-    click.secho(
-        f"Filter configs", **DEFAULT_FILTER_STYLE
-    )
+    cli_echo(f"Creating filter configs..", style)
 
     out_seg_ds_prefix = in_seg_prefix.replace("/segmentations_", "/pseudo_gt_ids_")
     out_mask_ds_prefix = in_seg_prefix.replace("/segmentations_", "/pseudo_gt_mask_")
@@ -834,7 +736,7 @@ def create_filter_configs(volumes, in_seg_prefix, eval_dir):
             "erode_out_mask": False,
         }
 
-        configs[volume_name] = check_and_update(filter_config, style=DEFAULT_FILTER_STYLE)
+        configs[volume_name] = check_and_update(filter_config, style)
 
         # volumes for the next round
         out_volumes[volume_name] = {
@@ -846,8 +748,7 @@ def create_filter_configs(volumes, in_seg_prefix, eval_dir):
             "voxel_size": volume["voxel_size"],
             "previous_labels_datasets": [volume['labels_dataset'],] + volume.get("previous_labels_datasets", []),
             "previous_labels_mask_datasets": [volume['labels_mask_dataset'],] + volume.get("previous_labels_mask_datasets", [])
-        }
-        
+        }   
 
     return {"out_volumes": out_volumes, "configs": configs}
 
@@ -855,11 +756,7 @@ def create_filter_configs(volumes, in_seg_prefix, eval_dir):
 def make_round_configs(volumes, round_dir):
     """Create all configs for a model with given volumes."""
 
-    run_dir = click.prompt(
-        click.style("Enter run directory", **DEFAULT_PROMPT_STYLE),
-        default=os.path.join(round_dir, "run"),
-        show_default=True,
-    )
+    run_dir = cli_prompt("Enter run directory", default=os.path.join(round_dir, "run"))
     os.makedirs(run_dir, exist_ok=True)
 
     train_config = create_training_config(volumes, round_dir)
@@ -867,6 +764,7 @@ def make_round_configs(volumes, round_dir):
         save_config(
             train_config["configs"][setup_dir],
             os.path.join(run_dir, f"01_train_{str(i).zfill(2)}.toml"),
+            style="train",
         )
 
     setup_dirs = train_config["setup_dirs"]
@@ -875,6 +773,7 @@ def make_round_configs(volumes, round_dir):
         save_config(
             pred_config["configs"][volume_name],
             os.path.join(run_dir, f"02_pred_{volume_name}.toml"),
+            style="predict",
         )
 
     out_affs_ds = pred_config["out_affs_dataset"]
@@ -885,6 +784,7 @@ def make_round_configs(volumes, round_dir):
         save_config(
             seg_configs["configs"][volume_name],
             os.path.join(run_dir, f"03_seg_{volume_name}.toml"),
+            style="segment",
         )
 
     out_seg_prefix = seg_configs["out_seg_prefix"]
@@ -897,6 +797,7 @@ def make_round_configs(volumes, round_dir):
         save_config(
             eval_configs["configs"][volume_name],
             os.path.join(run_dir, f"04_eval_{volume_name}.toml"),
+            style="evaluate",
         )
 
     out_eval_dir = eval_configs["out_eval_dir"]
@@ -905,6 +806,7 @@ def make_round_configs(volumes, round_dir):
         save_config(
             filter_configs["configs"][volume_name],
             os.path.join(run_dir, f"05_filter_{volume_name}.toml"),
+            style="filter",
         )
 
     out_volumes = filter_configs["out_volumes"]

@@ -14,9 +14,10 @@ from .configs import (
     check_and_update,
 )
 from .data.volumes import prepare_volume
+from .styles import cli_echo, cli_prompt, cli_confirm
 
 
-def make_volumes(round_dir=None):
+def make_volumes(round_dir=None, style="prepare"):
     """Prepare volumes for bootstrapping."""
 
     if round_dir is None:
@@ -24,8 +25,9 @@ def make_volumes(round_dir=None):
     else:
         assert os.path.isdir(round_dir)
 
-    num_volumes = click.prompt(
-        click.style(f"Enter number of volumes to prepare in {round_dir}", fg="cyan"),
+    num_volumes = cli_prompt(
+        f"Enter number of volumes to prepare in {round_dir}",
+        style,
         default=1,
         type=int,
     )
@@ -33,10 +35,10 @@ def make_volumes(round_dir=None):
     volumes = {}
     for i in range(num_volumes):
         click.echo()
-        click.secho(f"Processing volume {i+1}", fg="cyan", bold=True)
-        vol_name = click.prompt(
-            click.style(f"Enter name of volume {i+1} in {round_dir}", fg="cyan"),
-            type=str,
+        cli_echo(f"Processing volume {i+1}", style)
+        vol_name = cli_prompt(
+            f"Enter name of volume {i+1} in {round_dir}",
+            style,
             default=f"volume_{i+1}",
         )
         volume_info = prepare_volume(os.path.join(round_dir, f"{vol_name}.zarr"))
@@ -46,30 +48,26 @@ def make_volumes(round_dir=None):
     return volumes
 
 
-def get_volumes(round_dir=None):
+def get_volumes(round_dir=None, style="prepare"):
     """Get volumes from config file if exists, else ask for volumes info"""
 
     if round_dir is not None and os.path.exists(os.path.join(round_dir, "volumes.toml")):
         volumes_doc = os.path.abspath(os.path.join(round_dir, "volumes.toml"))
-        load_volumes = click.confirm(
-            click.style(f"Load volumes from {volumes_doc}?", fg="cyan"), default=True
-        )
+        load_volumes = cli_confirm(f"Load volumes from {volumes_doc}?", style, default=True)
     elif os.path.exists(os.path.join(os.getcwd(), "volumes.toml")):
         volumes_doc = os.path.abspath(os.path.join(os.getcwd(), "volumes.toml"))
-        load_volumes = click.confirm(
-            click.style(f"Load volumes from {volumes_doc}?", fg="cyan"), default=True
-        )
+        load_volumes = cli_confirm(f"Load volumes from {volumes_doc}?", style, default=True)
     else:
         load_volumes = False
 
     if load_volumes:
         with open(volumes_doc) as f:
             volumes = toml.load(f)
-            click.secho(f"Loaded volumes from {volumes_doc}", fg="cyan", bold=True)
+            cli_echo(f"Loaded volumes from {volumes_doc}", style)
     else:
         volumes = make_volumes(round_dir)
 
-    return check_and_update(volumes)
+    return check_and_update(volumes, style)
 
 
 def make_configs(base_dir):
@@ -83,15 +81,16 @@ def make_configs(base_dir):
         and "round" in d
     ]
 
-    click.secho(f"Existing rounds: {existing_rounds}", fg="cyan", bold=True)
+    cli_echo(f"Existing rounds: {existing_rounds}", style="prepare")
 
     out_volumes = {}
     i = 0
 
     while True:
         click.echo()
-        round_name = click.prompt(
-            click.style(f"Enter name for round {i+1}", fg="cyan"),
+        round_name = cli_prompt(
+            f"Enter name for round {i+1}",
+            style="prepare",
             default=f"round_{i+1}",
         )
         round_dir = os.path.join(base_dir, round_name)
@@ -105,22 +104,18 @@ def make_configs(base_dir):
                 for vol_name, vol_info in out_volumes.items()
             }
 
-        click.secho(
-            f"Writing volumes to {round_dir}/volumes.toml", fg="cyan", bold=True
-        )
-        save_config(volumes, os.path.join(round_dir, "volumes.toml"))
+        cli_echo(f"Writing volumes to {round_dir}/volumes.toml", style="prepare")
+        save_config(volumes, os.path.join(round_dir, "volumes.toml"), style="prepare")
 
         out_volumes = make_round_configs(volumes, round_dir)
 
         click.echo()
-        if not click.confirm(
-            click.style("Make configs for next round?", fg="cyan"), default=False
-        ):
+        if not cli_confirm("Make configs for next round?", style="prepare", default=False):
             break
         i += 1
 
     click.echo()
-    click.secho("All configs created successfully!", fg="cyan", bold=True)
+    cli_echo("All configs created successfully!", style="prepare", stype="success")
 
 
 class PrepareGroup(click.Group):
@@ -186,8 +181,8 @@ def prepare(ctx):
     allowing for refinement of the segmentations over time.
     """
     if ctx.invoked_subcommand is None:
-        base_dir = click.prompt(
-            click.style("Enter path to base directory", fg="cyan"),
+        base_dir = cli_prompt("Enter path to base directory",
+            style="prepare",
             type=click.Path(),
             default=os.getcwd(),
         )
@@ -202,9 +197,9 @@ def prep_vol():
     """Prepare a single volume."""
     volumes = make_volumes()
     click.echo()
-    if click.confirm(click.style("Save volumes.toml?", fg="cyan"), default=True):
-        volumes_doc = click.prompt(
-            click.style("Enter path for new volumes.config file", fg="cyan"),
+    if cli_confirm("Save volumes.toml?", default=True):
+        volumes_doc = cli_prompt(
+            "Enter path for new volumes.config file",
             type=click.Path(),
             default=os.path.join(os.getcwd(), "volumes.toml"),
         )
@@ -215,28 +210,27 @@ def prep_vol():
 def prep_train_config():
     """Create training config files."""
 
-    volumes = get_volumes()
+    volumes = get_volumes(style="train")
     ret = create_training_config(volumes, os.getcwd())
 
     click.echo()
     for setup_dir in ret["configs"]:
-        config_path = click.prompt(
-            click.style(f"Enter path to save train config file for {setup_dir}", fg="cyan"),
+        config_path = cli_prompt(
+            f"Enter path to save train config file for {setup_dir}",
+            style="train",
             type=click.Path(),
             default=os.path.join(os.getcwd(), f"train_{os.path.basename(setup_dir)}.toml"),
         )
-        save_config(ret["configs"][setup_dir], config_path)
+        save_config(ret["configs"][setup_dir], config_path, style="train")
 
 
 @prepare.command("predict")
 def prep_predict_config():
     """Create prediction config files."""
-    volumes = get_volumes()
+    volumes = get_volumes(style="predict")
 
     # get list of setup directories
-    setup_dirs = click.prompt(
-        click.style(f"Enter setups paths for prediction in order (comma-separated)", fg="cyan"),
-    )
+    setup_dirs = cli_prompt(f"Enter setups paths for prediction in order (comma-separated)", style="predict")
     setup_dirs = [x.strip() for x in setup_dirs.split(',')]
 
     # check if all setup directories exist
@@ -252,13 +246,10 @@ def prep_predict_config():
                     c for c in os.listdir(setup_dir) if 'model_checkpoint_' in c
                 ]
                 if not checkpoints:
-                    click.secho(f"No checkpoints found in {setup_dir}", fg='cyan')
-                    download = click.confirm(
-                        click.style(f"Download pretrained checkpoints for {os.path.basename(setup_dir)}?", fg='cyan'),
-                        default=False
-                    )
+                    cli_echo(f"No checkpoints found in {setup_dir}", style="predict")
+                    download = cli_confirm(f"Download pretrained checkpoints for {os.path.basename(setup_dir)}?", style="predict", default=False)
                     if download:
-                        download_checkpoints(os.path.basename(setup_dir), setup_dir)
+                        download_checkpoints(os.path.basename(setup_dir), setup_dir, style="predict")
                     else:
                         raise ValueError(f"Please either download checkpoints or train from scratch")
                 
@@ -274,90 +265,68 @@ def prep_predict_config():
 
     for volume_name, config in ret["configs"].items():
         click.echo()
-        config_path = click.prompt(
-            click.style(
-                f"Enter path to save predict config for {volume_name}", fg="cyan"
-            ),
+        config_path = cli_prompt(
+            f"Enter path to save predict config for {volume_name}",
+            style="predict",
             type=click.Path(),
             default=os.path.join(os.getcwd(), f"predict_{volume_name}.toml"),
         )
-        save_config(config, config_path)
+        save_config(config, config_path, style="predict")
 
 
 @prepare.command("segment")
 def prep_segment_config():
     """Create segmentation config files."""
-    volumes = get_volumes()
-
-    out_affs_ds = click.prompt(
-        click.style("Enter name of output affinities dataset inside zarr", fg="cyan"),
-        type=str,
-    )
-
+    volumes = get_volumes(style="segment")
+    out_affs_ds = cli_prompt("Enter name of output affinities dataset inside zarr", style="segment")
     ret = create_segmentation_configs(volumes, out_affs_ds)
 
     for volume_name, config in ret["configs"].items():
         click.echo()
-        config_path = click.prompt(
-            click.style(
-                f"Enter path to save segment config for {volume_name}", fg="cyan"
-            ),
+        config_path = cli_prompt(
+            f"Enter path to save segment config for {volume_name}",
+            style="segment",
             type=click.Path(),
             default=os.path.join(os.getcwd(), f"seg_{volume_name}.toml"),
         )
-        save_config(config, config_path)
+        save_config(config, config_path, style="segment")
 
 
 @prepare.command("evaluate")
 def prep_eval_config():
     """Create evaluation config files."""
-    volumes = get_volumes()
-
-    out_segs_prefix = click.prompt(
-        click.style("Enter prefix for segmentation datasets", fg="cyan"),
-        type=str,
-    )
-    pred_datasets = click.prompt(
-        click.style("Enter prediction datasets (comma-separated)", fg="cyan"),
-        type=str,
-    )
+    volumes = get_volumes(style="evaluate")
+    out_segs_prefix = cli_prompt("Enter prefix for segmentation datasets", style="evaluate")
+    pred_datasets = cli_prompt("Enter prediction datasets (comma-separated)", style="evaluate")
     pred_datasets = [x.strip() for x in pred_datasets.split(",")]
 
     ret = create_evaluation_configs(volumes, out_segs_prefix, pred_datasets)
 
     for volume_name, config in ret["configs"].items():
         click.echo()
-        config_path = click.prompt(
-            click.style(f"Enter path to save eval config for {volume_name}", fg="cyan"),
+        config_path = cli_prompt(
+            "Enter path to save eval config for {volume_name}",
+            style="evaluate",
             type=click.Path(),
             default=os.path.join(os.getcwd(), f"eval_{volume_name}.toml"),
         )
-        save_config(config, config_path)
+        save_config(config, config_path, style="evaluate")
 
 
 @prepare.command("filter")
 def prep_filter_config():
     """Create config files for filtering segmentations."""
-    volumes = get_volumes()
-
-    out_segs_prefix = click.prompt(
-        click.style("Enter prefix for segmentation datasets", fg="cyan"),
-        type=str,
-    )
-    eval_dir = click.prompt(
-        click.style("Enter path to evaluation directory", fg="cyan"),
-        type=click.Path(),
-    )
-
+    volumes = get_volumes(style="filter")
+    out_segs_prefix = cli_prompt("Enter prefix for segmentation datasets", style="filter")
+    eval_dir = cli_prompt("Enter path to evaluation directory", style="filter")
     ret = create_filter_configs(volumes, out_segs_prefix, eval_dir)
 
     for volume_name, config in ret["configs"].items():
         click.echo()
-        config_path = click.prompt(
-            click.style(
-                f"Enter path to save filter config for {volume_name}", fg="cyan"
-            ),
+        config_path = cli_prompt(
+            f"Enter path to save filter config for {volume_name}",
+            style="filter",
             type=click.Path(),
             default=os.path.join(os.getcwd(), f"filter_{volume_name}.toml"),
         )
-        save_config(config, config_path)
+        save_config(config, config_path, style="filter")
