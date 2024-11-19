@@ -829,16 +829,16 @@ def create_filter_configs(volumes, in_seg_prefix, eval_dir, style="filter"):
         out_volumes[volume_name] = {
             "name": volume_name,
             "raw_dataset": volume["raw_dataset"],
-            "raw_mask_dataset": volume["raw_mask_dataset"],
+            "raw_mask_dataset": None if "raw_mask_dataset" not in volume else volume["raw_mask_dataset"],
             "labels_dataset": out_seg_ds,
             "labels_mask_dataset": out_mask_ds,
             "voxel_size": volume["voxel_size"],
             "previous_labels_datasets": [
-                volume["labels_dataset"],
+                None if "labels_dataset" not in volume else volume["labels_dataset"],
             ]
             + volume.get("previous_labels_datasets", []),
             "previous_labels_mask_datasets": [
-                volume["labels_mask_dataset"],
+                None if "labels_mask_dataset" not in volume else volume["labels_mask_dataset"],
             ]
             + volume.get("previous_labels_mask_datasets", []),
         }
