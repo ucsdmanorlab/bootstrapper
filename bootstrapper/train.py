@@ -22,7 +22,7 @@ def setup_train(config_file, **kwargs):
     for sample in samples:
         raw = sample["raw"]
         labels = sample["labels"]
-        mask = sample["mask"]
+        mask = None if "mask" not in sample else sample["mask"]
 
         # check raw
         if not os.path.exists(raw):
