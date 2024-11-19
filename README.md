@@ -15,27 +15,19 @@ A toolkit for bootstrapping and refining 3D instance segmentations and models fr
 
 ## Installation
 
-To run `bootstrapper` with GPUs:
+To install `bootstrapper`, we first recommend creating a new conda environment:
 ```
-conda create -n bs python=3.12
+conda create -n bs python=3.12 -c conda-forge python=3.12 graph-tool boost
 conda activate bs
-conda install pytorch pytorch-cuda=12.1 boost psycopg2 -c pytorch -c nvidia -y
-conda install -c conda-forge -c ostrokach-forge -c pkgw-forge graph-tool -y
-pip install git+https://github.com/ucsdmanorlab/bootstrapper.git
 ```
-
-To run `bootstrapper` with CPUs or MPS:
+Then, install bootstrapper with:
 ```
-conda create -n bs python=3.12
-conda activate bs
-conda install pytorch boost psycopg2 -c pytorch-nightly -y
-conda install -c conda-forge -c ostrokach-forge -c pkgw-forge graph-tool -y
 pip install git+https://github.com/ucsdmanorlab/bootstrapper.git
 ```
 
 ## Getting Started
 
-Bootstrapper has the folliwing commands, typically run in the given order:
+Bootstrapper has the following commands, typically run in the given order:
 - `bs prepare` : Prepare data and config files for the following steps
 
 - `bs train` : Train a model
@@ -51,10 +43,10 @@ Bootstrapper has the folliwing commands, typically run in the given order:
 A **round** is a cycle of the above commands.
 - Use `bs prepare` to create config files for one or multiple rounds.
 - Refined segmentations from one round become training labels for the next round.
-- Run multiple rounds with `bs auto`.
 
 It also has:
 
+- `bs run`: Runs the appropriate command for the given config file.
 - `bs view` : A wrapper for `neuroglancer -d`
 - `bs utils` offers functions for data manipulation and preprocessing.
 

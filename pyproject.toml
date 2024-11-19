@@ -2,6 +2,9 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [project]
 name = "bootstrapper"
 version = "0.2.0"
@@ -12,18 +15,29 @@ authors = [
 ]
 license = {text = "MIT"}
 dependencies = [
-    "gunpowder>=1.4",
-    "daisy>=1.2",
-    "funlib.evaluate",
     "numpy",
     "scipy",
     "scikit-image",
     "torch",
     "zarr",
-    "waterz",
+    "numba",
     "neuroglancer",
-    "click"
+    "tensorboardx",
+    "gunpowder>=1.4",
+    "daisy>=1.2",
+    "lsds @ git+https://github.com/anforsm/lsd.git",
+    "funlib.learn.torch @ git+https://github.com/funkelab/funlib.learn.torch.git",
+    "funlib.segment @ git+https://github.com/funkelab/funlib.segment.git",
+    "funlib.evaluate @ git+https://github.com/yajivunev/funlib.evaluate.git",
+    "waterz @ git+https://github.com/mpinb/waterz.git",
+    "click",
 ]
+
+[project.optional-dependencies]
+mws = [
+    "mwatershed @ git+https://github.com/pattonw/mwatershed.git"
+]
+all = ["bootstrapper[mws]"]
 
 [project.urls]
 Homepage = "https://github.com/ucsdmanorlab/bootstrapper"
