@@ -496,15 +496,13 @@ def create_prediction_configs(volumes, setup_dirs, style="predict"):
             if i == 0 and chain_str == "":
                 in_ds = [raw_array]
                 out_ds = {
-                    f"{out_ds_prefix}/{iteration}/{x}": model_outputs[x]
+                    os.path.join(out_ds_prefix, str(iteration), x): model_outputs[x]
                     for x in model_outputs
                 }
             else:
                 in_ds = [os.path.join(container, ds) for ds in output_datasets[-1]]
                 out_ds = {
-                    f"{out_ds_prefix}/{iteration}--from--{chain_str}/{x}": model_outputs[
-                        x
-                    ]
+                    os.path.join(out_ds_prefix, f"{iteration}--from--{chain_str}", x): model_outputs[x]
                     for x in model_outputs
                 }
 
@@ -551,9 +549,9 @@ def create_segmentation_configs(
     method, params = choose_seg_method_params(aff_neighborhood)
 
     output_prefix = os.path.dirname(out_affs_ds)
-    out_frags_ds = f"{output_prefix}/fragments_{method}"
-    out_lut_dir = f"{output_prefix}/luts_{method}"
-    out_seg_prefix = f"{output_prefix}/segmentations_{method}"
+    out_frags_ds = os.path.join(output_prefix, f"fragments_{method}")
+    out_lut_dir = os.path.join(output_prefix, f"luts_{method}")
+    out_seg_prefix = os.path.join(output_prefix, f"segmentations_{method}")
 
     configs = {}
     for volume_name in volumes:
@@ -617,7 +615,7 @@ def create_segmentation_configs(
 
         # get RAG db config
         if do_blockwise:
-            sqlite_path = os.path.join(container, f"{output_prefix}/rag_{method}.db")
+            sqlite_path = os.path.join(container, output_prefix, f"rag_{method}.db")
 
             # SQLite or not ?
             use_sqlite = not do_blockwise
@@ -656,7 +654,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
 
         # gt labels evaluation ?
         if cli_confirm(
-            "Are ground truth labels available for {volume_name}?",
+            f"Are ground truth labels available for {volume_name}?",
             style,
             default=False,
         ):
@@ -673,7 +671,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
 
         # gt skeletons evaluation ?
         if cli_confirm(
-            "Are ground truth skeletons available for {volume_name}?",
+            f"Are ground truth skeletons available for {volume_name}?",
             style,
             default=False,
         ):

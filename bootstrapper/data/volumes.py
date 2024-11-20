@@ -14,9 +14,12 @@ def process_zarr(path, output_zarr, type, style="prepare"):
     do_bbox = cli_confirm(
         "Perform bounding box crop?", style, default=False if type == "raw" else True
     )
-    copy_to_output = cli_confirm(
-        f"Copy {path} to output container {output_zarr}?", style, default=False
-    )
+    if os.path.commonpath(path, output_zarr) == output_zarr:
+        copy_to_output = False
+    else:
+        copy_to_output = cli_confirm(
+            f"Copy {path} to output container {output_zarr}?", style, default=False
+        )
 
     if do_bbox or copy_to_output:
         out_ds_path = cli_prompt(
