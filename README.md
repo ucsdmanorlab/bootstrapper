@@ -17,7 +17,7 @@ A toolkit for bootstrapping and refining 3D instance segmentations and models fr
 
 To install `bootstrapper`, we first recommend creating a new conda environment:
 ```
-conda create -n bs python=3.12 -c conda-forge python=3.12 graph-tool boost
+conda create -n bs -c conda-forge python=3.12 graph-tool boost
 conda activate bs
 ```
 Then, install bootstrapper with:
