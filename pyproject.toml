@@ -27,6 +27,7 @@ dependencies = [
     "daisy>=1.2",
     "lsds @ git+https://github.com/anforsm/lsd.git",
     "funlib.learn.torch @ git+https://github.com/funkelab/funlib.learn.torch.git",
+    "funlib.show.neuroglancer @ git+https://github.com/funkelab/funlib.show.neuroglancer.git",
     "funlib.segment @ git+https://github.com/funkelab/funlib.segment.git",
     "funlib.evaluate @ git+https://github.com/yajivunev/funlib.evaluate.git",
     "waterz @ git+https://github.com/mpinb/waterz.git",
