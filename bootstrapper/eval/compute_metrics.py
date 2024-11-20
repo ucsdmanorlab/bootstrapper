@@ -173,10 +173,10 @@ def compute_metrics(
         nerl = erl / max_erl
 
         metrics["skel"] = {
-            "erl": erl,
-            "nerl": nerl,
-            "max_erl": max_erl,
-            "total_path_length": total_length,
+            "erl": float(erl),
+            "nerl": float(nerl),
+            "max_erl": float(max_erl),
+            "total_path_length": float(total_length),
             "n_mergers": n_mergers,
             "n_splits": n_splits,
             "n_non0_mergers": n_non0_mergers,

@@ -41,6 +41,7 @@ def run_gt_evaluation(config, seg_ds):
 
     gt_labels_dataset = config["gt"].get("labels_dataset")
     gt_skeletons_file = config["gt"].get("skeletons_file")
+    mask_dataset = config.get("mask_dataset")
 
     if gt_labels_dataset is None and gt_skeletons_file is None:
         raise AssertionError("Either labels_dataset or skeletons_file must be provided")
@@ -49,14 +50,14 @@ def run_gt_evaluation(config, seg_ds):
         seg_ds,
         gt_labels_dataset,
         gt_skeletons_file,
-        config["mask_dataset"],
+        mask_dataset,
     )
 
     stats = {
         "seg_ds": seg_ds,
         "labels_ds": gt_labels_dataset,
         "skeletons_file": gt_skeletons_file,
-        "mask_ds": config["mask_dataset"],
+        "mask_ds": mask_dataset,
         "metrics": metrics,
     }
 
@@ -69,6 +70,7 @@ def run_self_evaluation(config, seg_ds):
     pred_dataset = config["self"]["pred_dataset"]
     thresholds = tuple(config["self"]["thresholds"])
     params = config["self"].get("params", {})
+    mask_dataset = config.get("mask_dataset")
 
     pred_name = os.path.basename(pred_dataset)
     out_map_dataset = seg_ds + f"__vs__{pred_name}"
@@ -77,7 +79,7 @@ def run_self_evaluation(config, seg_ds):
     compute_errors(
         seg_ds,
         pred_dataset,
-        config["mask_dataset"],
+        mask_dataset,
         out_map_dataset,
         out_mask_dataset,
         thresholds=thresholds,
@@ -88,7 +90,7 @@ def run_self_evaluation(config, seg_ds):
     stats = {
         "seg_ds": seg_ds,
         "pred_ds": pred_dataset,
-        "mask_ds": config["mask_dataset"],
+        "mask_ds": mask_dataset,
         "map_ds": out_map_dataset,
         "mask_ds": out_mask_dataset,
         "thresholds": thresholds,
