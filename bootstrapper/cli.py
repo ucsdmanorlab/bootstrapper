@@ -79,7 +79,7 @@ def run(ctx, config_path):
     if "samples" in config:
         cli_echo(f"Running train command on {config_path}", "train")
         ctx.invoke(train, config_file=config_path)
-    elif "chain_str" in config[config.keys()[0]]:
+    elif all(["chain_str" in config[setup] for setup in config]):
         cli_echo(f"Running predict command on {config_path}", "predict")
         ctx.invoke(predict, config_file=config_path)
     elif "affs_dataset" in config:
