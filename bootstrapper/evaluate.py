@@ -31,7 +31,7 @@ def get_eval_config(config_file, mode, **kwargs):
             config[key] = value
 
     if "out_result" not in config:
-        config["out_result"] = config_file.replace(".toml", f"_{mode}_results.json")
+        config["out_result"] = config_file.replace("04_eval_",f"results_{mode}_").replace(".toml", ".json")
 
     return config
 
@@ -151,7 +151,7 @@ def evaluate(config_file, gt, pred, out_result=None):
         if pred:
             eval_modes.append("pred")
     elif any(mode_configs):
-        eval_modes = [mode for mode, mc in zip(["gt", "self"], mode_configs) if mc]
+        eval_modes = [mode for mode, mc in zip(["gt", "pred"], mode_configs) if mc]
     else:
         eval_modes = ["pred"]
 

@@ -136,7 +136,10 @@ def view_snapshot(zarr_path):
     neuroglancer.set_server_bind_address("0.0.0.0")
     viewer = neuroglancer.Viewer()
 
-    f = zarr.open(zarr_path)
+    if zarr_path.endswith("/"):
+        zarr_path = zarr_path[:-1]
+
+    f = zarr.open(zarr_path)    
     datasets = [i for i in os.listdir(zarr_path) if "." not in i]
 
     # Determine if the data is 3D based on the first dataset

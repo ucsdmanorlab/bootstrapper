@@ -55,11 +55,11 @@ def compute_errors(
 
     # determine error type
     pred_name = os.path.basename(pred_dataset)
-    if "3d_lsds_" in pred_name:
+    if "3d_lsds" in pred_name:
         error_type = "lsd"
         sigma = kwargs.get("lsd_sigma", int(pred_ds.voxel_size[-1] * 10))
         logging.info(f"Computing LSD errors with sigma={sigma}")
-    elif "3d_affs_" in pred_name:
+    elif "3d_affs" in pred_name:
         error_type = "aff"
         num_aff_offsets = pred_ds.shape[0]
         neighborhood = kwargs.get(
@@ -242,8 +242,8 @@ def compute_stats(array):
     std = np.std(array)
 
     return {
-        "mean": mean,
-        "std": std,
+        "mean": float(mean),
+        "std": float(std),
         "num_nonzero_voxels": num_nonzero_voxels,
         "total_voxels": total_voxels,
         "nonzero_ratio": num_nonzero_voxels / total_voxels,
