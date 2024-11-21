@@ -101,7 +101,10 @@ def simple_mutex(config):
         fragments_data = fragments_data.astype(fragments_dtype)
 
     # write segmentation
-    bias_str = "_".join([str(int(x * 10)) for x in bias])
+    bias_str = "--".join(
+        "_".join([str(x) for x in bias]), 
+        "_".join([str(x) for x in sigma]),
+        str(noise_eps),
     seg_ds_name = os.path.join(seg_ds_prefix, bias_str)
     seg = prepare_ds(
         seg_ds_name,
