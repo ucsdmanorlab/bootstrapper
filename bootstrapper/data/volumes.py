@@ -14,7 +14,7 @@ def process_zarr(path, output_zarr, type, style="prepare"):
     do_bbox = cli_confirm(
         "Perform bounding box crop?", style, default=False if type == "raw" else True
     )
-    if os.path.commonpath(path, output_zarr) == output_zarr:
+    if os.path.commonpath([path, output_zarr]) == output_zarr:
         copy_to_output = False
     else:
         copy_to_output = cli_confirm(
@@ -203,7 +203,7 @@ def prepare_volume(volume_path, style="prepare"):
         except click.Abort:
             raise
         except Exception as e:
-            cli_echo(f"{e}, try again.", style)
+            cli_echo(f"{e}, try again.", style, "error")
 
     # process labels
     click.echo()
