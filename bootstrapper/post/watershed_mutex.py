@@ -18,7 +18,7 @@ def simple_mutex(config):
     from skimage.morphology import remove_small_objects
 
     affs_ds = config["affs_dataset"]
-    frags_ds = config["fragments_dataset"]
+    frags_ds_prefix = config["fragments_dataset"]
     seg_ds_prefix = config["seg_dataset_prefix"]
     mask_ds = config.get("mask_dataset", None)
     roi_offset = config.get("roi_offset", None)
@@ -82,8 +82,14 @@ def simple_mutex(config):
     )
 
     # write fragments
+    shift_name = "--".join([
+        str(noise_eps),
+        "_".join([str(x) for x in sigma]),
+        "_".join([str(x) for x in bias]), 
+    ])
+    frags_ds_name = os.path.join(frags_ds_prefix, shift_name)
     frags = prepare_ds(
-        frags_ds,
+        frags_ds_name,
         shape=fragments_data.shape,
         offset=roi.offset,
         voxel_size=affs.voxel_size,
@@ -101,11 +107,7 @@ def simple_mutex(config):
         fragments_data = fragments_data.astype(fragments_dtype)
 
     # write segmentation
-    bias_str = "--".join(
-        "_".join([str(x) for x in bias]), 
-        "_".join([str(x) for x in sigma]),
-        str(noise_eps),
-    seg_ds_name = os.path.join(seg_ds_prefix, bias_str)
+    seg_ds_name = os.path.join(seg_ds_prefix, f"{shift_name}--rm{remove_debris}")
     seg = prepare_ds(
         seg_ds_name,
         shape=fragments_data.shape,

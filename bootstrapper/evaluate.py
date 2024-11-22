@@ -15,7 +15,7 @@ logger.setLevel(logging.INFO)
 
 def get_seg_datasets(seg_datasets_prefix):
     seg_datasets = []
-    for ds in glob.glob(f"{seg_datasets_prefix}/*/.zarray"):
+    for ds in glob.glob(f"{seg_datasets_prefix}*/*/.zarray"):
         if "__vs__" not in ds:  # skip self errors
             seg_datasets.append(os.path.dirname(ds))
     return seg_datasets

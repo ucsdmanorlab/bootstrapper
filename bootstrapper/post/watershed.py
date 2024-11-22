@@ -27,7 +27,7 @@ def simple_watershed(config):
     import waterz
 
     affs_ds = config["affs_dataset"]
-    frags_ds = config["fragments_dataset"]
+    frags_ds_prefix = config["fragments_dataset"]
     seg_ds_prefix = config["seg_dataset_prefix"]
     mask_ds = config.get("mask_dataset", None)
     roi_offset = config.get("roi_offset", None)
@@ -85,15 +85,18 @@ def simple_watershed(config):
         affs_data *= (mask > 0).astype(np.uint8)
 
     # shift affs with noise, smoothing, and bias
+    shift_name = []
     if sigma is not None or noise_eps is not None or bias is not None:
         shift = np.zeros_like(affs_data)
 
         if noise_eps is not None:
             shift += np.random.randn(*affs_data.shape) * noise_eps
+            shift_name.append(f"{noise_eps}")
 
         if sigma is not None:
             sigma = (0, *sigma)
             shift += gaussian_filter(affs_data, sigma=sigma) - affs_data
+            shift_name.append(f"{"_".join([str(x) for x in sigma[-3:]])}")
 
         if bias is not None:
             if type(bias) == float:
@@ -102,8 +105,10 @@ def simple_watershed(config):
                 assert len(bias) == affs_data.shape[0]
 
             shift += np.array([bias]).reshape((-1, *((1,) * (len(affs.shape) - 1))))
+            shift_name.append(f"{"_".join([str(x) for x in bias])}")
 
         affs_data += shift
+        shift_name = "--".join(shift_name)
 
     # watershed
     fragments_data, n = watershed_from_affinities(
@@ -114,8 +119,11 @@ def simple_watershed(config):
     )
 
     # write fragments
+    shift_name = f"{shift_name}--" if shift_name != "" else ""
+    shift_name = f"{shift_name}xy{fragments_in_xy}--minseed{min_seed_distance}"
+    frags_ds_name = os.path.join(frags_ds_prefix, shift_name)
     frags = prepare_ds(
-        frags_ds,
+        frags_ds_name,   
         shape=fragments_data.shape,
         offset=roi.offset,
         voxel_size=affs.voxel_size,
@@ -135,7 +143,7 @@ def simple_watershed(config):
 
     for threshold, segmentation in zip(thresholds, generator):
         # write segmentation
-        seg_ds_name = os.path.join(seg_ds_prefix, f"{merge_function}_{str(threshold)}")
+        seg_ds_name = os.path.join(seg_ds_prefix, f"{merge_function}--{str(threshold)}--{shift_name}")
         seg = prepare_ds(
             seg_ds_name,
             shape=segmentation.shape,

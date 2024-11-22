@@ -102,7 +102,7 @@ def get_filter_config(config_file, **kwargs):
     elif "seg_datasets_prefix" in config:
         seg_datasets = [
             x
-            for x in glob.glob(os.path.join(config["seg_datasets_prefix"], "*"))
+            for x in glob.glob(os.path.join(f"{config["seg_datasets_prefix"]}*", "*"))
             if os.path.isdir(x) and os.path.exists(os.path.join(x, ".zarray"))
         ]
         in_seg_datasets.extend(seg_datasets)
