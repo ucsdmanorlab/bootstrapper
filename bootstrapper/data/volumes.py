@@ -89,19 +89,22 @@ def process_non_zarr(path, output_zarr, type, style="prepare"):
     )
     axis_names = tuple(
         cli_prompt(
-            click.style("Enter axis names (space separated strings)", style),
+            "Enter axis names (space separated strings)", 
+            style,
             default="z y x",
         ).split()
     )
     units = tuple(
         cli_prompt(
-            click.style("Enter units (space separated strings)", style),
+            "Enter units (space separated strings)", 
+            style,
             default="nm nm nm",
         ).split()
     )
 
     crop = cli_confirm(
-        click.style("Perform bounding box crop?", style),
+        "Perform bounding box crop?", 
+        style,
         default=False if type == "raw" else True,
     )
 

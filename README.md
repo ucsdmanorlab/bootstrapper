@@ -13,6 +13,8 @@ A toolkit for bootstrapping and refining 3D instance segmentations and models fr
 - ⚙️ **Configurable Models**: Flexible and hackable models using config files
 - 🧱 **Blockwise Processing**: Efficient handling of large volumes
 
+Tested on Ubuntu 22.04 and macOS (Apple Silicon).
+
 ## Installation
 
 To install `bootstrapper`, we first recommend creating a new conda environment:
