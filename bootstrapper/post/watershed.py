@@ -11,10 +11,10 @@ def waterz_pipeline(config):
     from .blockwise.hglom.luts import find_segments
     from .blockwise.hglom.extract import extract_segmentations
 
-    extract_fragments(config)
-    agglomerate(config)
-    find_segments(config)
-    extract_segmentations(config)
+    frags_ds_name = extract_fragments(config)
+    agglomerate(config, frags_ds_name)
+    find_segments(config, frags_ds_name)
+    extract_segmentations(config, frags_ds_name)
 
 
 def simple_watershed(config):
@@ -94,9 +94,9 @@ def simple_watershed(config):
             shift_name.append(f"{noise_eps}")
 
         if sigma is not None:
+            shift_name.append(f"{"_".join([str(x) for x in sigma[-3:]])}")
             sigma = (0, *sigma)
             shift += gaussian_filter(affs_data, sigma=sigma) - affs_data
-            shift_name.append(f"{"_".join([str(x) for x in sigma[-3:]])}")
 
         if bias is not None:
             if type(bias) == float:
@@ -108,7 +108,7 @@ def simple_watershed(config):
             shift_name.append(f"{"_".join([str(x) for x in bias])}")
 
         affs_data += shift
-        shift_name = "--".join(shift_name)
+    shift_name = "--".join(shift_name)
 
     # watershed
     fragments_data, n = watershed_from_affinities(
@@ -120,7 +120,7 @@ def simple_watershed(config):
 
     # write fragments
     shift_name = f"{shift_name}--" if shift_name != "" else ""
-    shift_name = f"{shift_name}xy{fragments_in_xy}--minseed{min_seed_distance}"
+    shift_name = f"{shift_name}minseed{min_seed_distance}"
     frags_ds_name = os.path.join(frags_ds_prefix, shift_name)
     frags = prepare_ds(
         frags_ds_name,   

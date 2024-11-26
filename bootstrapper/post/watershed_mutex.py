@@ -82,11 +82,22 @@ def simple_mutex(config):
     )
 
     # write fragments
-    shift_name = "--".join([
-        str(noise_eps),
-        "_".join([str(x) for x in sigma]),
-        "_".join([str(x) for x in bias]), 
-    ])
+    shift_name = []
+    if sigma is not None or noise_eps is not None or bias is not None:
+        if noise_eps is not None:
+            shift_name.append(f"{noise_eps}")
+        if sigma is not None:
+            shift_name.append(f"{"_".join([str(x) for x in sigma[-3:]])}")
+        if bias is not None:
+            if type(bias) == float:
+                bias = [bias] * affs_data.shape[0]
+            else:
+                assert len(bias) == affs_data.shape[0]
+            shift_name.append(f"{"_".join([str(x) for x in bias])}")
+
+    shift_name = "--".join(shift_name)
+
+
     frags_ds_name = os.path.join(frags_ds_prefix, shift_name)
     frags = prepare_ds(
         frags_ds_name,

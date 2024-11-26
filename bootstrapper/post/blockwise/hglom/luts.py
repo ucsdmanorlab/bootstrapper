@@ -15,18 +15,34 @@ from funlib.persistence.types import Vec
 logging.getLogger().setLevel(logging.INFO)
 
 
-def find_segments(config):
+def find_segments(config, frags_ds_name=None):
 
     # read config
-    fragments_dataset = config["fragments_dataset"]
+    fragments_dataset_prefix = config["fragments_dataset"]
     lut_dir = config["lut_dir"]
-    thresholds_minmax = config["thresholds_minmax"]
-    thresholds_step = config["thresholds_step"]
+    thresholds_minmax = config.get("thresholds_minmax", [0.0, 1.0])
+    thresholds_step = config.get("thresholds_step", 0.05)
     db_config = config["db"]
+
+    if frags_ds_name is None:
+        shift_name = []
+        noise_eps = config.get("noise_eps", None)
+        sigma = config.get("sigma", None)
+        bias = config.get("bias", None)
+        if noise_eps is not None:
+            shift_name.append(f"{noise_eps}")
+        if sigma is not None:
+            shift_name.append(f"{"_".join([str(x) for x in sigma[-3:]])}")
+        if bias is not None:
+            shift_name.append(f"{"_".join([str(x) for x in bias])}")
+        shift_name = "--".join(shift_name)
+        shift_name = f"{shift_name}--" if shift_name != "" else ""
+        shift_name = f"{shift_name}minseed{config.get('min_seed_distance', 10)}"
+        frags_ds_name = os.path.join(fragments_dataset_prefix, shift_name)
 
     # load fragments
     logging.info("Reading fragments")
-    fragments = open_ds(fragments_dataset)
+    fragments = open_ds(frags_ds_name)
 
     # get ROIs
     if "roi_offset" in config and "roi_shape" in config:

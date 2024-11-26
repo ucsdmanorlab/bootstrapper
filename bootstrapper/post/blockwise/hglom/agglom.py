@@ -4,6 +4,7 @@ import logging
 import toml
 from functools import partial
 from pprint import pprint
+import os
 
 from funlib.geometry import Coordinate, Roi
 from funlib.persistence import open_ds
@@ -153,13 +154,13 @@ def agglomerate_in_block(affs, fragments, db_config, shift, merge_function, bloc
     return 0
 
 
-def agglomerate(config):
+def agglomerate(config, frags_ds_name=None):
 
     logging.info(f"Agglomerating fragments with config: {pprint(config)}")
 
     # Extract arguments from config
     affs_dataset = config["affs_dataset"]  # Name of affinities dataset
-    fragments_dataset = config["fragments_dataset"]  # Name of fragments dataset
+    fragments_dataset_prefix = config["fragments_dataset"]  # Name of fragments dataset
     db_config = config["db"]  # Database configuration
 
     # Optional parameters
@@ -180,6 +181,18 @@ def agglomerate(config):
             "noise_eps": noise_eps,
             "bias": bias,
         }
+        if frags_ds_name is None:
+            shift_name = []
+            if noise_eps is not None:
+                shift_name.append(f"{noise_eps}")
+            if sigma is not None:
+                shift_name.append(f"{"_".join([str(x) for x in sigma[-3:]])}")
+            if bias is not None:
+                shift_name.append(f"{"_".join([str(x) for x in bias])}")
+            shift_name = "--".join(shift_name)
+            shift_name = f"{shift_name}--" if shift_name != "" else ""
+            shift_name = f"{shift_name}minseed{config.get('min_seed_distance', 10)}"
+            frags_ds_name = os.path.join(fragments_dataset_prefix, shift_name)
     else:
         affs_shift = None
 
@@ -204,8 +217,8 @@ def agglomerate(config):
     # Read affs, fragments
     logging.info(f"Reading affs from {affs_dataset}")
     affs = open_ds(affs_dataset)
-    logging.info(f"Reading fragments from {fragments_dataset}")
-    fragments = open_ds(fragments_dataset)
+    logging.info(f"Reading fragments from {frags_ds_name}")
+    fragments = open_ds(frags_ds_name)
     voxel_size = affs.voxel_size
 
     # get total ROI

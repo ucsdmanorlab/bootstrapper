@@ -4,6 +4,7 @@ import logging
 import toml
 from functools import partial
 from pathlib import Path
+import os
 from pprint import pprint
 
 import numpy as np
@@ -253,11 +254,10 @@ def watershed_in_block(
 def extract_fragments(config):
 
     logging.info("Extracting fragments with config:")
-    pprint(config)
 
     # Extract arguments from config
     affs_dataset = config["affs_dataset"]  # Name of affinities dataset
-    fragments_dataset = config["fragments_dataset"]  # Name of fragments dataset
+    fragments_dataset_prefix = config["fragments_dataset"]  # Name of fragments dataset
     db_config = config["db"]  # Database configuration
 
     # Optional parameters
@@ -289,14 +289,23 @@ def extract_fragments(config):
     noise_eps = config.get("noise_eps", None)
     bias = config.get("bias", None)
 
+    shift_name = []
     if sigma is not None or noise_eps is not None or bias is not None:
         affs_shift = {
             "sigma": sigma,
             "noise_eps": noise_eps,
             "bias": bias,
         }
+        if noise_eps is not None:
+            shift_name.append(f"{noise_eps}")
+        if sigma is not None:
+            shift_name.append(f"{"_".join([str(x) for x in sigma[-3:]])}")
+        if bias is not None:
+            shift_name.append(f"{"_".join([str(x) for x in bias])}")
     else:
         affs_shift = None
+
+    shift_name = "--".join(shift_name)
 
     # Read affs
     logging.info(f"Reading affs from {affs_dataset}")
@@ -350,9 +359,12 @@ def extract_fragments(config):
         mask_array = None
 
     # prepare fragments array
-    logging.info(f"Preparing fragments array in {fragments_dataset}")
+    shift_name = f"{shift_name}--" if shift_name != "" else ""
+    shift_name = f"{shift_name}minseed{min_seed_distance}"
+    frags_ds_name = os.path.join(fragments_dataset_prefix, shift_name)
+    logging.info(f"Preparing fragments array in {frags_ds_name}")
     fragments = prepare_ds(
-        store=fragments_dataset,
+        store=frags_ds_name,
         shape=total_roi.shape / voxel_size,
         offset=total_roi.offset,
         voxel_size=voxel_size,
@@ -428,6 +440,8 @@ def extract_fragments(config):
         print("Ran all blocks successfully!")
     else:
         print("Did not run all blocks successfully...")
+
+    return frags_ds_name
 
 
 @click.command()

@@ -15,8 +15,8 @@ logger.setLevel(logging.INFO)
 
 def get_seg_datasets(seg_datasets_prefix):
     seg_datasets = []
-    for ds in glob.glob(f"{seg_datasets_prefix}*/*/.zarray"):
-        if "__vs__" not in ds:  # skip self errors
+    for ds in sorted(glob.glob(f"{seg_datasets_prefix}*/*/.zarray")):
+        if "__vs__" not in ds:  # skip pref errors
             seg_datasets.append(os.path.dirname(ds))
     return seg_datasets
 
@@ -64,12 +64,12 @@ def run_gt_evaluation(config, seg_ds):
     return stats
 
 
-def run_self_evaluation(config, seg_ds):
+def run_pred_evaluation(config, seg_ds):
     from .eval.compute_errors import compute_errors, compute_stats
 
-    pred_dataset = config["self"]["pred_dataset"]
-    thresholds = tuple(config["self"]["thresholds"])
-    params = config["self"].get("params", {})
+    pred_dataset = config["pred"]["pred_dataset"]
+    thresholds = tuple(config["pred"]["thresholds"])
+    params = config["pred"].get("params", {})
     mask_dataset = config.get("mask_dataset")
 
     pred_name = os.path.basename(pred_dataset)
@@ -113,7 +113,7 @@ def run_evaluation(config_file, mode="pred", **kwargs):
         print(f"Evaluating {seg_ds}")
 
         if mode == "pred":
-            stats = run_self_evaluation(config, seg_ds)
+            stats = run_pred_evaluation(config, seg_ds)
         elif mode == "gt":
             stats = run_gt_evaluation(config, seg_ds)
 
@@ -143,7 +143,7 @@ def evaluate(config_file, gt, pred, out_result=None):
 
     with open(config_file, "r") as f:
         config = toml.load(f)
-        mode_configs = [config.get(mode, None) for mode in ["gt", "self"]]
+        mode_configs = [config.get(mode, None) for mode in ["gt", "pred"]]
 
     if any([gt, pred]):
         if gt:

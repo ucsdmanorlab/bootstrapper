@@ -33,9 +33,9 @@ def segment_in_block(fragments, segmentation, lut, block):
     segmentation[block.write_roi] = relabelled
 
 
-def extract_segmentations(config):
+def extract_segmentations(config, frags_ds_name=None):
     # read config
-    fragments_dataset = config["fragments_dataset"]
+    fragments_dataset_prefix = config["fragments_dataset"]
     lut_dir = config["lut_dir"]
     seg_dataset_prefix = config["seg_dataset_prefix"]
     thresholds = config["thresholds"]
@@ -44,7 +44,25 @@ def extract_segmentations(config):
     pprint(config)
 
     # load fragments
-    fragments = open_ds(fragments_dataset)
+    if frags_ds_name is None:
+        shift_name = []
+        noise_eps = config.get("noise_eps", None)
+        sigma = config.get("sigma", None)
+        bias = config.get("bias", None)
+        if noise_eps is not None:
+            shift_name.append(f"{noise_eps}")
+        if sigma is not None:
+            shift_name.append(f"{"_".join([str(x) for x in sigma[-3:]])}")
+        if bias is not None:
+            shift_name.append(f"{"_".join([str(x) for x in bias])}")
+        shift_name = "--".join(shift_name)
+        shift_name = f"{shift_name}--" if shift_name != "" else ""
+        shift_name = f"{shift_name}minseed{config.get('min_seed_distance', 10)}"
+        frags_ds_name = os.path.join(fragments_dataset_prefix, shift_name)
+    else:
+        shift_name = os.path.basename(frags_ds_name)
+
+    fragments = open_ds(frags_ds_name)
     voxel_size = fragments.voxel_size
 
     # get LUT dir
@@ -72,6 +90,7 @@ def extract_segmentations(config):
 
     for threshold in thresholds:
         seg_name: str = f"{seg_dataset_prefix}/{merge_function}_{str(threshold)}"
+        seg_name = os.path.join(seg_dataset_prefix, f"{merge_function}--{str(threshold)}--{shift_name}")
 
         start: float = time.time()
         logging.info(f"Writing {seg_name}")

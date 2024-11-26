@@ -62,14 +62,18 @@ def cc_affs(config):
         affs_data *= (mask > 0).astype(np.uint8)
 
     # add shift and noise
+    shift_name = []
     if sigma is not None or noise_eps is not None:
         shift = np.zeros_like(affs_data)
         if noise_eps is not None:
             shift += np.random.randn(*affs_data.shape) * noise_eps
+            shift_name.append(f"{noise_eps}")
         if sigma is not None:
             sigma = (0, *sigma)
             shift += gaussian_filter(affs_data, sigma=sigma) - affs_data
+            shift_name.append(f"{"_".join([str(x) for x in sigma[-3:]])}")
         affs_data += shift
+    shift_name = "--".join(shift_name)
 
     # threshold affs
     hard_affs = affs_data > threshold
@@ -78,11 +82,8 @@ def cc_affs(config):
     fragments_data = compute_connected_component_segmentation(hard_affs)
 
     # write fragments
-    shift_name = "--".join([
-        f"threshold_{threshold}",
-        str(noise_eps),
-        "_".join([str(x) for x in sigma]),
-    ])
+    shift_name = f"--{shift_name}" if shift_name != "" else ""
+    shift_name = f"threshold_{threshold}{shift_name}"
     frags_ds_name = os.path.join(frags_ds_prefix, shift_name)
     frags = prepare_ds(
         frags_ds_name,

@@ -281,9 +281,7 @@ def setup_models(model_names, parent_dir=None, style="train"):
                 copy_model_scripts(model_name, setup_dir)
                 setups_to_train.append((model_name, setup_dir))
             elif choice == "pretrained":
-                setup_dir = os.path.join(
-                    os.path.dirname(__file__), "models", model_name
-                )
+                setup_dir = os.path.join(MODEL_DIR, model_name)
                 setup_dir = cli_prompt(
                     f"Enter existing setup dir for {model_name}",
                     style,
@@ -765,14 +763,14 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
         }
 
         if pred_ds is not None:
-            eval_config["self"] = {
+            eval_config["pred"] = {
                 "pred_dataset": os.path.join(container, pred_ds_name),
                 "thresholds": [0.1, 1.0],
             }
             if pred_type == "lsds":
-                eval_config["self"]["params"] = {"lsd_sigma": pred_ds["sigma"]}
+                eval_config["pred"]["params"] = {"lsd_sigma": pred_ds["sigma"]}
             else:
-                eval_config["self"]["params"] = {
+                eval_config["pred"]["params"] = {
                     "aff_neighborhood": pred_ds["neighborhood"]
                 }
 
