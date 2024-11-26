@@ -10,6 +10,9 @@ from pprint import pprint
 from funlib.geometry import Roi, Coordinate
 from funlib.persistence import open_ds, prepare_ds
 
+from .configs import download_checkpoints, MODEL_URLS
+from .styles import cli_echo, cli_confirm
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -66,6 +69,27 @@ def get_pred_config(config_file, setup_id, **kwargs):
     num_gpus = config.get("num_gpus", 1)
     roi_offset = config.get("roi_offset", None)
     roi_shape = config.get("roi_shape", None)
+
+    # check if checkpoint exists
+    if not os.path.exists(checkpoint):
+        model_name = os.path.basename(setup_dir)
+        if model_name in MODEL_URLS:
+            cli_echo(f"{checkpoint} not found in {setup_dir}", "predict")
+
+            download = cli_confirm(
+                f"Enter whether to download pretrained checkpoints for {model_name}?", 
+                "predict",
+                default=True,
+            )
+
+            if download:
+                download_checkpoints(model_name, setup_dir)
+            else:
+                raise ValueError(
+                    f"Please either download checkpoints or train from scratch"
+                )
+        else:
+            raise ValueError(f"Checkpoint {checkpoint} does not exist!")
 
     # try reading all input datasets, get voxel size
     in_channels_sum = 0
