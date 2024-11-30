@@ -11,6 +11,13 @@ def process_zarr(path, output_zarr, type, style="prepare"):
     cli_echo(f"Processing {path}", style)
     in_array = zarr.open(path)
 
+    # check zarr attrs of input array. required to have "offset" and "voxel_size". optional "axis_names" and "units".
+    if "offset" not in in_array.attrs:
+        in_array.attrs["offset"] = [0, 0, 0]
+    if "voxel_size" not in in_array.attrs:
+        voxel_size = in_array.attrs.get("resolution", [1, 1, 1])
+        in_array.attrs["voxel_size"] = voxel_size
+
     do_bbox = cli_confirm(
         "Perform bounding box crop?", style, default=False if type == "raw" else True
     )
