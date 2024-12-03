@@ -13,7 +13,7 @@ A toolkit for bootstrapping and refining 3D instance segmentations and models fr
 - ⚙️ **Configurable Models**: Flexible and hackable models using config files
 - 🧱 **Blockwise Processing**: Efficient handling of large volumes
 
-Tested on Ubuntu 22.04 and macOS (Apple Silicon).
+Tested on Ubuntu 22.04, Rocky Linux 8.10, and macOS 15.1.1 (Apple Silicon).
 
 ## Installation
 
@@ -26,11 +26,14 @@ Then, install bootstrapper with:
 ```
 pip install git+https://github.com/ucsdmanorlab/bootstrapper.git
 ```
-
 ## Getting Started
+Bootstrapper has the following main components:
+- **Volumes**: 3D Zarr image arrays, with or without labels or masks
+- **Models**: PyTorch models for training and prediction
+- **Commands**: Configurable CLI commands for training, prediction, post-processing, and evaluation
 
-Bootstrapper has the following commands, typically run in the given order:
-- `bs prepare` : Prepare data and config files for the following steps
+The following are the primary Bootstrapper commands, typically run in the given order:
+- `bs prepare` : Prepare volumes and config files for the following steps
 
 - `bs train` : Train a model
 
@@ -42,11 +45,11 @@ Bootstrapper has the following commands, typically run in the given order:
 
 - `bs filter` : Refine segmentations to create pseudo-ground truth
 
-A **round** is a cycle of the above commands.
+A **round** is a cycle of the above commands run on a set of volumes.
 - Use `bs prepare` to create config files for one or multiple rounds.
 - Refined segmentations from one round become training labels for the next round.
 
-It also has:
+Bootstrapper also has:
 
 - `bs run`: Runs the appropriate command for the given config file.
 - `bs view` : A wrapper for `neuroglancer -d`
