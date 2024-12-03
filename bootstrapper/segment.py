@@ -86,15 +86,13 @@ def get_seg_config(config_file, method, **kwargs):
     else:
         params = DEFAULTS[method] | config.get(f"{method}_params", {})
 
-    del config[f"{method}_params"]
+    # delete config param dicts
+    for x in config.copy():
+        if x.endswith("_params"):
+            del config[x]
 
     # check blockwise -- check if db info is provided
-    if config["blockwise"]:
-        if config["not_blockwise"]:
-            raise ValueError(
-                "Blockwise and not blockwise cannot be True at the same time!"
-            )
-
+    if config.get("blockwise", False):
         if "db" not in config:
             raise ValueError("Blockwise requires a database config!")
 
@@ -146,13 +144,7 @@ def run_segmentation(config_file, mode="ws", **kwargs):
     help="Shape of ROI in world units (space separated integers)",
 )
 @click.option(
-    "--blockwise", "-b", is_flag=True, help="Run blockwise segmentation, with daisy"
-)
-@click.option(
-    "--not-blockwise",
-    "-nb",
-    is_flag=True,
-    help="Run segmentation non-blockwise, i.e, without daisy",
+    "--blockwise", "-b", is_flag=True, default=None, help="Run blockwise segmentation, with daisy"
 )
 @click.option(
     "--num-workers",

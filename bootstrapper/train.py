@@ -133,12 +133,6 @@ def run_training(config_file, **kwargs):
 @click.argument("config_file", type=click.Path(exists=True))
 @click.option("--max_iterations", "-i", type=int, help="Number of training iterations")
 @click.option(
-    "--output_dir",
-    "-o",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Output directory",
-)
-@click.option(
     "--save_checkpoints_every",
     "-ce",
     type=int,
@@ -150,15 +144,12 @@ def run_training(config_file, **kwargs):
 @click.option(
     "--voxel_size", "-v", type=str, help="Voxel size (space-separated integers)"
 )
-@click.option("--sigma", "-s", type=int, help="Sigma value for LSD models")
 def train(
     config_file,
     max_iterations,
-    output_dir,
     save_checkpoints_every,
     save_snapshots_every,
     voxel_size,
-    sigma,
 ):
     """
     Run training with the specified config file.
@@ -172,9 +163,7 @@ def train(
     run_training(
         config_file,
         max_iterations=max_iterations,
-        output_dir=output_dir,
         save_checkpoints_every=save_checkpoints_every,
         save_snapshots_every=save_snapshots_every,
         voxel_size=voxel_size,
-        sigma=sigma,
     )
