@@ -38,8 +38,8 @@ def extract_segmentations(config, frags_ds_name=None):
     fragments_dataset_prefix = config["fragments_dataset"]
     lut_dir = config["lut_dir"]
     seg_dataset_prefix = config["seg_dataset_prefix"]
-    thresholds = config["thresholds"]
-    merge_function = config["merge_function"]
+    thresholds = config.get("thresholds", [0.3])
+    merge_function = config.get("merge_function", "mean")
     num_workers = config["num_workers"]
     pprint(config)
 
@@ -144,13 +144,27 @@ def extract_segmentations(config, frags_ds_name=None):
 @click.argument(
     "config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False)
 )
-def extract(config_file, **kwargs):
+@click.option(
+    "--thresholds",
+    "-t",
+    help="Thresholds to extract segmentations from (space separated floats)",
+)
+def extract(config_file, thresholds=None):
     """
     Extracts segmentations from fragments using LUTs
     """
 
+    # Load config file
     with open(config_file, "r") as f:
-        config = toml.load(f)
+        toml_config = toml.load(f)
+
+    config = toml_config | toml_config["ws_params"]
+    for x in config.copy():
+        if x.endswith("_params"):
+            del config[x]
+
+    if thresholds is not None:
+        config['thresholds'] = [float(x) for x in thresholds.split(" ")]
 
     start = time.time()
     extract_segmentations(config)
@@ -158,3 +172,6 @@ def extract(config_file, **kwargs):
 
     seconds = end - start
     logging.info(f"Total time to extract_segmentation: {seconds}")
+
+if __name__ == "__main__":
+    extract()

@@ -46,7 +46,7 @@ def watershed_in_block(
     from bootstrapper.post.ws import watershed_from_affinities
 
     # load data
-    affs_data = affs[block.read_roi][:3]
+    affs_data = affs.to_ndarray(block.read_roi, fill_value=0)[:3]
 
     # normalize
     if affs_data.dtype == np.uint8:
@@ -455,7 +455,12 @@ def frags(config_file):
 
     # Load config file
     with open(config_file, "r") as f:
-        config = toml.load(f)
+        toml_config = toml.load(f)
+
+    config = toml_config | toml_config["ws_params"]
+    for x in config.copy():
+        if x.endswith("_params"):
+            del config[x]
 
     start = time.time()
     extract_fragments(config)
@@ -463,3 +468,6 @@ def frags(config_file):
 
     seconds = end - start
     logging.info(f"Total time to extract fragments: {seconds} ")
+
+if __name__ == "__main__":
+    frags()

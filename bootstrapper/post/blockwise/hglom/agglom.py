@@ -29,8 +29,8 @@ def agglomerate_in_block(affs, fragments, db_config, shift, merge_function, bloc
     import waterz
 
     # load array data
-    affs_data = affs[block.read_roi][:3]
-    fragments_data = fragments[block.read_roi]
+    affs_data = affs.to_ndarray(block.read_roi, fill_value=0)[:3]
+    fragments_data = fragments.to_ndarray(block.read_roi, fill_value=0)
 
     # load RAG DB
     if "db_file" in db_config:
@@ -310,7 +310,12 @@ def agglom(config_file):
 
     # Load config file
     with open(config_file, "r") as f:
-        config = toml.load(f)
+        toml_config = toml.load(f)
+
+    config = toml_config | toml_config["ws_params"]
+    for x in config.copy():
+        if x.endswith("_params"):
+            del config[x]
 
     start = time.time()
     agglomerate(config)
@@ -318,3 +323,6 @@ def agglom(config_file):
 
     seconds = end - start
     logging.info(f"Total time to agglomerate fragments: {seconds} ")
+
+if __name__ == "__main__":
+    agglomerate()

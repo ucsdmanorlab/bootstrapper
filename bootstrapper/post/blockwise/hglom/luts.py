@@ -165,8 +165,14 @@ def luts(config_file):
     Find connected components of region graph and store lookup tables.
     """
 
+    # Load config file
     with open(config_file, "r") as f:
-        config = toml.load(f)
+        toml_config = toml.load(f)
+
+    config = toml_config | toml_config["ws_params"]
+    for x in config.copy():
+        if x.endswith("_params"):
+            del config[x]
 
     start = time.time()
     find_segments(config)
@@ -174,3 +180,6 @@ def luts(config_file):
 
     seconds = end - start
     logging.info(f"Total time to find_segments: {seconds}")
+
+if __name__ == "__main__":
+    luts()
