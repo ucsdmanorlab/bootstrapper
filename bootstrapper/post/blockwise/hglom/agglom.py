@@ -325,4 +325,4 @@ def agglom(config_file):
     logging.info(f"Total time to agglomerate fragments: {seconds} ")
 
 if __name__ == "__main__":
-    agglomerate()
+    agglom()

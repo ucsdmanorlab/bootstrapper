@@ -5,7 +5,6 @@ import toml
 from functools import partial
 from pathlib import Path
 import os
-from pprint import pprint
 
 import numpy as np
 import zarr
@@ -253,8 +252,6 @@ def watershed_in_block(
 
 def extract_fragments(config):
 
-    logging.info("Extracting fragments with config:")
-
     # Extract arguments from config
     affs_dataset = config["affs_dataset"]  # Name of affinities dataset
     fragments_dataset_prefix = config["fragments_dataset"]  # Name of fragments dataset
@@ -353,7 +350,7 @@ def extract_fragments(config):
     )
 
     # get mask
-    if "mask_dataset" in config and config["mask_dataset"] is not None:
+    if config.get("mask_dataset", None):
         mask_array = open_ds(config["mask_dataset"])
     else:
         mask_array = None

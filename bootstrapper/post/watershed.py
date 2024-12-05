@@ -110,6 +110,11 @@ def simple_watershed(config):
         affs_data += shift
     shift_name = "--".join(shift_name)
 
+    if affs_data.shape[0] == 2:
+        affs_data = np.stack(
+            [np.zeros_like(affs_data[0]), affs_data[0], affs_data[1]]
+        )
+
     # watershed
     fragments_data, n = watershed_from_affinities(
         affs_data,
