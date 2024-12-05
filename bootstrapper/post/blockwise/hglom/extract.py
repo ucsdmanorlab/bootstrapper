@@ -89,7 +89,6 @@ def extract_segmentations(config, frags_ds_name=None):
     read_roi = write_roi = Roi((0,) * fragments.roi.dims, block_size)
 
     for threshold in thresholds:
-        seg_name: str = f"{seg_dataset_prefix}/{merge_function}_{str(threshold)}"
         seg_name = os.path.join(seg_dataset_prefix, f"{merge_function}--{str(threshold)}--{shift_name}")
 
         start: float = time.time()
