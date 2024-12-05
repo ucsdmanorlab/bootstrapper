@@ -6,7 +6,15 @@ logger.setLevel(logging.INFO)
 
 
 def volara_pipeline(config):
-    raise NotImplementedError("Blockwise mutex segmentation coming soon!")
+    from .blockwise.mutex.frags import extract_fragments
+    from .blockwise.mutex.agglom import agglomerate
+    from .blockwise.mutex.luts import global_mws
+    from .blockwise.mutex.extract import extract_segmentation
+
+    frags_ds_name = extract_fragments(config)
+    agglomerate(config, frags_ds_name)
+    global_mws(config, frags_ds_name)
+    extract_segmentation(config, frags_ds_name)
 
 
 def simple_mutex(config):
