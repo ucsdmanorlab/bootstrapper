@@ -64,7 +64,7 @@ def extract_fragments(config):
         if sigma is not None:
             shift_name.append(f"{"_".join([str(x) for x in sigma])}")
         if bias is not None:
-            shift_name.append(f"{"_".join([str(x) for x in bias])}")
+            shift_name.append(f"b{"_".join([str(x) for x in bias])}")
 
     shift_name = "--".join(shift_name)
 
@@ -85,7 +85,7 @@ def extract_fragments(config):
             context = Coordinate(context)
         else:
             context = Coordinate(
-                [0,] * affs.roi.dims
+                [2,] * affs.roi.dims
             )
 
     else:  # blockwise is False

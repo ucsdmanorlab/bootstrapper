@@ -101,7 +101,7 @@ def simple_mutex(config):
                 bias = [bias] * affs_data.shape[0]
             else:
                 assert len(bias) == affs_data.shape[0]
-            shift_name.append(f"{"_".join([str(x) for x in bias])}")
+            shift_name.append(f"b{"_".join([str(x) for x in bias])}")
 
     shift_name = "--".join(shift_name)
 

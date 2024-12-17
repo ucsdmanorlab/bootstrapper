@@ -41,7 +41,7 @@ def agglomerate(config, frags_ds_name=None):
             if sigma is not None:
                 shift_name.append(f"{"_".join([str(x) for x in sigma])}")
             if bias is not None:
-                shift_name.append(f"{"_".join([str(x) for x in bias])}")
+                shift_name.append(f"b{"_".join([str(x) for x in bias])}")
             shift_name = "--".join(shift_name)
             frags_ds_name = os.path.join(fragments_dataset_prefix, shift_name)
         else:

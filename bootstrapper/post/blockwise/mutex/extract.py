@@ -15,7 +15,7 @@ logging.getLogger().setLevel(logging.INFO)
 
 def extract_segmentation(config, frags_ds_name=None):
     fragments_dataset_prefix = config["fragments_dataset"]
-    out_lut = config["lut_dir"]
+    lut_dir = config["lut_dir"]
     seg_dataset_prefix = config["seg_dataset_prefix"]
 
     roi_offset = config.get("roi_offset", None)
@@ -36,11 +36,13 @@ def extract_segmentation(config, frags_ds_name=None):
             if sigma is not None:
                 shift_name.append(f"{"_".join([str(x) for x in sigma])}")
             if bias is not None:
-                shift_name.append(f"{"_".join([str(x) for x in bias])}")
+                shift_name.append(f"b{"_".join([str(x) for x in bias])}")
             shift_name = "--".join(shift_name)
             frags_ds_name = os.path.join(fragments_dataset_prefix, shift_name)
+            lut_name = os.path.join(lut_dir, shift_name)
         else:
             shift_name = os.path.basename(frags_ds_name)
+            lut_name = os.path.join(lut_dir, shift_name)
 
     frags = open_ds(frags_ds_name, "r")
     fragments = Labels(store=frags_ds_name)
@@ -60,7 +62,7 @@ def extract_segmentation(config, frags_ds_name=None):
     lut = LUT(
         frags_data=fragments,
         seg_data=segments,
-        lut=out_lut,
+        lut=lut_name,
         roi=roi,
         block_size=block_size,
         num_workers=num_workers

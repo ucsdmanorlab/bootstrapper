@@ -15,7 +15,7 @@ logging.getLogger().setLevel(logging.INFO)
 def global_mws(config, frags_ds_name=None):
 
     fragments_dataset_prefix = config["fragments_dataset"]  # Name of fragments dataset
-    out_lut = config["lut_dir"] 
+    lut_dir = config["lut_dir"] 
     db_config = config["db"]  # Database configuration
 
     roi_offset = config.get("roi_offset", None)
@@ -35,11 +35,13 @@ def global_mws(config, frags_ds_name=None):
             if sigma is not None:
                 shift_name.append(f"{"_".join([str(x) for x in sigma])}")
             if bias is not None:
-                shift_name.append(f"{"_".join([str(x) for x in bias])}")
+                shift_name.append(f"b{"_".join([str(x) for x in bias])}")
             shift_name = "--".join(shift_name)
             frags_ds_name = os.path.join(fragments_dataset_prefix, shift_name)
+            lut_name = os.path.join(lut_dir, shift_name)
         else:
             shift_name = os.path.basename(frags_ds_name)
+            lut_name = os.path.join(lut_dir, shift_name)
 
     fragments = Labels(store=frags_ds_name)
     fragments_roi = fragments.array().roi
@@ -71,7 +73,7 @@ def global_mws(config, frags_ds_name=None):
     global_mws = GlobalMWS(
         db=db,
         frags_data=fragments,
-        lut=out_lut,
+        lut=lut_name,
         roi=roi,
         bias={"zyx_aff": global_bias},
     )
