@@ -86,7 +86,8 @@ def get_filter_config(config_file, **kwargs):
         block_context = literal_eval(block_context)
 
     # param override
-    params = DEFAULTS.copy()
+    params = {k: config.get(k, DEFAULTS[k]) for k in DEFAULTS}
+
     if len(kwargs["param"]) > 0:
         for param in kwargs["param"]:
             p, v = param.split("=")
@@ -99,23 +100,19 @@ def get_filter_config(config_file, **kwargs):
         eval_files = glob.glob(os.path.join(config["eval_dir"], "*.json"))
         for eval_file in eval_files:
             in_seg_datasets.append(get_best_seg_from_eval(eval_file))
-    elif "seg_datasets_prefix" in config:
+    if "seg_datasets_prefix" in config:
         seg_datasets = [
             x
             for x in glob.glob(os.path.join(f"{config["seg_datasets_prefix"]}*", "*"))
-            if os.path.isdir(x) and os.path.exists(os.path.join(x, ".zarray"))
+            if os.path.isdir(x) and os.path.exists(os.path.join(x, ".zarray")) and "__vs__" not in x
         ]
         in_seg_datasets.extend(seg_datasets)
-    elif "seg_datasets" in config:
+    if "seg_datasets" in config:
         for x in config["seg_datasets"]:
             if os.path.exists(x) and os.path.exists(os.path.join(x, ".zarray")):
                 in_seg_datasets.append(x)
             else:
                 raise ValueError(f"Invalid seg_dataset: {x}")
-    else:
-        raise ValueError(
-            "Must provide either eval_dir, seg_dataset_prefix, or seg_datasets"
-        )
 
     # output
     configs = []
