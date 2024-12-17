@@ -68,13 +68,13 @@ def run_pred_evaluation(config, seg_ds):
     from .eval.compute_errors import compute_errors, compute_stats
 
     pred_dataset = config["pred"]["pred_dataset"]
-    thresholds = tuple(config["pred"]["thresholds"])
+    thresholds = config["pred"].get("thresholds", [0.0, 1.0])
     params = config["pred"].get("params", {})
     mask_dataset = config.get("mask_dataset")
 
     pred_name = os.path.basename(pred_dataset)
-    out_map_dataset = seg_ds + f"__vs__{pred_name}"
-    out_mask_dataset = seg_ds + f"__vs__{pred_name}"
+    out_map_dataset = os.path.join(seg_ds + f"__vs__{pred_name}", "error_map")
+    out_mask_dataset = os.path.join(seg_ds + f"__vs__{pred_name}", "error_mask")
 
     compute_errors(
         seg_ds,
