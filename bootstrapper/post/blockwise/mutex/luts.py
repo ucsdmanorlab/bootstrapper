@@ -15,7 +15,8 @@ logging.getLogger().setLevel(logging.INFO)
 def global_mws(config, frags_ds_name=None):
 
     fragments_dataset_prefix = config["fragments_dataset"]  # Name of fragments dataset
-    lut_dir = config["lut_dir"] 
+    lut_dir = config["lut_dir"]
+    os.makedirs(lut_dir, exist_ok=True)
     db_config = config["db"]  # Database configuration
 
     roi_offset = config.get("roi_offset", None)
