@@ -8,7 +8,7 @@ from funlib.geometry import Coordinate, Roi
 
 from bootstrapper.gp import AddLSDErrors, AddAffErrors, calc_max_padding
 
-logging.basicConfig(level=logging.INFO)
+logging.getLogger().setLevel(logging.INFO)
 
 
 class PrintArray(gp.BatchFilter):
@@ -85,14 +85,16 @@ def compute_errors(
         roi_shape = Coordinate(roi_shape)
         roi = Roi(roi_offset, roi_shape).intersect(roi)
 
-    # io shapes #TODO: unhardcode shapes, use chunk shape
-    output_shape = Coordinate((8, 256, 256))
-    input_shape = Coordinate((12, 384, 384))
+    # io shapes #TODO: include block_shape and context options
+    output_shape = Coordinate(pred_ds.chunk_shape[1:]) #Coordinate((8, 256, 256))
+    input_shape = Coordinate(pred_ds.chunk_shape[1:]) + Coordinate([4, 100, 100]) #Coordinate((12, 384, 384))
     voxel_size = pred_ds.voxel_size
 
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
-    context = calc_max_padding(output_size, voxel_size, 80)
+    context = calc_max_padding(output_size, voxel_size, 100)
+
+    logging.info(f"input_shape: {input_shape}, output_shape: {output_shape}, voxel_size: {voxel_size}")
     # context = (input_size - output_size) / 2
 
     total_output_roi = roi
