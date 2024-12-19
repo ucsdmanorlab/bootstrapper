@@ -25,19 +25,19 @@ dependencies = [
     "tensorboardx",
     "gunpowder>=1.4",
     "daisy>=1.2",
-    "lsds @ git+https://github.com/yajivunev/lsd.git",
-    "funlib.learn.torch @ git+https://github.com/funkelab/funlib.learn.torch.git",
-    "funlib.show.neuroglancer @ git+https://github.com/funkelab/funlib.show.neuroglancer.git",
-    "funlib.segment @ git+https://github.com/funkelab/funlib.segment.git",
-    "funlib.evaluate @ git+https://github.com/yajivunev/funlib.evaluate.git",
-    "waterz @ git+https://github.com/mpinb/waterz.git",
+    "lsds @ git+https://github.com/yajivunev/lsd",
+    "funlib.learn.torch @ git+https://github.com/funkelab/funlib.learn.torch",
+    "funlib.show.neuroglancer @ git+https://github.com/funkelab/funlib.show.neuroglancer",
+    "funlib.segment @ git+https://github.com/funkelab/funlib.segment",
+    "funlib.evaluate @ git+https://github.com/yajivunev/funlib.evaluate",
+    "waterz @ git+https://github.com/mpinb/waterz",
     "click",
 ]
 
 [project.optional-dependencies]
 mws = [
-    "mwatershed @ git+https://github.com/pattonw/mwatershed.git",
-    "volara @ git+https://github.com/pattonw/volara.git",
+    "mwatershed @ git+https://github.com/pattonw/mwatershed",
+    "volara @ git+https://github.com/pattonw/volara",
 ]
 all = ["bootstrapper[mws]"]
 
