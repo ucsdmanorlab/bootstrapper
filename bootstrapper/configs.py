@@ -45,8 +45,9 @@ def check_and_update(configs, style=None):
     cli_echo(pprint(configs))
 
     if cli_confirm("Edit above?", style, default=False):
-        if edited_configs := click.edit(toml.dumps(configs)):
-            configs = toml.loads(edited_configs)
+        configs_with_nulls = {k: "null" if v is None else v for k, v in configs.items()} # None to "null"
+        if edited_configs := click.edit(toml.dumps(configs_with_nulls)):
+            configs = {k: None if v == "null" else v for k, v in toml.loads(edited_configs).items()} # "null" to None
     return configs
 
 
