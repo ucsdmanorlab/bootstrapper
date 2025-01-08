@@ -99,7 +99,7 @@ def mask(in_array, out_array, mode):
     # prepare
     dims = in_ds.roi.dims
     block_size = in_ds.chunk_shape * in_ds.voxel_size
-    context = block_size / 8 if mode == "raw" else daisy.Coordinate((0,) * dims)
+    context = daisy.Coordinate((0, 21, 21)) * in_ds.voxel_size if mode == "raw" else daisy.Coordinate((0,) * dims)
     write_block_roi = daisy.Roi((0,) * dims, block_size)
     read_block_roi = write_block_roi.grow(context, context)
 
@@ -146,4 +146,4 @@ def mask(in_array, out_array, mode):
 
 
 if __name__ == "__main__":
-    make_mask()
+    mask()
