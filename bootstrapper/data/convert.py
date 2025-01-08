@@ -9,13 +9,11 @@ from funlib.persistence import prepare_ds
 from funlib.geometry import Coordinate, Roi
 import logging
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
+logging.getLogger().setLevel(logging.INFO)
 
 def read_from(in_path):
     def load_images(paths):
-        logger.info(f"Loading {len(paths)} images")
+        logging.info(f"Loading {len(paths)} images")
         full_array = np.zeros(
             (len(paths), *imread(paths[0]).shape)
         )  # assume all images have same shape
@@ -27,7 +25,7 @@ def read_from(in_path):
         return full_array
 
     def load_single_image(path):
-        logger.info(f"Loading single image: {path}")
+        logging.info(f"Loading single image: {path}")
         im = imread(path)
         if len(im.shape) == 4 and im.shape[-1] == 3:
             im = im[..., 0]
@@ -107,32 +105,36 @@ def convert(
     """Convert a 3D image or directory of 2D images to a Zarr array."""
 
     # load
-    logger.info(
+    logging.info(
         f"Loading {'directory' if os.path.isdir(in_path) else 'image'}: {in_path}"
     )
     full_array = read_from(in_path)
 
     shape = full_array.shape
-    logger.info(f"Total voxel shape: {shape}, voxel offset: {voxel_offset}")
+    logging.info(f"Total voxel shape: {shape}, voxel offset: {voxel_offset}")
 
     # convert dtype
     dtype = np.dtype(dtype)
-    if dtype == np.uint8 and full_array.dtype != np.uint8:
-        logger.info("Converting to uint8")
-        full_array = (full_array // 256).astype(np.uint8)
-    else:
-        logger.info(f"Converting to {dtype}")
-        full_array = full_array.astype(dtype)
+    min_val, max_val = full_array.min(), full_array.max()
+    logging.info(f"Min: {min_val}, Max: {max_val}, array dtype: {full_array.dtype}")
+
+    if dtype not in (np.uint32, np.uint64):
+        scale = np.iinfo(dtype).max if 'int' in dtype.name else 1
+        scale /= max_val
+    else: 
+        scale = 1
+    logging.info(f"Converting to {dtype}, scaling by {scale}")
+    full_array = (scale * full_array).astype(dtype, copy=False)
 
     # do bounding box crop
     if crop:
-        logger.info("Performing bounding box crop")
+        logging.info("Performing bounding box crop")
         bbox = find_objects(full_array > 0)[0]
         full_array = full_array[bbox]
         shape = full_array.shape
         bbox_offset = [x.start for x in bbox]
 
-        logger.info(
+        logging.info(
             f"Total voxel shape after bounding box: {shape}, voxel_offset: {bbox_offset}"
         )
     else:
@@ -149,7 +151,7 @@ def convert(
             shape
         ), "Number of axis names must match number of dimensions"
 
-    logger.info("Preparing output dataset")
+    logging.info("Preparing output dataset")
     out_ds = prepare_ds(
         out_array,
         shape=shape,
