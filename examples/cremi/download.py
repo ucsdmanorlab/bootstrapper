@@ -35,8 +35,8 @@ out_zarr["gt_labels"].attrs["units"] = ["nm","nm","nm"]
 # write sparse labels
 painting = tifffile.imread("z30_painting.tif")
 painting = rescale(painting, (1, 2, 2), order=0)
-out_zarr["sparse_labels"] = painting
-out_zarr["sparse_labels"].attrs["offset"] = [1200,0,0]
+out_zarr["sparse_labels"] = painting.astype(np.uint64)
+out_zarr["sparse_labels"].attrs["offset"] = [0,0,0]
 out_zarr["sparse_labels"].attrs["voxel_size"] = list(map(int, h5_file["volumes/labels/neuron_ids"].attrs["resolution"]))
 out_zarr["sparse_labels"].attrs["axis_names"] = ["z","y","x"]
 out_zarr["sparse_labels"].attrs["units"] = ["nm","nm","nm"]

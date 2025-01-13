@@ -12,82 +12,86 @@ This downloads CREMI sample C and creates a zarr container `cremi_c.zarr` with t
 cremi_c.zarr
  ├── gt_labels (125, 1250, 1250) uint64
  ├── raw (125, 1250, 1250) uint8
- └── sparse_labels (1, 1250, 1250) uint64
+ └── sparse_labels (62, 1250, 1250) uint64
 ```
 
-In general it is always a good idea to view the data before training, this can be done with:
+In general it is always a good idea to view and inspect the data before training, this can be done with:
 ```
 bs view cremi_c.zarr/*
 ```
 
-## Prepare configs
 
-Since the zarr is already made, we do not need to convert volumes when we use `bs prepare`.
+Since the zarr is already made, we do not need to convert volumes when we use `bs prepare`. 
+
+## Setup 
 
 * `bs prepare`
-```
->>> base dir : .
->>> raw array: cremi_c.zarr/raw
->>> labels array: cremi_c.zarr/sparse_labels
->>> round name : round_1
->>> round_1 model: 2d_mtlsd_3ch
->>> iters: 5000
->>> gt labels: cremi_c.zarr/gt_labels
->>> gt skeletons: cremi_c_gt_skeletons.graphml
->>> compute prediction errors: True
->>> compute gt errors: True
-```
 
-This creates a `round_1` directory in the base directory with the following structure:
+This interactive command will:
+- Create a directory structure for the round
+- Set up models
+- Generate necessary config files for the pipeline
+
+The command creates a `round_1` directory with the following structure:
 ```
-round_1                                 # round directory
-└── 2d_mtlsd_3ch                        # model setup directory
-    ├── net_config.json                 # model config parameters
-    ├── model.py                        # model and loss definitions
-    ├── unet.py                         # necessary modules for model
-    ├── train.py                        # training script
-    ├── predict.py                      # prediction script
-    └── pipeline                        # contains config files
-        ├── train.yaml                  # training config
-        ├── predict_cremi_c.yaml        # prediction config
-        ├── segment_cremi_c.yaml        # segmentation config
-        ├── evaluate_cremi_c.yaml       # evaluation config
-        └── filter_cremi_c.yaml         # filter config
+round_1/
+├── setup_01/                        # model directory (where checkpoints, logs, and snapshots are saved)
+│   ├── net_config.json                # model config parameters (number of feature maps, kernel sizes, etc.)
+│   ├── model.py                       # Pytorch module and loss definitions
+│   ├── unet.py                        # unet implementation
+│   ├── train.py                       # training script
+│   └── predict.py                     # prediction script
+└── run/                             # round config files directory
+    ├── 01_train_00.toml              # training config
+    ├── 02_pred_volume_1.toml         # prediction config
+    ├── 03_seg_volume_1.toml          # segmentation config
+    ├── 04_eval_volume_1.toml         # evaluation config
+    └── 05_filter_volume_1.toml       # filter config
 ```
 
-* Every volume gets its own config file for prediction, segmentation, evaluation, and filtering.
-* All config files for the model are inside the `pipeline` directory.
+## Workflow
+### 1. Training
+Train the model using:
+* `bs train round_1/run/01_train_00.toml`
 
-## Train
-- ```bs train round_1/2d_mtlsd_3ch/pipeline/train.yaml```
-- View snapshots with `bs view -s round_1/2d_mtlsd_3ch/snapshots/batch_1.zarr`
 
-## Predict
-- `bs predict round_1/2d_mtlsd_3ch/pipeline/predict_cremi_c.yaml`
-- `bs predict round_1/2d_mtlsd_3ch/pipeline/predict_cremi_c.yaml affs`
-- `bs view cremi_c.zarr/predictions/round_1-2d_mtlsd_3ch/*`
+Monitor training progress by viewing snapshots:
 
-## Segment
-- `bs segment round_1/2d_mtlsd_3ch/pipeline/segment_cremi_c.yaml`
-- `bs view cremi_c.zarr/post/round_1-2d_mtlsd_3ch/segmentations/*/*`
+* `bs view -s round_1/setup_01/snapshots/batch_1.zarr`
 
-## Evaluate
-- `bs eval round_1/2d_mtlsd_3ch/pipeline/evaluate_cremi_c.yaml`
+### 2. Prediction
+Generate predictions using:
 
-## Filter
-- `bs filter round_1/2d_mtlsd_3ch/pipeline/filter_cremi_c.yaml`
+* `bs predict round_1/run/02_pred_volume_1.toml`
 
-## Next round
+View the predictions:
+
+* `bs view round_1/volume_1.zarr/3Af2M/3000--from--setup_01_5000/3d_affs`
+
+### 3. Segmentation
+Run segmentation on the predictions:
+
+* `bs segment round_1/run/03_seg_volume_1.toml`
+
+View segmentation results:
+
+* `bs view round_1/volume_1.zarr/3Af2M/3000--from--setup_01_5000/segmentations*/*`
+
+### 4. Evaluation
+Evaluate the segmentation outputs:
+* `bs eval round_1/run/04_eval_volume_1.toml`
+
+
+### 5. Filtering
+Apply optional filtering to the segmentation outputs:
+* `bs filter round_1/run/05_filter_volume_1.toml`
+
+
+## Next Round
+To configure the next bootstrapping round:
 * `bs prepare`
-```
->>> base dir : .
->>> raw array: cremi_c.zarr/raw
->>> labels array: cremi_c.zarr/pseudo_gt/round_1-2d_mtlsd_3ch/ids
->>> round name : round_2
->>> round_1 model: 3d_mtlsd
->>> iters: 50000
->>> gt labels: cremi_c.zarr/gt_labels
->>> gt skeletons: cremi_c_gt_skeletons.graphml
->>> compute prediction errors: True
->>> compute gt errors: True
-```
+
+
+## Notes
+- Each volume gets dedicated config files for prediction, segmentation, evaluation, and filtering
+- All pipeline configs are stored in the `run` directory

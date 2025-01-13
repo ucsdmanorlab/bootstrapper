@@ -521,7 +521,6 @@ def create_prediction_configs(volumes, setup_dirs, style="predict"):
 
         configs[volume_name] = check_and_update(pred_config, style)
 
-    pprint(output_datasets)
     out_affs_ds = [
         ds
         for x in output_datasets
@@ -593,7 +592,7 @@ def create_segmentation_configs(
 
         # are raw masks available ?
         if "raw_mask_dataset" in volume and volume["raw_mask_dataset"] is not None:
-            mask_dataset = volumes["raw_mask_dataset"]
+            mask_dataset = volume["raw_mask_dataset"]
         else:
             mask_dataset = None
 
