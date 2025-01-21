@@ -18,6 +18,13 @@ from .styles import cli_echo, cli_prompt, cli_confirm
 
 BS_DIR = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 MODEL_DIR = os.path.join(BS_DIR, "models")
+MODEL_NAMES = sorted(
+        [
+            d
+            for d in os.listdir(MODEL_DIR)
+            if os.path.isdir(os.path.join(MODEL_DIR, d))
+        ]
+    )
 MODEL_SHORT_NAMES = {
     "3d_affs_from_2d_affs": "3Af2A",
     "3d_affs_from_2d_lsd": "3Af2L",
@@ -57,15 +64,16 @@ def save_config(config, filename, style=None):
     cli_echo(f"{filename} saved successfully.", style, "success")
 
 
-def copy_model_scripts(model_name, setup_dir, style="train"):
+def copy_model_scripts(model_name, setup_dir, style="train", cli_edit=True):
     src = os.path.abspath(os.path.join(BS_DIR, "models", model_name))
     cli_echo(f"Copying {src} to {setup_dir}..", style)
     copytree(src, setup_dir, dirs_exist_ok=True)
 
     # edit net config ?
     net_config_path = os.path.join(setup_dir, "net_config.json")
-    if cli_confirm(f"Edit {net_config_path}?", style, default=False):
-        click.edit(filename=net_config_path)
+    if cli_edit:
+        if cli_confirm(f"Edit {net_config_path}?", style, default=False):
+            click.edit(filename=net_config_path)
 
 
 def get_sub_roi(in_array, offset=None, shape=None, style=None):
@@ -175,22 +183,10 @@ def choose_models(style="train"):
     model_names = []
 
     # models that take raw image as input
-    image_models = sorted(
-        [
-            d
-            for d in os.listdir(MODEL_DIR)
-            if os.path.isdir(os.path.join(MODEL_DIR, d)) and "_from_" not in d
-        ]
-    )
+    image_models = [m for m in MODEL_NAMES if "_from_" not in m]
 
     # models that take output from another model as input
-    pred_models = sorted(
-        [
-            d
-            for d in os.listdir(MODEL_DIR)
-            if os.path.isdir(os.path.join(MODEL_DIR, d)) and "_from_" in d
-        ]
-    )
+    pred_models = [m for m in MODEL_NAMES if "_from_" in m]
 
     # get first model
     i = 0
