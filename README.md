@@ -17,6 +17,8 @@ Tested on Ubuntu 22.04, Rocky Linux 8.10, and macOS 15.1.1 (Apple Silicon).
 
 ## Installation
 
+**Note**: Rust is necessary if you wish to use `mwatershed` for segmentation. Install from [rustup.rs](https://rustup.rs/)
+
 To install `bootstrapper`, we first recommend creating a new conda environment:
 ```
 conda create -n bs -c conda-forge python=3.12 graph-tool boost
