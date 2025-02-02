@@ -19,7 +19,7 @@ def process_zarr(path, output_zarr, type, style="prepare"):
         in_array.attrs["voxel_size"] = voxel_size
 
     do_bbox = cli_confirm(
-        "Perform bounding box crop?", style, default=False if type == "raw" else True
+        f"Perform bounding box crop for {type.upper()}?", style, default=False
     )
     if os.path.commonpath([path, output_zarr]) == output_zarr:
         copy_to_output = False

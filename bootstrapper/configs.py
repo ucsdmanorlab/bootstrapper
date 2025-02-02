@@ -442,7 +442,7 @@ def create_prediction_configs(volumes, setup_dirs, style="predict"):
             f"Enter checkpoint iteration for model {i+1}: {os.path.basename(setup_dir)}",
             style,
             type=int,
-            default=5000 * len(volumes) if i == 0 else 3000,
+            default=10000 * len(volumes) if i == 0 else 5000,
             show_default=True,
         )
         iterations.append(iteration)
@@ -560,11 +560,7 @@ def create_segmentation_configs(
 
         # TODO: find way to get roi from predictions
         # roi_offset, roi_shape, voxel_size = get_roi(in_array=affs_array)
-
-        do_blockwise = False
-
-        if cli_confirm(f"Do blockwise = {do_blockwise}. Switch?", style, default=False):
-            do_blockwise = not do_blockwise
+        do_blockwise = cli_confirm(f"Do blockwise segmentation?", style, default=False)
 
         if do_blockwise and cli_confirm(
             f"Set block shape and context?", style, default=False
@@ -609,19 +605,15 @@ def create_segmentation_configs(
 
         # get RAG db config
         if do_blockwise:
-            sqlite_path = os.path.join(container, output_prefix, f"rag_{method}.db")
-
             # SQLite or not ?
-            use_sqlite = not do_blockwise
-            if cli_confirm(
-                f"Use SQLite for RAG = {use_sqlite}. Switch?",
+            use_sqlite = cli_confirm(
+                f"Use SQLite for graph database? Will ask for PostgreSQL details otherwise.",
                 style,
-                default=False,
+                default=True,
                 show_default=True,
-            ):
-                use_sqlite = not use_sqlite
+            )
 
-            sqlite_path = sqlite_path if use_sqlite else None
+            sqlite_path = os.path.join(container, output_prefix, f"rag_{method}.db") if use_sqlite else None
 
             # get rag db config
             seg_config["db"] = get_rag_db_config(sqlite_path)
@@ -776,6 +768,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
                 "skeletons_file": gt_skeletons_file,
             }
 
+        # todo: handle when neither gt or pred eval is provided
         configs[volume_name] = check_and_update(eval_config, style)
 
     return {"out_eval_dir": output_prefix, "configs": configs}
