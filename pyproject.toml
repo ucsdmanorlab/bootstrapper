@@ -37,8 +37,7 @@ dependencies = [
 [project.optional-dependencies]
 mws = [
     "mwatershed @ git+https://github.com/pattonw/mwatershed",
-    "volara @ git+https://github.com/pattonw/volara",
-]
+    "volara @ git+https://github.com/pattonw/volara@v1.0",]
 all = ["bootstrapper[mws]"]
 
 [project.urls]

@@ -8,7 +8,7 @@ import os
 import zarr
 from funlib.persistence import open_ds
 from volara.datasets import Labels
-from volara.blockwise import LUT
+from volara.blockwise import Relabel
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -58,8 +58,8 @@ def extract_segmentation(config, frags_ds_name=None):
     seg_name = os.path.join(seg_dataset_prefix, f"{str(global_bias)}--{shift_name}")
     segments = Labels(store=seg_name)
 
-    # Write LUT
-    lut = LUT(
+    # Extract segments
+    relabel_task = Relabel(
         frags_data=fragments,
         seg_data=segments,
         lut=lut_name,
@@ -67,7 +67,7 @@ def extract_segmentation(config, frags_ds_name=None):
         block_size=block_size,
         num_workers=num_workers
     )
-    lut.run_blockwise(multiprocessing=True)
+    relabel_task.run_blockwise(multiprocessing=True)
 
     # temp fix: update zarr attributes
     zattrs = {

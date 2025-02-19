@@ -4,10 +4,12 @@ import logging
 import toml
 import click
 from pprint import pprint
+from pathlib import Path
 
 from volara.datasets import Labels
 from volara.dbs import SQLite, PostgreSQL
-from volara.blockwise import GlobalMWS
+from volara.lut import LUT
+from volara.blockwise import GraphMWS
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -26,7 +28,7 @@ def global_mws(config, frags_ds_name=None):
     noise_eps = config.get("noise_eps", None)
     bias = config.get("bias", None)
 
-    global_bias = config.get("global_bias", -0.5)
+    global_bias = tuple(config.get("global_bias", [1.0,-0.5]))
 
     if sigma is not None or noise_eps is not None or bias is not None:
         if frags_ds_name is None:
@@ -71,12 +73,13 @@ def global_mws(config, frags_ds_name=None):
             }
         )
 
-    global_mws = GlobalMWS(
+    lut = LUT(path=Path(lut_name))
+
+    global_mws = GraphMWS(
         db=db,
-        frags_data=fragments,
-        lut=lut_name,
+        lut=lut,
         roi=roi,
-        bias={"zyx_aff": global_bias},
+        weights={"zyx_aff": global_bias},
     )
     global_mws.run_blockwise(multiprocessing=False)
 
