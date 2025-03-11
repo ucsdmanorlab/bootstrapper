@@ -2,7 +2,14 @@
 
 Here we will bootstrap a segmentation of a CREMI volume using sparse labels on a single section.
 
-## Download
+## Installation
+* Rust is necessary if you wish to use `mwatershed` for segmentation. Install from [rustup.rs](https://rustup.rs/)
+* `git clone https://github.com/ucsdmanorlab/bootstrapper.git`
+* `cd bootstrapper` -> `pip install .[all]`
+
+The rest of the example is relative from `examples/cremi`.
+
+## Data Download
 ```
 python download.py
 ```
@@ -32,7 +39,67 @@ This interactive command will:
 - Set up models
 - Generate necessary config files for the pipeline
 
-The command creates a `round_1` directory with the following structure:
+For this example, answer the prompts as follows:
+<details>
+<summary> Show example prompt responses </summary>
+
+1. **Initial Setup**:
+    - Accept default base directory by pressing Enter
+    - Accept default round name `round_1` by pressing Enter
+    - Accept default number of volumes (`1`) by pressing Enter
+    - Accept default volume name `volume_1` by pressing Enter
+
+2. **Input Data (volume 1)**:
+    - For *RAW* input: enter `cremi_c.zarr/raw`
+        - Answer "`N`" for bounding box crop
+        - Answer "`N`" for copying to output container
+        - Answer "`N`" for raw mask
+    - For *LABELS* input: enter `cremi_c.zarr/sparse_labels`
+        - Answer "`Y`" for bounding box crop
+        - Answer "`N`" for copying to output container
+        - Accept default labels dataset path by pressing Enter
+        - Answer "`N`" for labels mask
+    - Accept volume settings by answering "`N`" to edit
+3. **Model and Training Configuration**:
+    - Accept default run directory by pressing Enter
+    - For model name enter: `2d_affs`
+    - Answer "`Y`" to add `3d_affs_from_2d_affs`
+        - Accept default setup directory by pressing Enter
+        - Answer "`N`" to edit net_config.json
+        - Choose "`pretrained`" for `3d_affs_from_2d_affs`; Accept default directory for `3d_affs_from_2d_affs`
+        - Answer "`Y`" to download pretrained checkpoints
+    - Training Parameters for `2d_affs`:
+        - Accept default max iterations (`30001`)
+        - Accept default checkpoint save frequency (`5000`)
+        - Accept default snapshot frequency (`1000`)
+        - Answer "`N`" to edit configuration
+4. **Prediction Configuration**:
+    - Enter `20000` for `2d_affs` checkpoint iteration
+    - Enter `5000` for `3d_affs_from_2d_affs` checkpoint itteration
+    - Accept defaults for GPUs and CPU workers
+    - Accept default voxel offset and shape
+    - Answer "`N`" to edit configuration
+5. **Segmentation Configuration**:
+    - Choose "`mws`" as segmentation method
+    - Accept default MWS parameters
+    - Answer "`N`" to blockwise
+    - Answer "`N`" to edit configuration
+6. **Evaluation**:
+    - Answer "`Y`" for ground truth labels
+    - Enter `cremi_c.zarr/gt_labels` for ground truth path
+    - Answer "`N`" for skeletons
+    - Accept default for prediction errors
+    - Answer "`N`" to edit configuration
+7. **Filtering**:
+    - Accept default filter settings
+    - Answer "`N`" to edit configuration
+    - Answer "`N`" to make configs for next round
+
+</details>
+
+-------------------------------------------
+
+This will create a `round_1` directory with the following structure:
 ```
 round_1/
 ├── setup_01/                        # model directory (where checkpoints, logs, and snapshots are saved)

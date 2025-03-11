@@ -20,6 +20,8 @@ class CreateMask(gp.BatchFilter):
         spec = self.spec[self.in_array].copy()
         spec.dtype = np.uint8
 
+        self.in_dtype = self.spec[self.in_array].dtype
+
         self.provides(self.out_array, spec)
 
     def prepare(self, request):
@@ -27,7 +29,7 @@ class CreateMask(gp.BatchFilter):
         deps = gp.BatchRequest()
 
         request_spec = request[self.out_array].copy()
-        request_spec.dtype = request[self.in_array].dtype
+        request_spec.dtype = self.in_dtype #request[self.in_array].dtype
 
         deps[self.in_array] = request_spec
 

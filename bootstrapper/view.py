@@ -8,10 +8,7 @@ import subprocess
 import logging
 
 # Set up logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+logging.getLogger().setLevel(logging.INFO)
 
 
 @click.command()
@@ -37,18 +34,18 @@ def view(snapshot, datasets):
     -------
     None
     """
-    logger.info("Starting view command")
+    logging.info("Starting view command")
     if snapshot:
         if snapshot.endswith(".zarr") or snapshot.endswith(".zarr/"):
-            logger.info(f"Viewing snapshot: {snapshot}")
+            logging.info(f"Viewing snapshot: {snapshot}")
             view_snapshot(snapshot)
             click.pause("Press any key to exit...")
         else:
-            logger.error("Snapshot path must end with '.zarr'")
+            logging.error("Snapshot path must end with '.zarr'")
             click.echo("Error: Snapshot path must end with '.zarr'", err=True)
             sys.exit(1)
     else:
-        logger.info(f"Running neuroglancer with datasets: {datasets}")
+        logging.info(f"Running neuroglancer with datasets: {datasets}")
         neuroglancer_args = ["neuroglancer", "-d"] + list(datasets)
         subprocess.run(neuroglancer_args)
 
@@ -63,7 +60,7 @@ def create_coordinate_space(voxel_size, is_2d):
         if not is_2d
         else voxel_size[-2:] + voxel_size[-2:]
     )
-    logger.debug(f"Creating coordinate space with names: {names}, scales: {scales}")
+    logging.info(f"Creating coordinate space with names: {names}, scales: {scales}")
     return neuroglancer.CoordinateSpace(names=names, units="nm", scales=scales)
 
 
@@ -90,7 +87,7 @@ def process_dataset(f, ds, is_2d):
             0,
         ] + [int(i / j) for i, j in zip(offset, vs)]
 
-    logger.debug(
+    logging.debug(
         f"Processed {ds}: shape={data.shape}, voxel_size={vs}, offset={offset}"
     )
     return data, vs, offset
@@ -128,7 +125,7 @@ def create_shader(ds, is_2d):
             shader = rg
     else:
         shader = rgb
-    logger.debug(f"Created shader for dataset: {ds}")
+    logging.debug(f"Created shader for dataset: {ds}")
     return shader
 
 
@@ -148,8 +145,14 @@ def view_snapshot(zarr_path):
     except KeyError:
         raw_shape = f[datasets[0]].shape
     shape = f[datasets[0]].shape
-    logger.info(f"Raw shape: {raw_shape}, pred shape: {shape}")
-    is_2d = (len(shape) == 5 and shape[-3] == 1) and (len(raw_shape) == 4)
+    logging.info(f"Raw shape: {raw_shape}, pred shape: {shape}")
+    if len(shape) == 5:
+        is_2d = (shape[-3] == 1) and (len(raw_shape) == 4)
+    elif len(shape) == 4:
+        is_2d = (len(raw_shape) == 4) and raw_shape[0] != 1
+    else:
+        is_2d = False
+    print("is_2d", is_2d)
 
     try:
         vs = f[datasets[0]].attrs["voxel_size"]
@@ -177,11 +180,11 @@ def view_snapshot(zarr_path):
                 if not is_segmentation:
                     s.layers[ds].shader = create_shader(ds, is_2d)
 
-                logger.info(f"Added layer: {ds}")
+                logging.info(f"Added layer: {ds}")
             except Exception as e:
-                logger.error(f"Error processing dataset {ds}: {e}")
+                logging.error(f"Error processing dataset {ds}: {e}")
 
         s.layout = "yz"
 
-    logger.info("Viewer setup complete")
+    logging.info("Viewer setup complete")
     print(viewer)

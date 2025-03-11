@@ -5,6 +5,7 @@ import toml
 from .configs import (
     save_config,
     download_checkpoints,
+    copy_model_scripts,
     make_round_configs,
     create_training_config,
     create_prediction_configs,
@@ -12,6 +13,7 @@ from .configs import (
     create_evaluation_configs,
     create_filter_configs,
     check_and_update,
+    MODEL_NAMES
 )
 from .data.volumes import prepare_volume
 from .styles import cli_echo, cli_prompt, cli_confirm
@@ -135,6 +137,7 @@ class PrepareGroup(click.Group):
     def list_commands(self, ctx):
         return [
             "volumes",
+            "model",
             "train",
             "predict",
             "segment",
@@ -151,6 +154,8 @@ class PrepareGroup(click.Group):
             "vols": "volumes",
             "vol": "volumes",
             "v": "volumes",
+            "model": "model",
+            "m": "model",
             "train": "train",
             "t": "train",
             "pred": "predict",
@@ -177,6 +182,8 @@ def prepare(ctx):
     evaluation, and filtering segmentations across multiple rounds. It handles:
 
     - Volume preparation: Process raw and label data (tif/zarr)
+
+    - Model preparation: Create model directory (setup_dir)
 
     - Configuration generation for each round:
 
@@ -218,6 +225,15 @@ def prep_vol():
             default=os.path.join(os.getcwd(), "volumes.toml"),
         )
         save_config(volumes, volumes_doc)
+
+
+@prepare.command("model")
+@click.option("--model-name", "-m", help="Name of model to create", required=True, type=click.Choice(MODEL_NAMES))
+@click.option("--setup-dir", "-s", help="Path to setup directory to create", required=True, type=click.Path())
+def prep_model(model_name, setup_dir):
+    """Copies model to desired setup directory."""
+    os.makedirs(setup_dir, exist_ok=True)
+    copy_model_scripts(model_name, setup_dir, cli_edit=False)
 
 
 @prepare.command("train")
