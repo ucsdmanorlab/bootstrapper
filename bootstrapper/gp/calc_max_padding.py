@@ -17,7 +17,7 @@ def calc_max_padding(output_size, voxel_size, sigma, mode="shrink"):
         )
     )
 
-    diag = np.sqrt(output_size[1] ** 2 + output_size[2] ** 2)
+    diag = np.sqrt(output_size[-1] ** 2 + output_size[-2] ** 2)
 
     max_padding = Roi(
         (
