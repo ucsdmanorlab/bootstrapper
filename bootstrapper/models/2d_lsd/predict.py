@@ -77,7 +77,7 @@ def predict(
 
     shape_increase = net_config["shape_increase"]
     input_shape = [
-        1,
+        net_config["in_channels"],
         *[x + y for x, y in zip(shape_increase, net_config["input_shape"])],
     ]
     output_shape = [
