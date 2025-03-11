@@ -7,7 +7,7 @@ import zarr
 from funlib.geometry import Coordinate
 from funlib.persistence import open_ds
 from volara.blockwise import ExtractFrags
-from volara.datasets import Affs, Labels
+from volara.datasets import Affs, Labels, Raw
 from volara.dbs import SQLite, PostgreSQL
 
 logging.getLogger().setLevel(logging.INFO)
@@ -125,6 +125,9 @@ def extract_fragments(config):
         neighborhood=neighborhood,
     )
     fragments = Labels(store=frags_ds_name)
+
+    if mask_dataset is not None:
+        mask_dataset = Raw(store=mask_dataset)
 
     # Extract Fragments
     extract_frags = ExtractFrags(

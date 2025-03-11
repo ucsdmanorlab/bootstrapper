@@ -4,10 +4,12 @@ import toml
 import click
 from pprint import pprint
 import os
+from pathlib import Path
 
 import zarr
 from funlib.persistence import open_ds
 from volara.datasets import Labels
+from volara.lut import LUT
 from volara.blockwise import Relabel
 
 logging.getLogger().setLevel(logging.INFO)
@@ -58,11 +60,13 @@ def extract_segmentation(config, frags_ds_name=None):
     seg_name = os.path.join(seg_dataset_prefix, f"{str(global_bias)}--{shift_name}")
     segments = Labels(store=seg_name)
 
+    lut = LUT(path=lut_name)
+
     # Extract segments
     relabel_task = Relabel(
         frags_data=fragments,
         seg_data=segments,
-        lut=lut_name,
+        lut=lut,
         roi=roi,
         block_size=block_size,
         num_workers=num_workers

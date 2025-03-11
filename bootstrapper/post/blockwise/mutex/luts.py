@@ -73,7 +73,7 @@ def global_mws(config, frags_ds_name=None):
             }
         )
 
-    lut = LUT(path=Path(lut_name))
+    lut = LUT(path=lut_name)
 
     global_mws = GraphMWS(
         db=db,
