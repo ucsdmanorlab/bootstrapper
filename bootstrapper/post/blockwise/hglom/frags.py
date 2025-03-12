@@ -287,18 +287,20 @@ def extract_fragments(config):
     bias = config.get("bias", None)
 
     shift_name = []
-    if sigma is not None or noise_eps is not None or bias is not None:
+    if any([sigma, noise_eps, bias, filter_fragments]):
         affs_shift = {
             "sigma": sigma,
             "noise_eps": noise_eps,
             "bias": bias,
         }
+        if filter_fragments is not None:
+            shift_name.append(f"filt{filter_fragments}")
         if noise_eps is not None:
-            shift_name.append(f"{noise_eps}")
+            shift_name.append(f"eps{noise_eps}")
         if sigma is not None:
-            shift_name.append(f"{"_".join([str(x) for x in sigma[-3:]])}")
+            shift_name.append(f"sigma{'_'.join([str(x) for x in sigma])}")
         if bias is not None:
-            shift_name.append(f"{"_".join([str(x) for x in bias])}")
+            shift_name.append(f"bias{'_'.join([str(x) for x in bias])}")
     else:
         affs_shift = None
 

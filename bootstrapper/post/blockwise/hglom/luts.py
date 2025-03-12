@@ -26,15 +26,19 @@ def find_segments(config, frags_ds_name=None):
 
     if frags_ds_name is None:
         shift_name = []
+        filter_fragments = config.get("filter_fragments", None)
         noise_eps = config.get("noise_eps", None)
         sigma = config.get("sigma", None)
         bias = config.get("bias", None)
+
+        if filter_fragments is not None:
+            shift_name.append(f"filt{filter_fragments}")
         if noise_eps is not None:
-            shift_name.append(f"{noise_eps}")
+            shift_name.append(f"eps{noise_eps}")
         if sigma is not None:
-            shift_name.append(f"{"_".join([str(x) for x in sigma[-3:]])}")
+            shift_name.append(f"sigma{'_'.join([str(x) for x in sigma])}")
         if bias is not None:
-            shift_name.append(f"{"_".join([str(x) for x in bias])}")
+            shift_name.append(f"bias{'_'.join([str(x) for x in bias])}")
         shift_name = "--".join(shift_name)
         shift_name = f"{shift_name}--" if shift_name != "" else ""
         shift_name = f"{shift_name}minseed{config.get('min_seed_distance', 10)}"
