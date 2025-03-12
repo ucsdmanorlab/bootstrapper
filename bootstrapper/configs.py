@@ -711,7 +711,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
                     )
             elif pred_type == "affs":
                 if "neighborhood" not in pred_ds:
-                    default_nbhd_str = "[[1, 0, 0], [0, 1, 0], [0, 0, 1], [2, 0, 0], [0, 8, 0], [0, 0, 8]]"
+                    default_nbhd_str = "[[-1, 0, 0], [0, -1, 0], [0, 0, -1], [-2, 0, 0], [0, -8, 0], [0, 0, -8]]"
                     pred_ds["neighborhood"] = literal_eval(
                         cli_prompt(
                             f"Enter literal string of list of offsets to compute affinities from segmentation",
