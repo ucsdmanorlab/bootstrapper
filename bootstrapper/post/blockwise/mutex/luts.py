@@ -24,21 +24,27 @@ def global_mws(config, frags_ds_name=None):
     roi_offset = config.get("roi_offset", None)
     roi_shape = config.get("roi_shape", None)
 
+    filter_fragments = config.get("filter_fragments", None)
     sigma = config.get("sigma", None)
     noise_eps = config.get("noise_eps", None)
     bias = config.get("bias", None)
+    strides = config.get("strides", None)
 
-    global_bias = tuple(config.get("global_bias", [1.0,-0.5]))
+    global_bias = tuple(config.get("global_bias", [1.0, -0.5]))
 
-    if sigma is not None or noise_eps is not None or bias is not None:
+    if any([sigma, noise_eps, bias, filter_fragments, strides]):
         if frags_ds_name is None:
             shift_name = []
+            if filter_fragments is not None:
+                shift_name.append(f"filt{filter_fragments}")
             if noise_eps is not None:
-                shift_name.append(f"{noise_eps}")
+                shift_name.append(f"eps{noise_eps}")
             if sigma is not None:
-                shift_name.append(f"{"_".join([str(x) for x in sigma])}")
+                shift_name.append(f"sigma{'_'.join([str(x) for x in sigma])}")
             if bias is not None:
-                shift_name.append(f"b{"_".join([str(x) for x in bias])}")
+                shift_name.append(f"bias{'_'.join([str(x) for x in bias])}")
+            if strides is not None:
+                shift_name.append(f"strides{'_'.join([str(x[0]) for x in strides])}")
             shift_name = "--".join(shift_name)
             frags_ds_name = os.path.join(fragments_dataset_prefix, shift_name)
             lut_name = os.path.join(lut_dir, shift_name)

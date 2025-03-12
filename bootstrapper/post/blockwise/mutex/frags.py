@@ -58,13 +58,17 @@ def extract_fragments(config):
     ), "Numbes of biases must match number of affinities channels"
 
     shift_name = []
-    if sigma is not None or noise_eps is not None or bias is not None:
+    if any([sigma, noise_eps, bias, filter_fragments, strides]):
+        if filter_fragments is not None:
+            shift_name.append(f"filt{filter_fragments}")
         if noise_eps is not None:
-            shift_name.append(f"{noise_eps}")
+            shift_name.append(f"eps{noise_eps}")
         if sigma is not None:
-            shift_name.append(f"{"_".join([str(x) for x in sigma])}")
+            shift_name.append(f"sigma{'_'.join([str(x) for x in sigma])}")
         if bias is not None:
-            shift_name.append(f"b{"_".join([str(x) for x in bias])}")
+            shift_name.append(f"bias{'_'.join([str(x) for x in bias])}")
+        if strides is not None:
+            shift_name.append(f"strides{'_'.join([str(x[0]) for x in strides])}")
 
     shift_name = "--".join(shift_name)
 
