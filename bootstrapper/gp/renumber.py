@@ -17,6 +17,9 @@ class Renumber(gp.BatchFilter):
         self.labels = labels
 
     def process(self, batch, request):
+        if self.labels not in batch.arrays:
+            return
+
         components = batch.arrays[self.labels].data
         dtype = components.dtype
 

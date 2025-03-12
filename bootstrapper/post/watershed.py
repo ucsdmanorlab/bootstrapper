@@ -86,15 +86,15 @@ def simple_watershed(config):
 
     # shift affs with noise, smoothing, and bias
     shift_name = []
-    if sigma is not None or noise_eps is not None or bias is not None:
+    if any([sigma, noise_eps, bias]):
         shift = np.zeros_like(affs_data)
 
         if noise_eps is not None:
             shift += np.random.randn(*affs_data.shape) * noise_eps
-            shift_name.append(f"{noise_eps}")
+            shift_name.append(f"eps{noise_eps}")
 
         if sigma is not None:
-            shift_name.append(f"{"_".join([str(x) for x in sigma[-3:]])}")
+            shift_name.append(f"sigma{"_".join([str(x) for x in sigma[-3:]])}")
             sigma = (0, *sigma)
             shift += gaussian_filter(affs_data, sigma=sigma) - affs_data
 
@@ -105,7 +105,7 @@ def simple_watershed(config):
                 assert len(bias) == affs_data.shape[0]
 
             shift += np.array([bias]).reshape((-1, *((1,) * (len(affs.shape) - 1))))
-            shift_name.append(f"{"_".join([str(x) for x in bias])}")
+            shift_name.append(f"bias{'_'.join([str(x) for x in bias])}")
 
         affs_data += shift
     shift_name = "--".join(shift_name)

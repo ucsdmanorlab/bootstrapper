@@ -19,7 +19,7 @@ class SmoothAugment(gp.BatchFilter):
             The min and max of the uniformly randomly drawn sigma value.
     """
 
-    def __init__(self, array, blur_min=0.75, blur_max=1.25, p=1.0):
+    def __init__(self, array, blur_min=0.75, blur_max=1.75, p=1.0):
         self.array = array
         self.blur_min = blur_min
         self.blur_max = blur_max
