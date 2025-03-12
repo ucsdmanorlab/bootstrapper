@@ -45,7 +45,7 @@ class AddObfuscated2DLSDs(AddLocalShapeDescriptor):
         unique_ids = np.unique(array)
 
         if len(unique_ids) < 2:
-            raise ValueError("Not enough unique_ids to merge.")
+            return array
 
         np.random.shuffle(unique_ids)
 
