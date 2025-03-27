@@ -141,7 +141,7 @@ def mutex_watershed_segmentation(config):
     roi_shape = config.get("roi_shape", None)
     block_shape = config.get("block_shape", None)
 
-    if roi_offset is not None:
+    if roi_offset is not None and type(roi_offset) == str
         config["roi_offset"] = list(map(int, roi_offset.strip().split(" ")))
         config["roi_shape"] = list(map(int, roi_shape.strip().split(" ")))
 
