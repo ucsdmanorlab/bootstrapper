@@ -4,6 +4,7 @@ from bootstrapper.data.clahe import clahe
 from bootstrapper.data.convert import convert
 from bootstrapper.data.mask import mask
 from bootstrapper.data.scale_pyramid import scale_pyramid
+from bootstrapper.data.merge import merge
 
 
 @click.group()
@@ -17,6 +18,7 @@ utils.add_command(clahe)
 utils.add_command(convert)
 utils.add_command(mask)
 utils.add_command(scale_pyramid)
+utils.add_command(merge)
 
 @utils.command()
 @click.option("--model-name", "-m", help="Name of the model to download")
