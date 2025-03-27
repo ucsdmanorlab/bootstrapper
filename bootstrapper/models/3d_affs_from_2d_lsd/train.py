@@ -22,11 +22,11 @@ torch.backends.cudnn.benchmark = True
 
 
 def train(
-    setup_dir,
-    voxel_size,
-    max_iterations,
-    save_checkpoints_every,
-    save_snapshots_every,
+    setup_dir=setup_dir,
+    voxel_size=(20,1,1),
+    max_iterations=15001,
+    save_checkpoints_every=1000,
+    save_snapshots_every=1000,
 ):
     batch_size = 1
     model = AffsUNet()
@@ -50,7 +50,7 @@ def train(
     out_neighborhood = net_config["outputs"]["3d_affs"]["neighborhood"]
 
     # get lsd sigma
-    sigma = net_config["outputs"]["2d_lsds"]["sigma"]
+    sigma = net_config["inputs"]["2d_lsds"]["sigma"]
     sigma = (0, sigma, sigma)  # add z-dimension since pipeline is 3D
 
     shape_increase = [0, 0, 0]  # net_config["shape_increase"]
@@ -95,15 +95,15 @@ def train(
         p=0.5,
     )
 
-    pipeline += gp.ShiftAugment(prob_slip=0.1, prob_shift=0.1, sigma=1)
+    pipeline += gp.ShiftAugment(prob_slip=0.2, prob_shift=0.2, sigma=5)
 
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
 
     # that is what predicted lsds will look like
-    pipeline += AddObfuscated2DLSDs(labels, input_lsds, sigma=sigma, downsample=2)
+    pipeline += AddObfuscated2DLSDs(labels, input_lsds, sigma=sigma, downsample=4)
 
     # add random noise
-    pipeline += gp.NoiseAugment(input_lsds, mode="gaussian", p=0.5)
+    pipeline += gp.NoiseAugment(input_lsds, mode="gaussian", p=0.25)
 
     # intensity
     pipeline += CustomIntensityAugment(
@@ -115,7 +115,7 @@ def train(
 
     # add defects
     pipeline += gp.DefectAugment(
-        input_lsds, prob_missing=0.05, prob_low_contrast=0.05, prob_deform=0.0, axis=1
+        input_lsds, prob_missing=0.15, prob_low_contrast=0.05, prob_deform=0.0, axis=1
     )
 
     # now we erode - we want the gt affs to have a pixel boundary
@@ -132,7 +132,7 @@ def train(
 
     pipeline += gp.Stack(batch_size)
 
-    pipeline += gp.PreCache(num_workers=32, cache_size=64)
+    pipeline += gp.PreCache()
 
     pipeline += gp.torch.Train(
         model,
@@ -170,11 +170,14 @@ def train(
 
 if __name__ == "__main__":
 
-    config_file = sys.argv[1]
-    with open(config_file, "r") as f:
-        config = toml.load(f)
+    try:
+        config_file = sys.argv[1]
+        with open(config_file, "r") as f:
+            config = toml.load(f)
 
-    assert config["setup_dir"] in setup_dir, "model directories do not match"
-    config["setup_dir"] = setup_dir
+        assert config["setup_dir"] in setup_dir, "model directories do not match"
+        config["setup_dir"] = setup_dir
 
-    train(**config)
+        train(**config)
+    except:
+        train()

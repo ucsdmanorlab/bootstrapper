@@ -149,7 +149,11 @@ def view_snapshot(zarr_path):
     if len(shape) == 5:
         is_2d = (shape[-3] == 1) and (len(raw_shape) == 4)
     elif len(shape) == 4:
-        is_2d = (len(raw_shape) == 4) and raw_shape[0] != 1
+        if raw_shape[0] == 1:
+            is_2d = False
+        else:
+            is_2d = raw_shape != shape
+        #is_2d = (len(raw_shape) == 4) and raw_shape[0] != 1
     else:
         is_2d = False
     print("is_2d", is_2d)
