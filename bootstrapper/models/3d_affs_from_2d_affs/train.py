@@ -23,11 +23,11 @@ torch.backends.cudnn.benchmark = True
 
 
 def train(
-    setup_dir,
-    voxel_size,
-    max_iterations,
-    save_checkpoints_every,
-    save_snapshots_every,
+    setup_dir=setup_dir,
+    voxel_size=(20,1,1),
+    max_iterations=15001,
+    save_checkpoints_every=1000,
+    save_snapshots_every=1000,
 ):
     batch_size = 1
     model = AffsUNet()
@@ -96,7 +96,7 @@ def train(
         p=0.5,
     )
 
-    pipeline += gp.ShiftAugment(prob_slip=0.1, prob_shift=0.1, sigma=1)
+    pipeline += gp.ShiftAugment(prob_slip=0.2, prob_shift=0.2, sigma=5)
 
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
 
@@ -114,7 +114,7 @@ def train(
     pipeline += ObfuscateAffs(input_affs)
 
     # add random noise
-    pipeline += gp.NoiseAugment(input_affs, mode="poisson", p=0.5)
+    pipeline += gp.NoiseAugment(input_affs, mode="poisson", p=0.25)
 
     # intensity
     pipeline += CustomIntensityAugment(
@@ -126,7 +126,7 @@ def train(
 
     # add defects
     pipeline += gp.DefectAugment(
-        input_affs, prob_missing=0.05, prob_low_contrast=0.05, prob_deform=0.0, axis=1
+        input_affs, prob_missing=0.15, prob_low_contrast=0.05, prob_deform=0.0, axis=1
     )
 
     # now we erode - we want the gt affs to have a pixel boundary
@@ -143,7 +143,7 @@ def train(
 
     pipeline += gp.Stack(batch_size)
 
-    pipeline += gp.PreCache(num_workers=32, cache_size=64)
+    pipeline += gp.PreCache()
 
     pipeline += gp.torch.Train(
         model,
@@ -181,11 +181,14 @@ def train(
 
 if __name__ == "__main__":
 
-    config_file = sys.argv[1]
-    with open(config_file, "r") as f:
-        config = toml.load(f)
+    try:
+        config_file = sys.argv[1]
+        with open(config_file, "r") as f:
+            config = toml.load(f)
 
-    assert config["setup_dir"] in setup_dir, "model directories do not match"
-    config["setup_dir"] = setup_dir
+        assert config["setup_dir"] in setup_dir, "model directories do not match"
+        config["setup_dir"] = setup_dir
 
-    train(**config)
+        train(**config)
+    except:
+        train()
