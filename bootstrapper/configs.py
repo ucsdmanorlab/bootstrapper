@@ -248,13 +248,27 @@ def setup_models(model_names, parent_dir=None, style="train"):
     # get setup dirs for each model
     for i, model_name in enumerate(model_names):
         if i == 0:
-            setup_dir = cli_prompt(
-                f"Enter setup dir for {model_name}",
-                style,
-                default=os.path.join(parent_dir, f"setup_{str(setup_num).zfill(2)}"),
-                type=click.Path(),
-            )
-            setup_dir = os.path.abspath(setup_dir)
+            while True:
+                setup_dir = cli_prompt(
+                    f"Enter setup dir for {model_name}",
+                    style,
+                    default=os.path.join(parent_dir, f"setup_{str(setup_num).zfill(2)}"),
+                    type=click.Path(),
+                )
+                setup_dir = os.path.abspath(setup_dir)
+
+                # validate setup dir
+                setup_name = os.path.basename(setup_dir)
+                if setup_name.replace('-', '').replace('_', '').isalnum():
+                    break
+                else:
+                    cli_echo(
+                        f"Setup name '{setup_name}' contains invalid characters. "
+                        f"Only alphanumeric characters, hyphens (-), and underscores (_) are allowed.",
+                        style,
+                        "error"
+                    )
+
             copy_model_scripts(model_name, setup_dir)
             setups_to_train.append((model_name, setup_dir))
         else:
@@ -421,7 +435,7 @@ def create_training_config(volumes, parent_dir=None, style="train"):
                     ),
                 }
                 for _, v in volumes.items()
-                if v["labels_dataset"] is not None
+                if "labels_dataset" in v and v["labels_dataset"] is not None
             ]
 
         configs[setup_dir] = check_and_update(train_config, style=style)

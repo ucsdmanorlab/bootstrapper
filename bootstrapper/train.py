@@ -87,7 +87,6 @@ def setup_train(config_file, **kwargs):
     config["samples"] = out_samples
 
     # Override config values with provided kwargs
-    config_file = config_file
     if any(kwargs.values()):
         for key, value in kwargs.items():
             if value is not None:
@@ -103,10 +102,13 @@ def setup_train(config_file, **kwargs):
                 break
             counter += 1
 
-    # write updated config
-    logging.info(f"Using updated config {config_file}")
-    with open(config_file, "w") as file:
-        toml.dump(config, file)
+        # write updated config
+        logging.info(f"Using updated config {config_file}")
+        with open(config_file, "w") as file:
+            toml.dump(config, file)
+    else:
+        # No modifications made, use original file
+        logging.info(f"Using config {config_file}")
 
     train_script = os.path.join(config["setup_dir"], "train.py")
     return train_script, config_file
