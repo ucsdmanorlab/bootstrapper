@@ -10,7 +10,9 @@ setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 with open(os.path.join(setup_dir, "net_config.json")) as f:
     net_config = json.load(f)
 
-in_channels = net_config["in_channels"]
+inputs = net_config["inputs"]
+outputs = net_config["outputs"]
+in_channels = sum(inputs[i]["dims"] for i in inputs)
 num_fmaps = net_config["num_fmaps"]
 fmap_inc_factor = net_config["fmap_inc_factor"]
 downsample_factors = eval(
@@ -22,9 +24,6 @@ kernel_size_down = eval(
 kernel_size_up = eval(
     repr(net_config["kernel_size_up"]).replace("[", "(").replace("]", ")")
 )
-inputs = net_config["inputs"]
-assert sum(inputs[i]["dims"] for i in inputs) == in_channels
-outputs = net_config["outputs"]
 
 
 class AffsUNet(torch.nn.Module):

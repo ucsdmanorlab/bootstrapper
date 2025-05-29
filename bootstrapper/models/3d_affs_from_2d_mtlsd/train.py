@@ -12,7 +12,6 @@ from bootstrapper.gp import (
     CreateLabels,
     AddObfuscated2DLSDs,
     SmoothAugment,
-    CustomIntensityAugment,
     CustomGrowBoundary,
     ObfuscateAffs,
 )
@@ -25,7 +24,7 @@ torch.backends.cudnn.benchmark = True
 
 def train(
     setup_dir=setup_dir,
-    voxel_size=(20,1,1),
+    voxel_size=(1,1,1),
     max_iterations=15001,
     save_checkpoints_every=1000,
     save_snapshots_every=1000,
@@ -95,8 +94,8 @@ def train(
     pipeline += gp.Pad(labels, None, mode="reflect")
 
     pipeline += gp.DeformAugment(
-        control_point_spacing=(voxel_size[0], voxel_size[0]),
-        jitter_sigma=(5.0, 5.0),
+        control_point_spacing=(voxel_size[-2] * 20, voxel_size[-1] * 20),
+        jitter_sigma=(3.0, 3.0),
         spatial_dims=2,
         subsample=1,
         scale_interval=(0.9, 1.1),
@@ -128,10 +127,10 @@ def train(
     pipeline += gp.NoiseAugment(input_lsds, mode="gaussian", p=0.25)
 
     # intensity
-    pipeline += CustomIntensityAugment(
+    pipeline += gp.IntensityAugment(
         input_affs, 0.9, 1.1, -0.1, 0.1, z_section_wise=True, p=0.5
     )
-    pipeline += CustomIntensityAugment(
+    pipeline += gp.IntensityAugment(
         input_lsds, 0.9, 1.1, -0.1, 0.1, z_section_wise=True, p=0.5
     )
 

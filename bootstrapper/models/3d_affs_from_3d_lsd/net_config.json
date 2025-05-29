@@ -1,38 +1,35 @@
 {
-    "in_channels": 10,
-    "num_fmaps": 10,
-    "fmap_inc_factor": 3,
-    "downsample_factors": [[1, 2, 2], [1, 2, 2], [1, 2, 2]],
+    "num_fmaps": 12,
+    "fmap_inc_factor": 2,
+    "downsample_factors": [[1, 2, 2], [1, 2, 2]],
     "kernel_size_down": [
-        [[1, 3, 3], [1, 3, 3]],
-        [[2, 3, 3], [2, 3, 3]],
-        [[3, 3, 3], [3, 3, 3]],
-        [[3, 3, 3], [3, 3, 3]]
-    ],
-    "kernel_size_up": [
         [[3, 3, 3], [3, 3, 3]],
         [[2, 3, 3], [2, 3, 3]],
         [[1, 3, 3], [1, 3, 3]]
     ],
+    "kernel_size_up": [
+        [[2, 3, 3], [2, 3, 3]],
+        [[3, 3, 3], [3, 3, 3]]
+    ],
     "input_shape": [
-        20,
-        212,
-        212
+        16,
+        148,
+        148
     ],
     "output_shape": [
         4,
-        120,
-        120
+        108,
+        108
     ],
     "shape_increase": [
         0,
-        200,
-        200
+        216,
+        216
     ],
     "inputs": {
         "3d_lsds": {
             "dims": 10,
-            "sigma": 80
+            "sigma": 20
         }
     },
     "outputs": {
