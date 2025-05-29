@@ -1,20 +1,21 @@
+import random
+
 import gunpowder as gp
 import numpy as np
-import random
 from scipy.ndimage import (
     binary_dilation,
     distance_transform_edt,
+    gaussian_filter,
     generate_binary_structure,
     maximum_filter,
-    gaussian_filter,
 )
+from skimage.measure import label
 from skimage.morphology import (
     disk,
     ellipse,
     star,
 )
 from skimage.segmentation import watershed
-from skimage.measure import label
 
 
 class CreateLabels(gp.BatchProvider):
@@ -56,7 +57,10 @@ class CreateLabels(gp.BatchProvider):
         self.ndims = len(spec.voxel_size)
 
         if self.anisotropy_range is None:
-            self.anisotropy_range = (2, max(4, int(voxel_size[0] / voxel_size[1])))
+            self.anisotropy_range = (
+                2,
+                max(4, int(voxel_size[0] / voxel_size[1])),
+            )
 
         offset = gp.Coordinate((0,) * self.ndims)
         spec.roi = gp.Roi(offset, gp.Coordinate(self.shape) * spec.voxel_size)
@@ -76,7 +80,8 @@ class CreateLabels(gp.BatchProvider):
 
         # shift request roi into dataset
         dataset_roi = (
-            dataset_roi - self.spec[self.array_key].roi.get_offset() / voxel_size
+            dataset_roi
+            - self.spec[self.array_key].roi.get_offset() / voxel_size
         )
 
         # create array spec
@@ -97,10 +102,19 @@ class CreateLabels(gp.BatchProvider):
         shape = labels.shape
 
         choice = random.choice(["tubes", "random"])
+        structs = [
+            star(random.randint(4, 6)),
+            generate_binary_structure(2, 2),
+            star(random.randint(3, 5)),
+            disk(random.randint(1, 4)),
+            star(random.randint(2, 4)),
+            ellipse(random.randint(2, 4), random.randint(2, 4)),
+            star(random.randint(6, 8)),
+        ]
 
         if choice == "tubes":
             num_points = random.randint(5, 5 * anisotropy)
-            for n in range(num_points):
+            for _ in range(num_points):
                 z = random.randint(1, labels.shape[0] - 1)
                 y = random.randint(1, labels.shape[1] - 1)
                 x = random.randint(1, labels.shape[2] - 1)
@@ -108,14 +122,10 @@ class CreateLabels(gp.BatchProvider):
 
             for z in range(labels.shape[0]):
                 dilations = random.randint(1, 10)
-                structs = [
-                    generate_binary_structure(2, 2),
-                    disk(random.randint(1, 4)),
-                    star(random.randint(2, 4)),
-                    ellipse(random.randint(2, 4), random.randint(2, 4)),
-                ]
                 dilated = binary_dilation(
-                    labels[z], structure=random.choice(structs), iterations=dilations
+                    labels[z],
+                    structure=random.choice(structs),
+                    iterations=dilations,
                 )
                 labels[z] = dilated.astype(labels.dtype)
 
@@ -135,18 +145,23 @@ class CreateLabels(gp.BatchProvider):
             labels = expanded_labels
 
             labels[labels == 0] = np.max(labels) + 1
-            labels = label(labels)[::anisotropy].astype(np.uint32)
+            labels = label(labels)
 
-        elif choice == "random":
+        if choice == "random":
             np.random.seed()
             peaks = np.random.random(shape).astype(np.float32)
             peaks = gaussian_filter(peaks, sigma=10.0)
             max_filtered = maximum_filter(peaks, 15)
             maxima = max_filtered == peaks
             seeds = label(maxima, connectivity=1)
-            labels = watershed(1.0 - peaks, seeds)[::anisotropy].astype(np.uint32)
+            labels = watershed(1.0 - peaks, seeds)
 
-        else:
-            raise AssertionError("invalid choice")
+        # black out a percentage of label ids
+        for divisor in [2, 3, 5]:
+            if np.random.random() < 0.2:
+                labels[labels % divisor == 0] = 0
+
+        # make anisotropic
+        labels = labels[::anisotropy].astype(np.uint32)
 
         return labels
