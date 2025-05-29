@@ -36,14 +36,9 @@ def view(snapshot, datasets):
     """
     logging.info("Starting view command")
     if snapshot:
-        if snapshot.endswith(".zarr") or snapshot.endswith(".zarr/"):
-            logging.info(f"Viewing snapshot: {snapshot}")
-            view_snapshot(snapshot)
-            click.pause("Press any key to exit...")
-        else:
-            logging.error("Snapshot path must end with '.zarr'")
-            click.echo("Error: Snapshot path must end with '.zarr'", err=True)
-            sys.exit(1)
+        logging.info(f"Viewing snapshot: {snapshot}")
+        view_snapshot(snapshot)
+        click.pause("Press any key to exit...")
     else:
         logging.info(f"Running neuroglancer with datasets: {datasets}")
         neuroglancer_args = ["neuroglancer", "-d"] + list(datasets)
