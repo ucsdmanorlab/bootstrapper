@@ -31,14 +31,10 @@ dependencies = [
     "funlib.segment @ git+https://github.com/funkelab/funlib.segment",
     "funlib.evaluate @ git+https://github.com/yajivunev/funlib.evaluate",
     "waterz @ git+https://github.com/mpinb/waterz",
+    "mwatershed @ git+https://github.com/pattonw/mwatershed",
+    "volara @ git+https://github.com/e11bio/volara",
     "click",
 ]
-
-[project.optional-dependencies]
-mws = [
-    "mwatershed @ git+https://github.com/pattonw/mwatershed",
-    "volara @ git+https://github.com/pattonw/volara@v1.0",]
-all = ["bootstrapper[mws]"]
 
 [project.urls]
 Homepage = "https://github.com/ucsdmanorlab/bootstrapper"
