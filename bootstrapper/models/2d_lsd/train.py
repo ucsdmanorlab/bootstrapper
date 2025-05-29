@@ -112,7 +112,7 @@ def train(
 
     pipeline += gp.DeformAugment(
         control_point_spacing=(voxel_size[-1] * 10, voxel_size[-1] * 10),
-        jitter_sigma=(2.0, 2.0),
+        jitter_sigma=(3.0, 3.0),
         spatial_dims=2,
         subsample=1,
         scale_interval=(0.9, 1.1),
