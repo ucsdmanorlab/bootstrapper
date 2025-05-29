@@ -22,7 +22,8 @@
         "2d_lsds": {
             "dtype": "uint8", 
             "dims": 6,
-            "sigma": 80
+            "sigma": 80,
+	    "downsample": 2
         }
     }
 }

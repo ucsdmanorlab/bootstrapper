@@ -29,14 +29,16 @@
     "inputs": {
         "3d_lsds": {
             "dims": 10,
-            "sigma": 20
+            "sigma": 20,
+	    "downsample": 2
         }
     },
     "outputs": {
         "3d_affs": {
             "dtype": "uint8",
             "dims": 6,
-            "neighborhood": [[-1, 0, 0], [0, -1, 0], [0, 0, -1], [-2, 0, 0], [0, -8, 0], [0, 0, -8]]
+            "neighborhood": [[-1, 0, 0], [0, -1, 0], [0, 0, -1], [-2, 0, 0], [0, -8, 0], [0, 0, -8]],
+	    "grow_boundary": 1
         }
     }
 }

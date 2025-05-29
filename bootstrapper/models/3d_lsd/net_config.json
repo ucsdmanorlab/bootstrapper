@@ -19,6 +19,11 @@
         "raw": {"dims": 1}
     },
     "outputs": {
-        "3d_lsds": {"dtype": "uint8", "dims": 10, "sigma": 80}
+        "3d_lsds": {
+            "dtype": "uint8", 
+	    "dims": 10, 
+	    "sigma": 80,
+	    "downsample": 2
+        }
     }
 }

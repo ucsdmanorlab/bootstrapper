@@ -55,11 +55,13 @@ def train(
         )
         net_config = json.load(f)
 
-    # get affs neighborhood
+    # get affs task params
     neighborhood = net_config["outputs"]["3d_affs"]["neighborhood"]
+    aff_grow_boundary = net_config["outputs"]["3d_affs"]["grow_boundary"]
 
-    # get lsd sigma
+    # get lsd task params
     sigma = net_config["outputs"]["3d_lsds"]["sigma"]
+    lsd_downsample = net_config["outputs"]["3d_lsds"]["downsample"]
 
     shape_increase = [0, 0, 0]  # net_config["shape_increase"]
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
@@ -148,9 +150,9 @@ def train(
         unlabelled=unlabelled,
         lsds_mask=lsds_weights,
         sigma=sigma,
-        downsample=2,
+        downsample=lsd_downsample,
     )
-    pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=1, only_xy=True)
+    pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=aff_grow_boundary, only_xy=True)
 
     pipeline += gp.AddAffinities(
         affinity_neighborhood=neighborhood,
@@ -168,7 +170,7 @@ def train(
     pipeline += gp.Unsqueeze([raw])
     pipeline += gp.Stack(batch_size)
 
-    pipeline += gp.PreCache(num_workers=80, cache_size=80)
+    pipeline += gp.PreCache()
 
     pipeline += gp.torch.Train(
         model,

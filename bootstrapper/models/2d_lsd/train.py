@@ -54,9 +54,10 @@ def train(
         )
         net_config = json.load(f)
 
-    # get lsd sigma
+    # get lsd task params
     sigma = net_config["outputs"]["2d_lsds"]["sigma"]
     sigma = (0, sigma, sigma)  # add z-dimension since pipeline is 3D
+    lsd_downsample = net_config["outputs"]["2d_lsds"]["downsample"]
 
     in_channels = net_config["in_channels"]
     shape_increase = [0, 0]  # net_config["shape_increase"]
@@ -141,14 +142,14 @@ def train(
         unlabelled=unlabelled,
         lsds_mask=lsds_weights,
         sigma=sigma,
-        downsample=2,
+        downsample=lsd_downsample,
     )
 
     pipeline += gp.IntensityScaleShift(raw, 2, -1)
 
     pipeline += gp.Stack(batch_size)
 
-    pipeline += gp.PreCache(num_workers=40, cache_size=80)
+    pipeline += gp.PreCache()
 
     pipeline += gp.torch.Train(
         model,

@@ -45,12 +45,14 @@ def train(
         )
         net_config = json.load(f)
 
-    # get affs neighborhoods
+    # get affs task params
     out_neighborhood = net_config["outputs"]["3d_affs"]["neighborhood"]
+    out_aff_grow_boundary = net_config["outputs"]["3d_affs"]["grow_boundary"]
 
-    # get lsd sigma
+    # get lsd task params
     sigma = net_config["inputs"]["2d_lsds"]["sigma"]
     sigma = (0, sigma, sigma)  # add z-dimension since pipeline is 3D
+    lsd_downsample = net_config["inputs"]["2d_lsds"]["downsample"]
 
     shape_increase = [0, 0, 0]  # net_config["shape_increase"]
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
@@ -99,7 +101,7 @@ def train(
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
 
     # that is what predicted lsds will look like
-    pipeline += AddObfuscated2DLSDs(labels, input_lsds, sigma=sigma, downsample=4)
+    pipeline += AddObfuscated2DLSDs(labels, input_lsds, sigma=sigma, downsample=lsd_downsample)
 
     # add random noise
     pipeline += gp.NoiseAugment(input_lsds, mode="gaussian", p=0.25)
@@ -118,7 +120,7 @@ def train(
     )
 
     # now we erode - we want the gt affs to have a pixel boundary
-    pipeline += gp.GrowBoundary(labels, steps=1, only_xy=True)
+    pipeline += gp.GrowBoundary(labels, steps=out_aff_grow_boundary, only_xy=True)
 
     pipeline += gp.AddAffinities(
         affinity_neighborhood=out_neighborhood,

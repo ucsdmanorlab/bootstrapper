@@ -51,11 +51,12 @@ def train(
         )
         net_config = json.load(f)
 
-    # get affs neighborhood
+    # get affs task params
     neighborhood = net_config["outputs"]["2d_affs"]["neighborhood"]
     neighborhood = [
         [0, *x] for x in neighborhood
     ]  # add z-dimension since pipeline is 3D
+    aff_grow_boundary = net_config["outputs"]["2d_affs"]["grow_boundary"]
 
     in_channels = net_config["in_channels"]
     shape_increase = [0, 0]  # net_config["shape_increase"]
@@ -134,7 +135,7 @@ def train(
 
     pipeline += gp.DefectAugment(raw, prob_missing=0.0 if in_channels==1 else 0.05)
 
-    pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=1, only_xy=True)
+    pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=aff_grow_boundary, only_xy=True)
 
     pipeline += gp.AddAffinities(
         affinity_neighborhood=neighborhood,
@@ -151,7 +152,7 @@ def train(
 
     pipeline += gp.Stack(batch_size)
 
-    pipeline += gp.PreCache(num_workers=40, cache_size=80)
+    pipeline += gp.PreCache()
 
     pipeline += gp.torch.Train(
         model,
