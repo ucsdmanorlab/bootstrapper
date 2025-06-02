@@ -51,7 +51,7 @@ def setup_train(config_file, **kwargs):
         # check mask, find all contained arrays if just a prefix and not None
         if mask is not None:
             if not os.path.exists(mask):
-                raise ValueError(f"Labels dataset path {labels} does not exist")
+                raise ValueError(f"Mask dataset path {mask} does not exist")
             elif ".zarray" not in os.listdir(mask):
                 # recursively search for all arrays matching the prefix
                 mask_datasets = [

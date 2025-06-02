@@ -123,10 +123,6 @@ def get_pred_config(config_file, setup_id, **kwargs):
             *input_shape,
         ]  # support for "3ch" models
         output_shape = [1, *output_shape]
-    else:
-        assert (
-            in_channels_sum == net_config["in_channels"]
-        ), f"sum of channels of input datasets ({in_channels_sum}) does not match network's number of input channels ({net_config['in_channels']})"
 
     # get block input and output ROIs
     input_size = Coordinate(input_shape) * voxel_size
