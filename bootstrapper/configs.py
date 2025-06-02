@@ -32,10 +32,10 @@ MODEL_SHORT_NAMES = {
     "3d_affs_from_3d_lsd": "3Af3L",
 }
 MODEL_URLS = {
-    "3d_affs_from_2d_affs": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.0/3d_affs_from_2d_affs.zip",
-    "3d_affs_from_2d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.0/3d_affs_from_2d_lsd.zip",
-    "3d_affs_from_2d_mtlsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.0/3d_affs_from_2d_mtlsd.zip",
-    "3d_affs_from_3d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.0/3d_affs_from_3d_lsd.zip",
+    "3d_affs_from_2d_affs": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.1/3d_affs_from_2d_affs.zip",
+    "3d_affs_from_2d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.1/3d_affs_from_2d_lsd.zip",
+    "3d_affs_from_2d_mtlsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.1/3d_affs_from_2d_mtlsd.zip",
+    "3d_affs_from_3d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.1/3d_affs_from_3d_lsd.zip",
 }
 
 

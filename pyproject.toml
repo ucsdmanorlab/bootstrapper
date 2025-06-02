@@ -7,7 +7,7 @@ allow-direct-references = true
 
 [project]
 name = "bootstrapper"
-version = "0.2.0"
+version = "0.3.1"
 description = "Bootstrap volume segmentations from sparse annotations"
 readme = "README.md"
 authors = [
