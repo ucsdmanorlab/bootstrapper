@@ -456,7 +456,7 @@ def create_prediction_configs(volumes, setup_dirs, style="predict"):
             f"Enter checkpoint iteration for model {i+1}: {os.path.basename(setup_dir)}",
             style,
             type=int,
-            default=10000 * len(volumes) if i == 0 else 5000,
+            default=10000 * len(volumes) if i == 0 else 30000,
             show_default=True,
         )
         iterations.append(iteration)
