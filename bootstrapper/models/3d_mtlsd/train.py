@@ -71,10 +71,10 @@ def train(
     voxel_size = gp.Coordinate(voxel_size)
     input_size = gp.Coordinate(input_shape) * voxel_size
     output_size = gp.Coordinate(output_shape) * voxel_size
-    context = calc_max_padding(output_size, voxel_size, sigma)
 
     request = gp.BatchRequest()
     request.add(raw, input_size)
+    request.add(labels, output_size)
     request.add(gt_lsds, output_size)
     request.add(lsds_weights, output_size)
     request.add(pred_lsds, output_size)
@@ -103,8 +103,7 @@ def train(
         + Renumber(labels)
         + gp.AsType(labels, "uint32")
         + gp.Pad(raw, None)
-        + gp.Pad(labels, context)
-        + gp.Pad(unlabelled, context)
+        + gp.Pad(labels, None)
         + gp.RandomLocation()
         + gp.Reject(mask=unlabelled, min_masked=0.05)
         for sample in samples

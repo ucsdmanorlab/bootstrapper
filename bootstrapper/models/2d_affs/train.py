@@ -67,12 +67,10 @@ def train(
     voxel_size = gp.Coordinate(voxel_size)
     input_size = gp.Coordinate((in_channels, *input_shape)) * voxel_size
     output_size = gp.Coordinate((1, *output_shape)) * voxel_size
-    context = (input_size - output_size) // 2
-
-    print(input_size, output_size, context)
 
     request = gp.BatchRequest()
     request.add(raw, input_size)
+    request.add(labels, output_size)
     request.add(gt_affs, output_size)
     request.add(affs_weights, output_size)
     request.add(pred_affs, output_size)
@@ -98,8 +96,7 @@ def train(
         + Renumber(labels)
         + gp.AsType(labels, "uint32")
         + gp.Pad(raw, None)
-        + gp.Pad(labels, context)
-        + gp.Pad(unlabelled, context)
+        + gp.Pad(labels, None)
         + gp.RandomLocation()
         + gp.Reject(mask=unlabelled, min_masked=0.05)
         for sample in samples
