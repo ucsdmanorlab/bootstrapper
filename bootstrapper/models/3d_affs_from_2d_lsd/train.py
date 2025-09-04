@@ -87,7 +87,7 @@ def train(
     pipeline += gp.Pad(labels, None, mode="reflect")
 
     pipeline += gp.DeformAugment(
-        control_point_spacing=(voxel_size[-2] * 10, voxel_size[-1] * 10),
+        control_point_spacing=gp.Coordinate((voxel_size[-2] * 10, voxel_size[-1] * 10)),
         jitter_sigma=(2.0 * voxel_size[-2], 2.0 * voxel_size[-1]),
         spatial_dims=2,
         subsample=1,
