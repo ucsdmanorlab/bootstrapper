@@ -25,11 +25,11 @@ torch.backends.cudnn.benchmark = True
 def train(
     setup_dir=setup_dir,
     voxel_size=(1,1,1),
-    max_iterations=15001,
+    max_iterations=3001,
     save_checkpoints_every=1000,
     save_snapshots_every=1000,
 ):
-    batch_size = 1
+    batch_size = 10
     model = AffsUNet()
     model.train()
     loss = WeightedMSELoss()
@@ -97,10 +97,10 @@ def train(
     pipeline += gp.Pad(labels, None, mode="reflect")
 
     pipeline += gp.DeformAugment(
-        control_point_spacing=gp.Coordinate((voxel_size[-2] * 10, voxel_size[-1] * 10)),
-        jitter_sigma=(2.0 * voxel_size[-2], 2.0 * voxel_size[-1]),
+        control_point_spacing=gp.Coordinate((voxel_size[-2] * 20, voxel_size[-1] * 20)),
+        jitter_sigma=(3.0 * voxel_size[-2], 3.0 * voxel_size[-1]),
         spatial_dims=2,
-        subsample=1,
+        subsample=2,
         scale_interval=(0.9, 1.1),
         p=0.5,
     )
@@ -180,7 +180,7 @@ def train(
         checkpoint_basename=os.path.join(setup_dir, "model"),
     )
 
-    pipeline += gp.Squeeze([input_affs, input_lsds, gt_affs, pred_affs, affs_weights])
+    # pipeline += gp.Squeeze([input_affs, input_lsds, gt_affs, pred_affs, affs_weights])
 
     pipeline += gp.Snapshot(
         dataset_names={
