@@ -21,7 +21,7 @@ torch.backends.cudnn.benchmark = True
 def train(
     setup_dir=setup_dir,
     voxel_size=(1,1,1),
-    max_iterations=3001,
+    max_iterations=5001,
     save_checkpoints_every=1000,
     save_snapshots_every=1000,
 ):
@@ -92,7 +92,7 @@ def train(
         p=0.5,
     )
 
-    pipeline += gp.ShiftAugment(prob_slip=0.2, prob_shift=0.2, sigma=5)
+    pipeline += gp.ShiftAugment(prob_slip=0.2, prob_shift=0.2, sigma=3)
 
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
 
@@ -121,7 +121,8 @@ def train(
     )
 
     # now we erode - we want the gt affs to have a pixel boundary
-    pipeline += gp.GrowBoundary(labels, steps=out_aff_grow_boundary, only_xy=True)
+    if out_aff_grow_boundary > 0:
+        pipeline += gp.GrowBoundary(labels, steps=out_aff_grow_boundary, only_xy=True)
 
     pipeline += gp.AddAffinities(
         affinity_neighborhood=out_neighborhood,
