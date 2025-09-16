@@ -32,7 +32,8 @@
         "2d_lsds": {
             "dims": 6,
             "sigma": 20,
-	    "downsample": 2
+	    "downsample": 4,
+	    "grow_boundary": 1
         }
     },
     "outputs": {

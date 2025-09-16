@@ -9,7 +9,7 @@ import gunpowder as gp
 
 from lsd.train.gp import AddLocalShapeDescriptor
 from model import AffsUNet, WeightedMSELoss
-from bootstrapper.gp import CreateLabels, SmoothAugment
+from bootstrapper.gp import CreateLabels, SmoothAugment, CustomGrowBoundary, ObfuscateLabels
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -32,6 +32,7 @@ def train(
     optimizer = torch.optim.Adam(model.parameters(), lr=0.5e-4)
 
     labels = gp.ArrayKey("SYNTHETIC_LABELS")
+    obfuscated_labels = gp.ArrayKey("OBFUSCATED_LABELS")
     input_lsds = gp.ArrayKey("INPUT_3D_LSDS")
     gt_affs = gp.ArrayKey("GT_AFFS")
     pred_affs = gp.ArrayKey("PRED_AFFS")
@@ -44,6 +45,7 @@ def train(
         net_config = json.load(f)
 
     # get affs task params
+    in_grow_boundary = net_config["inputs"]["3d_lsds"]["grow_boundary"]
     out_neighborhood = net_config["outputs"]["3d_affs"]["neighborhood"]
     out_aff_grow_boundary = net_config["outputs"]["3d_affs"]["grow_boundary"]
 
@@ -73,6 +75,7 @@ def train(
 
     request = gp.BatchRequest()
     request.add(labels, input_size)
+    request.add(obfuscated_labels, input_size)
     request.add(input_lsds, input_size)
     request.add(gt_affs, output_size)
     request.add(pred_affs, output_size)
@@ -96,9 +99,14 @@ def train(
 
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
 
+    if in_grow_boundary > 0:
+        pipeline += CustomGrowBoundary(labels, max_steps=in_grow_boundary, only_xy=True)
+
+    pipeline += ObfuscateLabels(labels, obfuscated_labels)
+
     # do this on non eroded labels - that is what predicted lsds will look like
     pipeline += AddLocalShapeDescriptor(
-        labels,
+        obfuscated_labels,
         input_lsds,
         sigma=sigma,
         downsample=lsd_downsample,
@@ -156,6 +164,7 @@ def train(
     pipeline += gp.Snapshot(
         dataset_names={
             labels: "labels",
+            obfuscated_labels: "obfuscated_labels",
             input_lsds: "input_lsds",
             gt_affs: "gt_affs",
             pred_affs: "pred_affs",

@@ -12,7 +12,7 @@ from bootstrapper.gp import (
     CreateLabels,
     SmoothAugment,
     CustomGrowBoundary,
-    ObfuscateAffs,
+    ObfuscateLabels,
 )
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
@@ -35,6 +35,7 @@ def train(
     optimizer = torch.optim.Adam(model.parameters(), lr=0.5e-4)
 
     labels = gp.ArrayKey("SYNTHETIC_LABELS")
+    obfuscated_labels = gp.ArrayKey("OBFUSCATED_LABELS")
     input_affs = gp.ArrayKey("INPUT_2D_AFFS")
     gt_affs = gp.ArrayKey("GT_AFFS")
     pred_affs = gp.ArrayKey("PRED_AFFS")
@@ -53,7 +54,7 @@ def train(
     in_neighborhood = [
         [0, *x] for x in in_neighborhood
     ]  # add z-dimension since pipeline is 3D
-    in_aff_grow_boundary = net_config["inputs"]["2d_affs"]["grow_boundary"]
+    in_grow_boundary = net_config["inputs"]["2d_affs"]["grow_boundary"]
 
     shape_increase = [0, 0, 0]  # net_config["shape_increase"]
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
@@ -77,6 +78,7 @@ def train(
 
     request = gp.BatchRequest()
     request.add(labels, input_size)
+    request.add(obfuscated_labels, input_size)
     request.add(input_affs, input_size)
     request.add(gt_affs, output_size)
     request.add(pred_affs, output_size)
@@ -100,18 +102,18 @@ def train(
 
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
 
-    pipeline += CustomGrowBoundary(labels, max_steps=in_aff_grow_boundary, only_xy=True)
+    if in_grow_boundary > 0:
+        pipeline += CustomGrowBoundary(labels, max_steps=in_grow_boundary, only_xy=True)
+
+    pipeline += ObfuscateLabels(labels, obfuscated_labels)
 
     # that is what predicted affs will look like
     pipeline += gp.AddAffinities(
         affinity_neighborhood=in_neighborhood,
-        labels=labels,
+        labels=obfuscated_labels,
         affinities=input_affs,
         dtype=np.float32,
     )
-
-    # add missing boundaries
-    pipeline += ObfuscateAffs(input_affs)
 
     # add random noise
     pipeline += gp.NoiseAugment(input_affs, mode="poisson", p=0.25)
@@ -165,6 +167,7 @@ def train(
     pipeline += gp.Snapshot(
         dataset_names={
             labels: "labels",
+            obfuscated_labels: "obfuscated_labels",
             input_affs: "input_affs",
             gt_affs: "gt_affs",
             pred_affs: "pred_affs",
