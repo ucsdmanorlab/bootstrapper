@@ -9,7 +9,7 @@ import gunpowder as gp
 
 from lsd.train.gp import AddLocalShapeDescriptor
 from model import AffsUNet, WeightedMSELoss
-from bootstrapper.gp import CreateLabels, SmoothAugment, CustomGrowBoundary, ObfuscateLabels
+from bootstrapper.gp import CreateLabels, SmoothAugment, CustomGrowBoundary, ObfuscateLabels, DefectAugment, GammaAugment, ImpulseNoiseAugment
 
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -87,12 +87,11 @@ def train(
     pipeline += gp.Pad(labels, None, mode="reflect")
 
     pipeline += gp.DeformAugment(
-        control_point_spacing=gp.Coordinate((voxel_size[-2] * 20, voxel_size[-1] * 20)),
-        jitter_sigma=(3.0 * voxel_size[-2], 3.0 * voxel_size[-1]),
-        spatial_dims=2,
+        control_point_spacing=voxel_size * gp.Coordinate(1, 20, 20),
+        jitter_sigma=voxel_size * 3,
+        spatial_dims=3,
         subsample=2,
-        scale_interval=(0.9, 1.1),
-        p=0.5,
+        scale_interval=(0.9, 1.1)
     )
 
     pipeline += gp.ShiftAugment(prob_slip=0.2, prob_shift=0.2, sigma=3)
@@ -113,19 +112,22 @@ def train(
     )
 
     # add random noise
-    pipeline += gp.NoiseAugment(input_lsds, mode="gaussian", p=0.25)
+    pipeline += gp.NoiseAugment(input_lsds, mode="gaussian", p=0.2)
 
     # intensity
     pipeline += gp.IntensityAugment(
         input_lsds, 0.9, 1.1, -0.1, 0.1, p=0.5
     )
 
+    pipeline += GammaAugment(input_lsds, slab=(1, 1, -1, -1))
+    pipeline += ImpulseNoiseAugment(input_lsds, p=0.1)
+
     # smooth the batch by different sigmas to simulate noisy predictions
     pipeline += SmoothAugment(input_lsds, p=0.5)
 
     # add defects
-    pipeline += gp.DefectAugment(
-        input_lsds, prob_missing=0.05, prob_low_contrast=0.05, prob_deform=0.0, axis=1
+    pipeline += DefectAugment(
+        input_lsds, prob_missing=0.1, prob_low_contrast=0.1, prob_deform=0.0, axis=1
     )
 
     # now we erode - we want the gt affs to have a pixel boundary
@@ -143,7 +145,7 @@ def train(
 
     pipeline += gp.Stack(batch_size)
 
-    pipeline += gp.PreCache()
+    pipeline += gp.PreCache(num_workers=80, cache_size=80)
 
     pipeline += gp.torch.Train(
         model,

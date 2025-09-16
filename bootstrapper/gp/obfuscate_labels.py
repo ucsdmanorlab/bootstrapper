@@ -2,8 +2,10 @@ import random
 
 import gunpowder as gp
 import numpy as np
-from scipy.ndimage import binary_dilation, generate_binary_structure
+import edt
+from scipy.ndimage import generate_binary_structure, maximum_filter, label
 from skimage.morphology import star, disk, ellipse
+from skimage.segmentation import watershed
 
 class ObfuscateLabels(gp.BatchFilter):
     """
@@ -50,13 +52,14 @@ class ObfuscateLabels(gp.BatchFilter):
         labels = batch[self.in_labels].data.copy()
 
         for _ in range(self.num_tries):
-            if random.random() < self.split_p:
+            r = random.random()
+            if r < self.split_p:
                 self._split_labels(labels)
 
-            if random.random() < self.merge_p:
+            if r < self.merge_p:
                 self._merge_labels(labels)
 
-            if random.random() < self.artifact_p:
+            if r < self.artifact_p:
                 self._add_artifacts(labels)
 
         # Update the batch with modified labels
@@ -71,28 +74,16 @@ class ObfuscateLabels(gp.BatchFilter):
 
         label_to_split = random.choice(unique_labels)
         mask = labels == label_to_split
-        dilated_mask = np.zeros_like(mask, dtype=bool)
 
-        structs = [
-            star(random.randint(2, 8)),
-            generate_binary_structure(2, random.randint(1,2)),
-            disk(random.randint(1, 8)),
-            ellipse(random.randint(2, 8), random.randint(2, 8)),
-        ]
-
-        # Create a random split using a binary structure
-        struct = random.choice(structs)
-        for z in range(mask.shape[0]):
-            dilated_mask[z] = binary_dilation(mask[z], structure=struct, iterations=random.randint(2, 5))
-
-        new_label = labels.max() + 1
+        dt = edt.edt(mask, parallel=2)
+        seeds, _ = label(maximum_filter(dt, size=random.randint(10, 20)) == dt)
+        fragments = watershed(dt.max() - dt, seeds, mask=mask) * labels.max()
 
         # pick some random z slices to apply the split
-        z_slices = random.sample(range(mask.shape[0]), k=random.randint(1, 3))
+        z_slices = random.sample(range(mask.shape[0]), k=random.randint(1, 2))
 
         for z in z_slices:
-            labels[z][dilated_mask[z] & ~mask[z]] = new_label
-            new_label += 1
+            labels[z] = np.where(mask[z], fragments[z], labels[z])
 
     def _merge_labels(self, labels):
         unique_labels = np.unique(labels)
@@ -102,7 +93,7 @@ class ObfuscateLabels(gp.BatchFilter):
             return
 
         # pick some random z slices to apply the merge
-        z_slices = random.sample(range(labels.shape[0]), k=random.randint(1, 3))
+        z_slices = random.sample(range(labels.shape[0]), k=random.randint(1, 2))
 
         labels_to_merge = random.sample(list(unique_labels), 2)
 
@@ -110,7 +101,6 @@ class ObfuscateLabels(gp.BatchFilter):
             labels[z][labels[z] == labels_to_merge[1]] = labels_to_merge[0]
 
     def _add_artifacts(self, labels):
-        num_artifacts = random.randint(1, 4)
 
         structs = [
             star(random.randint(2, 8)),
@@ -122,7 +112,7 @@ class ObfuscateLabels(gp.BatchFilter):
         new_label = labels.max() + 1
 
         # pick some random z slices to apply the artifacts
-        z_slices = random.sample(range(labels.shape[0]), k=random.randint(1, 3))
+        z_slices = random.sample(range(labels.shape[0]), k=random.randint(1, 2))
 
         for z in z_slices:
             artifact = random.choice(structs)

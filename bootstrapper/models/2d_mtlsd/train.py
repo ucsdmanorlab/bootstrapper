@@ -16,6 +16,9 @@ from bootstrapper.gp import (
     CreateMask,
     Renumber,
     calc_max_padding,
+    DefectAugment, 
+    GammaAugment, 
+    ImpulseNoiseAugment
 )
 
 
@@ -145,9 +148,12 @@ def train(
         p=0.5,
     )
 
+    pipeline += GammaAugment(raw, slab=(1, -1, -1))
+    pipeline += ImpulseNoiseAugment(raw, p=0.1)
+
     pipeline += SmoothAugment(raw, p=0.5)
 
-    pipeline += gp.DefectAugment(raw, prob_missing=0.0 if in_channels==1 else 0.05)
+    pipeline += DefectAugment(raw, prob_missing=0.0 if in_channels==1 else 0.05, prob_low_contrast=0.1)
 
     pipeline += Add2DLSDs(
         labels,

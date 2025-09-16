@@ -9,7 +9,7 @@ import torch
 import gunpowder as gp
 from funlib.persistence import open_ds
 
-from bootstrapper.gp import SmoothAugment, CreateMask, Renumber
+from bootstrapper.gp import SmoothAugment, CreateMask, Renumber, DefectAugment, GammaAugment, ImpulseNoiseAugment
 from model import Model, WeightedMSELoss
 
 logging.getLogger().setLevel(logging.INFO)
@@ -124,10 +124,13 @@ def train(
         p=0.5,
     )
 
+    pipeline += GammaAugment(raw, slab=(1, -1, -1))
+    pipeline += ImpulseNoiseAugment(raw, p=0.1)
+
     pipeline += SmoothAugment(raw, p=0.5)
 
-    pipeline += gp.DefectAugment(
-        raw, prob_missing=0.05, prob_low_contrast=0.05, prob_deform=0.0
+    pipeline += DefectAugment(
+        raw, prob_missing=0.1, prob_low_contrast=0.1, prob_deform=0.0
     )
 
     pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=aff_grow_boundary, only_xy=True)

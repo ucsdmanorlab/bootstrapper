@@ -10,7 +10,7 @@ import logging
 import numpy as np
 import os
 
-from bootstrapper.gp import SmoothAugment, CreateMask, Renumber
+from bootstrapper.gp import SmoothAugment, CreateMask, Renumber, DefectAugment, GammaAugment, ImpulseNoiseAugment
 
 
 logging.getLogger().setLevel(logging.INFO)
@@ -127,9 +127,12 @@ def train(
         p=0.5,
     )
 
+    pipeline += GammaAugment(raw, slab=(1, -1, -1))
+    pipeline += ImpulseNoiseAugment(raw, p=0.1)
+
     pipeline += SmoothAugment(raw, p=0.5)
 
-    pipeline += gp.DefectAugment(raw, prob_missing=0.0 if in_channels==1 else 0.05)
+    pipeline += DefectAugment(raw, prob_missing=0.0 if in_channels==1 else 0.05, prob_low_contrast=0.1)
 
     pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=aff_grow_boundary, only_xy=True)
 

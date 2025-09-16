@@ -8,3 +8,6 @@ from .add_2d_lsds import Add2DLSDs
 from .add_lsd_errors import AddLSDErrors
 from .add_aff_errors import AddAffErrors
 from .calc_max_padding import calc_max_padding
+from .defect_augment import DefectAugment
+from .gamma_augment import GammaAugment
+from .impulse_noise_augment import ImpulseNoiseAugment
