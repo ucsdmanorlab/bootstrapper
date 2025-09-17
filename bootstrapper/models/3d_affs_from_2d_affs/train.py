@@ -96,7 +96,7 @@ def train(
         control_point_spacing=voxel_size * gp.Coordinate(1, 20, 20),
         jitter_sigma=voxel_size * 3,
         spatial_dims=3,
-        subsample=1,
+        subsample=4,
         scale_interval=(0.9, 1.1)
     )
 
@@ -107,7 +107,7 @@ def train(
     if in_grow_boundary > 0:
         pipeline += CustomGrowBoundary(labels, max_steps=in_grow_boundary, only_xy=True)
 
-    pipeline += ObfuscateLabels(labels, obfuscated_labels, 10, split_p=1.0)
+    pipeline += ObfuscateLabels(labels, obfuscated_labels)
 
     # that is what predicted affs will look like
     pipeline += gp.AddAffinities(
@@ -126,8 +126,8 @@ def train(
         input_affs, 0.9, 1.1, -0.1, 0.1, z_section_wise=True, p=0.5
     )
 
-    pipeline += GammaAugment(input_affs, slab=(1, 1, -1, -1))
-    pipeline += ImpulseNoiseAugment(input_affs, p=0.1)
+    pipeline += GammaAugment(input_affs, slab=(1, 1, -1, -1), p=0.5)
+    pipeline += ImpulseNoiseAugment(input_affs, p=0.5)
 
     # smooth the batch by different sigmas to simulate noisy predictions
     pipeline += SmoothAugment(input_affs, p=0.5)
@@ -183,8 +183,6 @@ def train(
         output_dir=os.path.join(setup_dir, "snapshots"),
         every=save_snapshots_every,
     )
-
-    pipeline += gp.PrintProfilingStats(10)
 
     with gp.build(pipeline):
         for i in range(max_iterations):

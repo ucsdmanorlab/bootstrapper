@@ -30,9 +30,11 @@ class GammaAugment(BatchFilter):
 
             will perform the gamma augment for every each slice ``[0:2,:]``,
             ``[2:4,:]``, ... individually on 4D data.
+        p (``float``, optional):
+            Probability with which to apply this augmentation.
     """
 
-    def __init__(self, arrays, gamma_min=0.8, gamma_max=1.2, slab=None):
+    def __init__(self, arrays, gamma_min=0.8, gamma_max=1.2, slab=None, p=1.0):
         if not isinstance(arrays, Iterable):
             arrays = [
                 arrays,
@@ -41,11 +43,16 @@ class GammaAugment(BatchFilter):
         self.gamma_min = gamma_min
         self.gamma_max = gamma_max
         self.slab = slab
+        self.p = p
         assert self.gamma_max >= self.gamma_min
 
     def setup(self):
+        self.enable_autoskip()
         for array in self.arrays:
             self.updates(array, self.spec[array])
+
+    def skip_node(self, request):
+        return np.random.random() > self.p
 
     def process(self, batch, request):
         sample_gamma_min = (max(self.gamma_min, 1.0 / self.gamma_min) - 1) * (-1) ** (self.gamma_min < 1)

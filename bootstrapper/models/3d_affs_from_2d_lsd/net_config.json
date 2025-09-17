@@ -15,13 +15,13 @@
     ],
     "input_shape": [
         24,
-        212,
-        212
+        148,
+        148
     ],
     "output_shape": [
         4,
-        120,
-        120
+        56,
+        56
     ],
     "shape_increase": [
         0,

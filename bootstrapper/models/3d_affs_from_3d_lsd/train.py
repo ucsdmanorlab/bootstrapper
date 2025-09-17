@@ -90,7 +90,7 @@ def train(
         control_point_spacing=voxel_size * gp.Coordinate(1, 20, 20),
         jitter_sigma=voxel_size * 3,
         spatial_dims=3,
-        subsample=2,
+        subsample=4,
         scale_interval=(0.9, 1.1)
     )
 
@@ -119,8 +119,8 @@ def train(
         input_lsds, 0.9, 1.1, -0.1, 0.1, p=0.5
     )
 
-    pipeline += GammaAugment(input_lsds, slab=(1, 1, -1, -1))
-    pipeline += ImpulseNoiseAugment(input_lsds, p=0.1)
+    pipeline += GammaAugment(input_lsds, slab=(1, 1, -1, -1), p=0.5)
+    pipeline += ImpulseNoiseAugment(input_lsds, p=0.5)
 
     # smooth the batch by different sigmas to simulate noisy predictions
     pipeline += SmoothAugment(input_lsds, p=0.5)

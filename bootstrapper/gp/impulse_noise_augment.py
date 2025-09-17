@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Iterable
 
+import random
 import gunpowder as gp
 import numpy as np
 
@@ -18,7 +19,7 @@ class ImpulseNoiseAugment(gp.BatchFilter):
 
             The intensity arrays to modify, applying the same noise pattern to each..
 
-        p (``float``):
+        pixel_p (``float``):
 
             Per-pixel probablity to be corrupted by noise
 
@@ -26,16 +27,29 @@ class ImpulseNoiseAugment(gp.BatchFilter):
 
             Range for random values of noise, drawn from a uniform distribution. For fixed valued impulse noise set
             start and end of this range to the same value.
+
+        p (``float``, optional):
+
+            Probability with which to apply this augmentation.
     '''
 
-    def __init__(self, arrays, p, range=(0, 1)):
+    def __init__(self, arrays, pixel_p=0.1, range=(0, 1), p=1.0):
         if not isinstance(arrays, Iterable):
             arrays = [
                 arrays,
             ]
         self.arrays = arrays
-        self.p = p
+        self.pixel_p = pixel_p
         self.range = range
+        self.p = p
+
+    def setup(self):
+        self.enable_autoskip()
+        for array in self.arrays:
+            self.updates(array, self.spec[array])
+
+    def skip_node(self, request):
+        return random.random() > self.p
 
     def process(self, batch, request):
 
