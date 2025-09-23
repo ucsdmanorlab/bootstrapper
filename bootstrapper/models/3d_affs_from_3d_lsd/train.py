@@ -20,8 +20,8 @@ torch.backends.cudnn.benchmark = True
 
 def train(
     setup_dir=setup_dir,
-    voxel_size=(1,1,1),
-    max_iterations=5001,
+    voxel_size=(50,4,4),
+    max_iterations=10001,
     save_checkpoints_every=1000,
     save_snapshots_every=1000,
 ):
@@ -87,8 +87,8 @@ def train(
     pipeline += gp.Pad(labels, None, mode="reflect")
 
     pipeline += gp.DeformAugment(
-        control_point_spacing=voxel_size * gp.Coordinate(1, 20, 20),
-        jitter_sigma=voxel_size * 3,
+        control_point_spacing=voxel_size * gp.Coordinate(voxel_size[-1], voxel_size[0], voxel_size[0]),
+        jitter_sigma=voxel_size * 2,
         spatial_dims=3,
         subsample=4,
         scale_interval=(0.9, 1.1)
@@ -116,11 +116,11 @@ def train(
 
     # intensity
     pipeline += gp.IntensityAugment(
-        input_lsds, 0.9, 1.1, -0.1, 0.1, p=0.5
+        input_lsds, 0.9, 1.1, -0.1, 0.1, p=0.5, slab=(1, 1, -1, -1), p=0.5
     )
 
     pipeline += GammaAugment(input_lsds, slab=(1, 1, -1, -1), p=0.5)
-    pipeline += ImpulseNoiseAugment(input_lsds, p=0.5)
+    pipeline += ImpulseNoiseAugment(input_lsds, pixel_p=0.05, p=0.5)
 
     # smooth the batch by different sigmas to simulate noisy predictions
     pipeline += SmoothAugment(input_lsds, p=0.5)

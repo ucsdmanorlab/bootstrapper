@@ -105,33 +105,29 @@ def train(
     pipeline = source + gp.RandomProvider()
 
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
-
     pipeline += gp.DeformAugment(
-        control_point_spacing=gp.Coordinate((voxel_size[-2] * 10, voxel_size[-1] * 10)),
+        control_point_spacing=gp.Coordinate((voxel_size[-2] * voxel_size[0], voxel_size[-1] * voxel_size[0])),
         jitter_sigma=(2.0 * voxel_size[-2], 2.0 * voxel_size[-1]),
         spatial_dims=2,
         subsample=1,
         scale_interval=(0.9, 1.1),
         p=0.5,
     )
-
+    if in_channels > 1:
+        pipeline += gp.ShiftAugment(prob_slip=0.2, prob_shift=0.2, sigma=3)
     pipeline += gp.NoiseAugment(raw, p=0.5)
-
     pipeline += gp.IntensityAugment(
         raw,
         scale_min=0.9,
         scale_max=1.1,
         shift_min=-0.1,
         shift_max=0.1,
-        z_section_wise=True,
+        slab=(1, -1, -1),
         p=0.5,
     )
-
-    pipeline += GammaAugment(raw, slab=(1, -1, -1))
-    pipeline += ImpulseNoiseAugment(raw, p=0.1)
-
+    pipeline += GammaAugment(raw, slab=(1, -1, -1), p=0.5)
+    pipeline += ImpulseNoiseAugment(raw, pixel_p=0.05, p=0.5)
     pipeline += SmoothAugment(raw, p=0.5)
-
     pipeline += DefectAugment(raw, prob_missing=0.0 if in_channels==1 else 0.05, prob_low_contrast=0.1)
 
     pipeline += gp.GrowBoundary(labels, mask=unlabelled, steps=aff_grow_boundary, only_xy=True)

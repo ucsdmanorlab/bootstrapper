@@ -26,8 +26,8 @@ torch.backends.cudnn.benchmark = True
 
 def train(
     setup_dir=setup_dir,
-    voxel_size=(1,1,1),
-    max_iterations=5001,
+    voxel_size=(10,1,1),
+    max_iterations=10001,
     save_checkpoints_every=1000,
     save_snapshots_every=1000,
 ):
@@ -93,20 +93,16 @@ def train(
     pipeline += gp.Pad(labels, None, mode="reflect")
 
     pipeline += gp.DeformAugment(
-        control_point_spacing=voxel_size * gp.Coordinate(1, 20, 20),
-        jitter_sigma=voxel_size * 3,
+        control_point_spacing=voxel_size * gp.Coordinate(voxel_size[-1], voxel_size[0], voxel_size[0]),
+        jitter_sigma=voxel_size * 2,
         spatial_dims=3,
         subsample=4,
         scale_interval=(0.9, 1.1)
     )
-
     pipeline += gp.ShiftAugment(prob_slip=0.2, prob_shift=0.2, sigma=3)
-
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
-
     if in_grow_boundary > 0:
         pipeline += CustomGrowBoundary(labels, max_steps=in_grow_boundary, only_xy=True)
-
     pipeline += ObfuscateLabels(labels, obfuscated_labels)
 
     # that is what predicted affs will look like
@@ -123,11 +119,11 @@ def train(
 
     # intensity
     pipeline += gp.IntensityAugment(
-        input_affs, 0.9, 1.1, -0.1, 0.1, z_section_wise=True, p=0.5
+        input_affs, 0.9, 1.1, -0.1, 0.1, slab=(1, 1, -1, -1), p=0.5
     )
 
     pipeline += GammaAugment(input_affs, slab=(1, 1, -1, -1), p=0.5)
-    pipeline += ImpulseNoiseAugment(input_affs, p=0.5)
+    pipeline += ImpulseNoiseAugment(input_affs, pixel_p=0.05, p=0.5)
 
     # smooth the batch by different sigmas to simulate noisy predictions
     pipeline += SmoothAugment(input_affs, p=0.5)
