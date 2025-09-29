@@ -20,7 +20,7 @@ torch.backends.cudnn.benchmark = True
 
 def train(
     setup_dir=setup_dir,
-    voxel_size=(50,4,4),
+    voxel_size=(10,1,1),
     max_iterations=10001,
     save_checkpoints_every=1000,
     save_snapshots_every=1000,
@@ -116,7 +116,7 @@ def train(
 
     # intensity
     pipeline += gp.IntensityAugment(
-        input_lsds, 0.9, 1.1, -0.1, 0.1, p=0.5, slab=(1, 1, -1, -1), p=0.5
+        input_lsds, 0.9, 1.1, -0.1, 0.1, slab=(1, 1, -1, -1), p=0.5
     )
 
     pipeline += GammaAugment(input_lsds, slab=(1, 1, -1, -1), p=0.5)
