@@ -8,9 +8,9 @@ from pprint import pprint
 
 
 DEFAULTS = {
-    "dust_filter": 200,
+    "dust_filter": 64,
     "remove_outliers": False,
-    "remove_z_fragments": 4,
+    "remove_z_fragments": 1,
     "overlap_filter": 0.0,
     "exclude_ids": None,
     "erode_out_mask": False,
