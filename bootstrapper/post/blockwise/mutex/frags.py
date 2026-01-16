@@ -32,6 +32,7 @@ def extract_fragments(config):
     strides = config.get("strides", None)
     randomized_strides = config.get("randomized_strides", False)
     remove_debris = config.get("remove_debris", 0)
+    seed_eps = config.get("seed_eps", 0.01)
 
     # Optional parameters
     roi_offset = config.get("roi_offset", None)  # Offset of ROI
@@ -149,10 +150,11 @@ def extract_fragments(config):
         filter_fragments=filter_fragments,
         remove_debris=remove_debris,
         strides=strides,
-        randomized_strides=randomized_strides
+        randomized_strides=randomized_strides,
+        seed_eps=seed_eps,
     )
 
-    extract_frags.drop() # to restart + remove logs cache
+    # extract_frags.drop() # to restart + remove logs cache
     extract_frags.run_blockwise(multiprocessing=blockwise)
 
     # tempfix: preserve zattrs in frags

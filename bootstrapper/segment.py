@@ -49,8 +49,9 @@ DEFAULTS = {
             [3, 27, 27],
         ],
         "randomized_strides": True,
-        "filter_fragments": 0.05,
+        "filter_fragments": 0.1,
         "remove_debris": 64,
+        "seed_eps": 0.01
     },
     "cc": {
         "threshold": 0.5,
