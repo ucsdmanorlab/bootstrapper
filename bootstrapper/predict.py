@@ -119,7 +119,7 @@ def get_pred_config(config_file, setup_id, **kwargs):
     # add z-dimension for 2D networks
     if len(input_shape) == 2:
         input_shape = [
-            net_config["in_channels"],
+            net_config["adj_slices"],
             *input_shape,
         ]  # support for "3ch" models
         output_shape = [1, *output_shape]

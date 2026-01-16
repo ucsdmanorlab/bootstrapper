@@ -1,5 +1,6 @@
 {
-    "in_channels": 3,
+    "in_channels": 1,
+    "adj_slices": 3,
     "num_fmaps": 12,
     "fmap_inc_factor": 5,
     "downsample_factors": [[2, 2], [2, 2], [2, 2]],

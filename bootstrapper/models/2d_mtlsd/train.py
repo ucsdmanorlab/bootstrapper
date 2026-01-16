@@ -76,14 +76,14 @@ def train(
     sigma = (0, sigma, sigma)  # add z-dimension since pipeline is 3D
     lsd_downsample = net_config["outputs"]["2d_lsds"]["downsample"]
     
-    in_channels = net_config["in_channels"]
+    adj_slices = net_config["adj_slices"]
     shape_increase = [0, 0]  # net_config["shape_increase"]
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
     output_shape = [x + y for x, y in zip(shape_increase, net_config["output_shape"])]
 
     # prepare request
     voxel_size = gp.Coordinate(voxel_size)
-    input_size = gp.Coordinate((in_channels, *input_shape)) * voxel_size
+    input_size = gp.Coordinate((adj_slices, *input_shape)) * voxel_size
     output_size = gp.Coordinate((1, *output_shape)) * voxel_size
 
     request = gp.BatchRequest()
@@ -134,7 +134,7 @@ def train(
         scale_interval=(0.9, 1.1),
         p=0.5,
     )
-    if in_channels > 1:
+    if adj_slices > 1:
         pipeline += gp.ShiftAugment(prob_slip=0.2, prob_shift=0.2, sigma=3)
     pipeline += gp.NoiseAugment(raw, p=0.5)
     pipeline += gp.IntensityAugment(
@@ -149,7 +149,7 @@ def train(
     pipeline += GammaAugment(raw, slab=(1, -1, -1), p=0.5)
     pipeline += ImpulseNoiseAugment(raw, pixel_p=0.05, p=0.5)
     pipeline += SmoothAugment(raw, p=0.5)
-    pipeline += DefectAugment(raw, prob_missing=0.0 if in_channels==1 else 0.05, prob_low_contrast=0.1)
+    pipeline += DefectAugment(raw, prob_missing=0.0 if adj_slices==1 else 0.05, prob_low_contrast=0.1)
 
     pipeline += Add2DLSDs(
         labels,

@@ -10,6 +10,7 @@ with open(os.path.join(setup_dir, "net_config.json")) as f:
     net_config = json.load(f)
 
 in_channels = net_config["in_channels"]
+adj_slices = net_config["adj_slices"]
 num_fmaps = net_config["num_fmaps"]
 fmap_inc_factor = net_config["fmap_inc_factor"]
 downsample_factors = eval(
@@ -42,7 +43,7 @@ class Model(torch.nn.Module):
         self.stack_infer = stack_infer
 
         self.unet = UNet(
-            in_channels=in_channels,
+            in_channels=in_channels * adj_slices,
             num_fmaps=num_fmaps,
             fmap_inc_factor=fmap_inc_factor,
             downsample_factors=downsample_factors,
@@ -60,6 +61,11 @@ class Model(torch.nn.Module):
         )
 
     def forward(self, input):
+        
+        if len(input.size()) == 5:
+            # reshape from (n,c,d,h,w) to (n,c*d,h,w)
+            n, c, d, h, w = input.size()
+            input = input.view(n, c * d, h, w)
 
         z = self.unet(input)
 
