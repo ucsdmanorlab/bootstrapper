@@ -23,9 +23,9 @@ class ObfuscateLabels(gp.BatchFilter):
         in_labels,
         out_labels,
         num_tries=5,
-        p_split=0.5,
-        p_merge=0.5,
-        p_artifact=0.5
+        p_split=0.1,
+        p_merge=0.1,
+        p_artifact=0.1
     ):
         self.in_labels = in_labels
         self.out_labels = out_labels
