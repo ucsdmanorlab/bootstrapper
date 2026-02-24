@@ -12,3 +12,4 @@ from .defect_augment import DefectAugment
 from .gamma_augment import GammaAugment
 from .impulse_noise_augment import ImpulseNoiseAugment
 from .expand_labels import ExpandLabels
+from .clahe_augment import ClaheAugment
