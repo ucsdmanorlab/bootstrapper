@@ -71,7 +71,7 @@ def get_pred_config(config_file, setup_id, **kwargs):
     roi_shape = config.get("roi_shape", None)
 
     # check if checkpoint exists
-    if not os.path.exists(checkpoint):
+    if not os.path.exists(checkpoint) and not os.path.exists(checkpoint+'.ckpt'):
         model_name = os.path.basename(setup_dir)
         if model_name in MODEL_URLS:
             cli_echo(f"{checkpoint} not found in {setup_dir}", "predict")
