@@ -3,7 +3,7 @@ import click
 import glob
 from tqdm import tqdm
 import numpy as np
-from tifffile import imread
+from skimage.io import imread
 from scipy.ndimage import find_objects
 from funlib.persistence import prepare_ds
 from funlib.geometry import Coordinate, Roi
