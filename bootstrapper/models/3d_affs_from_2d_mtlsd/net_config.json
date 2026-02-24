@@ -1,5 +1,6 @@
 {
-    "num_fmaps": 12,
+    "num_fmaps": 9,
+    "num_fmaps_out": 18,
     "fmap_inc_factor": 3,
     "downsample_factors": [[1, 2, 2], [1, 2, 2], [1, 2, 2]],
     "kernel_size_down": [
@@ -24,21 +25,21 @@
         56
     ],
     "shape_increase": [
-        0,
+        12,
         240,
         240
     ],
     "inputs": {
         "2d_lsds": {
             "dims": 6,
-            "sigma": 20,
-	    "downsample": 4,
-	    "grow_boundary": 1
+            "sigma": 10,
+	        "downsample": 2,
+	        "grow_boundary": 1
         },
         "2d_affs": {
             "dims": 6, 
             "neighborhood": [[-1, 0], [0, -1], [-9, 0], [0, -9], [-27, 0], [0, -27]],
-	    "grow_boundary": 1
+	        "grow_boundary": 1
         }
     },
     "outputs": {
@@ -46,7 +47,7 @@
             "dtype": "uint8",
             "dims": 9,
             "neighborhood": [[-1, 0, 0], [0, -1, 0], [0, 0, -1], [-2, 0, 0], [0, -9, 0], [0, 0, -9], [-3, 0, 0], [0, -27, 0], [0, 0, -27]],
-	    "grow_boundary": 0
+	        "grow_boundary": 0
         }
     }
 }

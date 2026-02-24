@@ -7,6 +7,8 @@ import click
 from funlib.geometry import Coordinate, Roi
 from funlib.persistence import open_ds
 
+import torch
+
 from model import AffsUNet
 
 logger = logging.getLogger(__name__)
@@ -20,7 +22,7 @@ setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
     "--checkpoint",
     "-c",
     required=True,
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(file_okay=True, dir_okay=False),
     help="Path to checkpoint file",
 )
 @click.option(
@@ -64,7 +66,6 @@ def predict(
     num_workers,
     daisy,
 ):
-    input_dataset = input_datasets[0]
     output_dataset = output_datasets[0]
 
     # load net config
@@ -77,9 +78,10 @@ def predict(
     shape_increase = net_config["shape_increase"]
     input_shape = [x + y for x, y in zip(shape_increase, net_config["input_shape"])]
     output_shape = [x + y for x, y in zip(shape_increase, net_config["output_shape"])]
+    
+    input_affs_ds = open_ds(input_datasets[0], "r")
 
-    in_ds = open_ds(input_dataset, "r")
-    voxel_size = in_ds.voxel_size
+    voxel_size = input_affs_ds.voxel_size
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
 
@@ -90,9 +92,21 @@ def predict(
             roi_shape = Coordinate(roi_shape.split(" "))
             roi = Roi(roi_offset, roi_shape).snap_to_grid(voxel_size, mode="grow")
         else:
-            roi = in_ds.roi
+            roi = input_affs_ds.roi
 
     model = AffsUNet()
+
+    # load checkpoint
+    checkpoint_path = checkpoint if os.path.exists(checkpoint) else f"{checkpoint}.ckpt"
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"Neither {checkpoint} nor {checkpoint}.ckpt were found.")
+
+    # Load the checkpoint
+    state_dict = torch.load(checkpoint_path, map_location='cpu')
+    state_dict = state_dict.get('state_dict', state_dict.get('model_state_dict', state_dict))
+    state_dict = {k.removeprefix('model.'): v for k, v in state_dict.items()}
+
+    model.load_state_dict(state_dict)
     model.eval()
 
     input_affs = gp.ArrayKey("INPUT_AFFS")
@@ -102,33 +116,31 @@ def predict(
     chunk_request.add(input_affs, input_size)
     chunk_request.add(pred_affs, output_size)
 
-    source = gp.ArraySource(
-        input_affs,
-        in_ds,
-        interpolatable=True,
-    )
+    source = (
+        gp.ArraySource(input_affs, input_affs_ds, True),
+    ) + gp.MergeProvider()
 
     predict = gp.torch.Predict(
         model,
-        checkpoint=checkpoint,
-        inputs={"input_affs": input_affs},
+        inputs={
+            "input_affs": input_affs
+        },
         outputs={
             0: pred_affs,
         },
         array_specs={pred_affs: gp.ArraySpec(roi=roi)} if not daisy else None,
     )
 
-    scan = (
-        gp.DaisyRequestBlocks(
+    if daisy:
+        scan = gp.DaisyRequestBlocks(
             chunk_request,
             roi_map={
                 input_affs: "read_roi",
                 pred_affs: "write_roi",
             },
         )
-        if daisy
-        else gp.Scan(chunk_request, num_workers=num_workers)
-    )
+    else:
+        scan = gp.Scan(chunk_request, num_workers=num_workers)
 
     write = gp.ZarrWrite(
         dataset_names={pred_affs: output_dataset.split(".zarr")[-1]},

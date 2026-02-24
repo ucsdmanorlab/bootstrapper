@@ -7,6 +7,8 @@ import click
 from funlib.geometry import Coordinate, Roi
 from funlib.persistence import open_ds
 
+import torch
+
 from model import AffsUNet
 
 logger = logging.getLogger(__name__)
@@ -20,7 +22,7 @@ setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
     "--checkpoint",
     "-c",
     required=True,
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    type=click.Path(file_okay=True, dir_okay=False),
     help="Path to checkpoint file",
 )
 @click.option(
@@ -93,6 +95,18 @@ def predict(
             roi = in_ds.roi
 
     model = AffsUNet()
+
+    # load checkpoint
+    checkpoint_path = checkpoint if os.path.exists(checkpoint) else f"{checkpoint}.ckpt"
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"Neither {checkpoint} nor {checkpoint}.ckpt were found.")
+
+    # Load the checkpoint
+    state_dict = torch.load(checkpoint_path, map_location='cpu')
+    state_dict = state_dict.get('state_dict', state_dict.get('model_state_dict', state_dict))
+    state_dict = {k.removeprefix('model.'): v for k, v in state_dict.items()}
+
+    model.load_state_dict(state_dict)
     model.eval()
 
     input_lsds = gp.ArrayKey("INPUT_LSDS")
@@ -110,7 +124,6 @@ def predict(
 
     predict = gp.torch.Predict(
         model,
-        checkpoint=checkpoint,
         inputs={
             "input_lsds": input_lsds,
         },

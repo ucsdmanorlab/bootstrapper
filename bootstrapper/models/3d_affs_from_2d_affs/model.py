@@ -14,6 +14,7 @@ inputs = net_config["inputs"]
 outputs = net_config["outputs"]
 in_channels = sum(inputs[i]["dims"] for i in inputs)
 num_fmaps = net_config["num_fmaps"]
+num_fmaps_out = net_config["num_fmaps_out"]
 fmap_inc_factor = net_config["fmap_inc_factor"]
 downsample_factors = eval(
     repr(net_config["downsample_factors"]).replace("[", "(").replace("]", ")")
@@ -32,6 +33,7 @@ class AffsUNet(torch.nn.Module):
         self,
         in_channels=in_channels,
         num_fmaps=num_fmaps,
+        num_fmaps_out=num_fmaps_out,
         fmap_inc_factor=fmap_inc_factor,
         downsample_factors=downsample_factors,
         kernel_size_down=kernel_size_down,
@@ -50,10 +52,11 @@ class AffsUNet(torch.nn.Module):
             kernel_size_up=kernel_size_up,
             constant_upsample=True,
             padding="valid",
+            num_fmaps_out=num_fmaps_out,
         )
 
         self.affs_head = ConvPass(
-            num_fmaps, outputs["3d_affs"]["dims"], [[1, 1, 1]], activation="Sigmoid"
+            num_fmaps_out, outputs["3d_affs"]["dims"], [[1, 1, 1]], activation="Sigmoid"
         )
 
     def forward(self, input_affs):
