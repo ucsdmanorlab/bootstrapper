@@ -94,11 +94,13 @@ class CreateLabels(gp.BatchProvider):
 
         return batch
 
+
     def _generate_labels(self, slices):
         shape = tuple(s.stop - s.start for s in slices)
         labels = np.zeros(shape, self.dtype)
         anisotropy = random.randint(*self.anisotropy_range)
-        labels = np.concatenate([labels] * anisotropy)
+        
+        labels = np.tile(labels, (anisotropy, 1, 1))
         shape = labels.shape
 
         choice = random.choice(["tubes", "random"])
@@ -135,10 +137,18 @@ class CreateLabels(gp.BatchProvider):
             distances, indices = distance_transform_edt(
                 labels == 0, return_indices=True
             )
+            
             expanded_labels = np.zeros_like(labels)
             dilate_mask = distances <= distance
+            
+            indices_clipped = [
+                np.clip(idx, 0, labels.shape[i] - 1) 
+                for i, idx in enumerate(indices)
+            ]
+            
             masked_indices = [
-                dimension_indices[dilate_mask] for dimension_indices in indices
+                dimension_indices[dilate_mask] 
+                for dimension_indices in indices_clipped
             ]
             nearest_labels = labels[tuple(masked_indices)]
             expanded_labels[dilate_mask] = nearest_labels
@@ -157,11 +167,13 @@ class CreateLabels(gp.BatchProvider):
             labels = watershed(1.0 - peaks, seeds)
 
         # black out a percentage of label ids
-        for divisor in [2, 3, 5]:
+        for divisor in [3, 5]:
             if np.random.random() < 0.2:
                 labels[labels % divisor == 0] = 0
 
-        # make anisotropic
-        labels = labels[::anisotropy].astype(np.uint32)
+        if anisotropy <= labels.shape[0]:
+            labels = labels[::anisotropy].astype(np.uint32)
+        else:
+            labels = labels[0:1].astype(np.uint32)
 
         return labels
