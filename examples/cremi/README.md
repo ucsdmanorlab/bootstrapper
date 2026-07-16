@@ -5,7 +5,8 @@ Here we will bootstrap a segmentation of a CREMI volume using sparse labels on a
 ## Installation
 * Install [uv](https://docs.astral.sh/uv/) and a C/C++ compiler.
 * `git clone https://github.com/ucsdmanorlab/bootstrapper.git`
-* `cd bootstrapper` -> `uv pip install .` (for watershed use `uv pip install '.[waterz]'`, which needs boost headers)
+* `cd bootstrapper` -> `uv venv --python 3.12` -> `source .venv/bin/activate`
+* `uv pip install .` (for watershed use `uv pip install '.[waterz]'`, which needs boost headers)
 
 The rest of the example is relative from `examples/cremi`.
 
