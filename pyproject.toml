@@ -14,27 +14,39 @@ authors = [
     {name = "Vijay Venu Thiyagarajan", email = "vvenu@utexas.edu"}
 ]
 license = {text = "MIT"}
+requires-python = ">=3.12"
 dependencies = [
     "numpy",
     "scipy",
     "scikit-image",
+    "networkx",
     "torch",
-    "zarr",
+    "pytorch-lightning",
+    "zarr<3",
     "numba",
     "neuroglancer",
     "tensorboardx",
-    "gunpowder>=1.4",
-    "daisy>=1.2",
-    "mwatershed>=0.5.2",
+    "requests",
+    "pyyaml",
+    "gunpowder<1.5",
+    "daisy",
+    "funlib.geometry",
+    "funlib.persistence<0.7",
+    "mwatershed",
+    "volara<1.0.3",
     "edt",
+    "toml",
     "lsds @ git+https://github.com/yajivunev/lsd",
     "funlib.learn.torch @ git+https://github.com/funkelab/funlib.learn.torch",
     "funlib.show.neuroglancer @ git+https://github.com/funkelab/funlib.show.neuroglancer",
-    "funlib.segment @ git+https://github.com/funkelab/funlib.segment",
     "funlib.evaluate @ git+https://github.com/yajivunev/funlib.evaluate",
-    "waterz @ git+https://github.com/funkey/waterz",
-    "volara @ git+https://github.com/e11bio/volara",
     "click",
+]
+
+[project.optional-dependencies]
+waterz = [
+    "waterz @ git+https://github.com/funkey/waterz",
+    "funlib.segment @ git+https://github.com/funkelab/funlib.segment",
 ]
 
 [project.urls]

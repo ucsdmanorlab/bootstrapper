@@ -64,6 +64,14 @@ def merge(in_seg, out_seg, luts):
         out_seg (str): Path to the output segmentation zarr array.
         luts (str): Path to the LUTs file.
     """
+    try:
+        import funlib.segment  # noqa: F401
+    except ImportError as e:
+        raise click.ClickException(
+            f"{e}. bs utils merge requires the 'waterz' extra: "
+            'uv pip install "bootstrapper[waterz] @ git+https://github.com/ucsdmanorlab/bootstrapper.git"'
+        )
+
     logger.info(f"Starting quick merge for {in_seg} to {out_seg} using {luts}")
 
     # open

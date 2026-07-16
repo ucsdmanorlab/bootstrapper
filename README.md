@@ -17,16 +17,21 @@ Tested on Ubuntu 22.04, Rocky Linux 8.10, and macOS 15.1.1 (Apple Silicon).
 
 ## Installation
 
-**Note**: Rust is necessary if you wish to use `mwatershed` for segmentation. Install from [rustup.rs](https://rustup.rs/)
+Requirements: [uv](https://docs.astral.sh/uv/) and a C/C++ compiler
+(`build-essential` on Ubuntu, Xcode command line tools on macOS).
 
-To install `bootstrapper`, we first recommend creating a new conda environment:
 ```
-conda create -n bs -c conda-forge python=3.12 graph-tool boost
-conda activate bs
+uv venv --python 3.12
+source .venv/bin/activate
+uv pip install git+https://github.com/ucsdmanorlab/bootstrapper.git
 ```
-Then, install bootstrapper with:
+
+Waterz-based segmentation (`bs segment --ws`) and `bs utils merge` need the `waterz` extra, which
+builds against [boost](https://www.boost.org/) headers
+(`sudo apt install libboost-dev` on Ubuntu, `brew install boost` on macOS):
+
 ```
-pip install git+https://github.com/ucsdmanorlab/bootstrapper.git
+uv pip install "bootstrapper[waterz] @ git+https://github.com/ucsdmanorlab/bootstrapper.git"
 ```
 ## Getting Started
 Bootstrapper has the following main components:

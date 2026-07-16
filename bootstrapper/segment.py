@@ -123,7 +123,15 @@ def run_segmentation(config_file, mode="ws", **kwargs):
     pprint(config)
 
     if mode == "ws":
-        from .post.watershed import watershed_segmentation
+        try:
+            import waterz  # noqa: F401
+            import funlib.segment  # noqa: F401
+            from .post.watershed import watershed_segmentation
+        except ImportError as e:
+            raise click.ClickException(
+                f"{e}. Watershed segmentation requires the 'waterz' extra: "
+                'uv pip install "bootstrapper[waterz] @ git+https://github.com/ucsdmanorlab/bootstrapper.git"'
+            )
 
         watershed_segmentation(config)
     elif mode == "mws":
