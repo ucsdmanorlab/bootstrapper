@@ -788,63 +788,6 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
     return {"out_eval_dir": output_prefix, "configs": configs}
 
 
-def create_filter_configs(volumes, in_seg_prefix, eval_dir, style="filter"):
-
-    click.echo()
-    cli_echo(f"Creating filter configs..", style)
-
-    out_seg_ds_prefix = in_seg_prefix.replace("/segmentations_", "/pseudo_gt_ids_")
-    out_mask_ds_prefix = in_seg_prefix.replace("/segmentations_", "/pseudo_gt_mask_")
-
-    out_volumes = {}
-
-    configs = {}
-    for volume_name in volumes:
-        volume = volumes[volume_name]
-        container = volume["output_container"]
-        out_seg_ds = os.path.join(container, out_seg_ds_prefix)
-        out_mask_ds = os.path.join(container, out_mask_ds_prefix)
-
-        # get filter ROI TODO: get from eval config
-        # roi_offset, roi_shape, _ = get_roi(in_array=out_segs)
-
-        filter_config = {
-            "seg_datasets_prefix": os.path.join(container, in_seg_prefix),
-            "eval_dir": os.path.join(container, eval_dir),
-            "out_seg_dataset_prefix": out_seg_ds,
-            "out_mask_dataset_prefix": out_mask_ds,
-            # "roi_offset": roi_offset,
-            # "roi_shape": roi_shape,
-            "dust_filter": 500,
-            "remove_outliers": True,
-            "remove_z_fragments": 10,
-            "overlap_filter": 0.0,
-            "erode_out_mask": False,
-        }
-
-        configs[volume_name] = check_and_update(filter_config, style)
-
-        # volumes for the next round
-        out_volumes[volume_name] = {
-            "name": volume_name,
-            "raw_dataset": volume["raw_dataset"],
-            "raw_mask_dataset": None if "raw_mask_dataset" not in volume else volume["raw_mask_dataset"],
-            "labels_dataset": out_seg_ds,
-            "labels_mask_dataset": out_mask_ds,
-            "voxel_size": volume["voxel_size"],
-            "previous_labels_datasets": [
-                None if "labels_dataset" not in volume else volume["labels_dataset"],
-            ]
-            + volume.get("previous_labels_datasets", []),
-            "previous_labels_mask_datasets": [
-                None if "labels_mask_dataset" not in volume else volume["labels_mask_dataset"],
-            ]
-            + volume.get("previous_labels_mask_datasets", []),
-        }
-
-    return {"out_volumes": out_volumes, "configs": configs}
-
-
 def make_round_configs(volumes, round_dir):
     """Create all configs for a model with given volumes."""
 
@@ -893,15 +836,3 @@ def make_round_configs(volumes, round_dir):
             os.path.join(run_dir, f"04_eval_{volume_name}.toml"),
             style="evaluate",
         )
-
-    out_eval_dir = eval_configs["out_eval_dir"]
-    filter_configs = create_filter_configs(volumes, out_seg_prefix, out_eval_dir)
-    for volume_name in pred_config["configs"]:
-        save_config(
-            filter_configs["configs"][volume_name],
-            os.path.join(run_dir, f"05_filter_{volume_name}.toml"),
-            style="filter",
-        )
-
-    out_volumes = filter_configs["out_volumes"]
-    return out_volumes

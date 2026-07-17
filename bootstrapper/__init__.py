@@ -4,5 +4,5 @@ from .train import train
 from .predict import predict
 from .segment import segment
 from .evaluate import evaluate
-from .filter import filter
+from .refine import refine
 from .utils import utils

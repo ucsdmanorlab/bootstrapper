@@ -18,7 +18,7 @@ STYLES = {
     "predict": create_style_palette("yellow"),
     "segment": create_style_palette("red"),
     "evaluate": create_style_palette("magenta"),
-    "filter": create_style_palette("blue"),
+    "refine": create_style_palette("blue"),
 }
 
 

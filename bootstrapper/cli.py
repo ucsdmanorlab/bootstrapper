@@ -7,7 +7,7 @@ from . import (
     predict,
     segment,
     evaluate,
-    filter,
+    refine,
     view,
     utils,
 )
@@ -24,7 +24,7 @@ class CommandGroup(click.Group):
             "predict",
             "segment",
             "evaluate",
-            "filter",
+            "refine",
             "view",
             "utils",
             "run",
@@ -41,7 +41,6 @@ class CommandGroup(click.Group):
             "infer": "predict",
             "seg": "segment",
             "eval": "evaluate",
-            "refine": "filter",
         }
 
         if cmd_name in aliases:
@@ -61,7 +60,7 @@ cli.add_command(train)
 cli.add_command(predict)
 cli.add_command(segment)
 cli.add_command(evaluate)
-cli.add_command(filter)
+cli.add_command(refine)
 cli.add_command(utils)
 
 
@@ -89,12 +88,5 @@ def run(ctx, config_path):
     elif "out_result_dir" in config or "self" in config or "gt" in config:
         cli_echo(f"Running evaluate command on {config_path}", "evaluate")
         ctx.invoke(evaluate, config_file=config_path)
-    elif (
-        "eval_dir" in config
-        or "seg_dataset_prefix" in config
-        or "seg_datasets" in config
-    ):
-        cli_echo(f"Running filter command on {config_path}", "filter")
-        ctx.invoke(filter, config_file=config_path)
     else:
         raise ValueError(f"Unable to determine command for {config_path}")

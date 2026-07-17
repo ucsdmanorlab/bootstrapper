@@ -11,7 +11,6 @@ from .configs import (
     create_prediction_configs,
     create_segmentation_configs,
     create_evaluation_configs,
-    create_filter_configs,
     check_and_update,
     MODEL_NAMES
 )
@@ -91,7 +90,6 @@ def make_configs(base_dir):
 
     cli_echo(f"Existing rounds: {existing_rounds}", style="prepare")
 
-    out_volumes = {}
     i = 0
 
     while True:
@@ -104,23 +102,12 @@ def make_configs(base_dir):
         round_dir = os.path.join(base_dir, round_name)
         os.makedirs(round_dir, exist_ok=True)
 
-        if not out_volumes:
-            volumes = get_volumes(round_dir=round_dir)
-        else:
-            volumes = {
-                vol_name: vol_info
-                | {
-                    "output_container": os.path.join(
-                        round_dir, f"{vol_info['name']}.zarr"
-                    )
-                }
-                for vol_name, vol_info in out_volumes.items()
-            }
+        volumes = get_volumes(round_dir=round_dir)
 
         cli_echo(f"Writing volumes to {round_dir}/volumes.toml", style="prepare")
         save_config(volumes, os.path.join(round_dir, "volumes.toml"), style="prepare")
 
-        out_volumes = make_round_configs(volumes, round_dir)
+        make_round_configs(volumes, round_dir)
 
         click.echo()
         if not cli_confirm(
@@ -142,7 +129,6 @@ class PrepareGroup(click.Group):
             "predict",
             "segment",
             "eval",
-            "filter",
         ]
 
     def get_command(self, ctx, cmd_name):
@@ -164,7 +150,6 @@ class PrepareGroup(click.Group):
             "s": "segment",
             "eval": "evaluate",
             "e": "eval",
-            "f": "filter",
         }
 
         if cmd_name in aliases:
@@ -179,7 +164,7 @@ def prepare(ctx):
     Prepare volumes and config files for bootstrapping
 
     This command sets up a pipeline for training, prediction, post-processing,
-    evaluation, and filtering segmentations across multiple rounds. It handles:
+    and evaluation across multiple rounds. It handles:
 
     - Volume preparation: Process raw and label data (tif/zarr)
 
@@ -195,10 +180,7 @@ def prepare(ctx):
 
         - Evaluation: Configure lsd error metrics and ground truth comparisons
 
-        - Filtering: Set up pseudo ground truth generation
-
-    The process is iterative, with each round building upon previous results,
-    allowing for refinement of the segmentations over time.
+    Each round is configured independently.
     """
     if ctx.invoked_subcommand is None:
         base_dir = cli_prompt(
@@ -361,24 +343,3 @@ def prep_eval_config():
             default=os.path.join(os.getcwd(), f"eval_{volume_name}.toml"),
         )
         save_config(config, config_path, style="evaluate")
-
-
-@prepare.command("filter")
-def prep_filter_config():
-    """Create config files for filtering segmentations."""
-    volumes = get_volumes(style="filter")
-    out_segs_prefix = cli_prompt(
-        "Enter prefix for segmentation datasets", style="filter"
-    )
-    eval_dir = cli_prompt("Enter path to evaluation directory", style="filter")
-    ret = create_filter_configs(volumes, out_segs_prefix, eval_dir)
-
-    for volume_name, config in ret["configs"].items():
-        click.echo()
-        config_path = cli_prompt(
-            f"Enter path to save filter config for {volume_name}",
-            style="filter",
-            type=click.Path(),
-            default=os.path.join(os.getcwd(), f"filter_{volume_name}.toml"),
-        )
-        save_config(config, config_path, style="filter")
