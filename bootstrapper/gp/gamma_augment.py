@@ -98,7 +98,7 @@ class GammaAugment(BatchFilter):
             a = (a - a_min) / (a_max - a_min)
             noisy_a = a**gamma
             # undo normalization
-            noisy_a = a * (a_max - a_min) + a_min
+            noisy_a = noisy_a * (a_max - a_min) + a_min
             return noisy_a
         else:
             logger.debug("Skipping gamma noise since denominator would be too small")
