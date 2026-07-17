@@ -5,16 +5,160 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def volara_pipeline(config):
-    from .blockwise.mutex.frags import extract_fragments
-    from .blockwise.mutex.agglom import agglomerate
-    from .blockwise.mutex.luts import global_mws
-    from .blockwise.mutex.extract import extract_segmentation
+def _build_shift_name(filter_fragments, noise_eps, sigma, bias, strides):
+    parts = []
+    if filter_fragments is not None:
+        parts.append(f"filt{filter_fragments}")
+    if noise_eps is not None:
+        parts.append(f"eps{noise_eps}")
+    if sigma is not None:
+        parts.append(f"sigma{'_'.join(map(str, sigma))}")
+    if bias is not None:
+        parts.append(f"bias{'_'.join(map(str, bias))}")
+    if strides is not None:
+        parts.append(f"strides{'_'.join(str(s[0]) for s in strides)}")
+    return "--".join(parts) if parts else ""
 
-    frags_ds_name = extract_fragments(config)
-    agglomerate(config, frags_ds_name)
-    global_mws(config, frags_ds_name)
-    extract_segmentation(config, frags_ds_name)
+
+def volara_pipeline(config):
+    import os
+    from pathlib import Path
+
+    from funlib.geometry import Coordinate
+    from funlib.persistence import open_ds
+    from volara.blockwise import ExtractFrags, AffAgglom, GraphMWS, Relabel
+    from volara.datasets import Affs, Labels, Raw
+    from volara.dbs import SQLite, PostgreSQL
+    from volara.lut import LUT
+
+    affs_dataset = config["affs_dataset"]
+    fragments_dataset_prefix = config["fragments_dataset"]
+    db_config = config["db"]
+    mask_dataset = config.get("mask_dataset")
+    lut_dir = config["lut_dir"]
+    seg_dataset_prefix = config["seg_dataset_prefix"]
+
+    # required mws params
+    neighborhood = config.get("aff_neighborhood")
+    bias = config.get("bias")
+    global_bias = tuple(config.get("global_bias", [1.0, -0.5]))
+
+    # optional mws params
+    filter_fragments = config.get("filter_fragments")
+    sigma = config.get("sigma")
+    noise_eps = config.get("noise_eps")
+    strides = config.get("strides")
+    randomized_strides = config.get("randomized_strides", False)
+    remove_debris = config.get("remove_debris", 0)
+
+    # blockwise params
+    roi_offset = config.get("roi_offset")
+    roi_shape = config.get("roi_shape")
+    blockwise = config.get("blockwise", False)
+    num_workers = config.get("num_workers", 1) if blockwise else 1
+    block_shape = config.get("block_shape")
+    context = config.get("context")
+
+    if neighborhood is None:
+        raise ValueError("Affinities neighborhood must be provided")
+    if bias is None:
+        raise ValueError("Affinities bias must be provided")
+    assert len(neighborhood) == len(
+        bias
+    ), "Number of biases must match number of affinities channels"
+
+    affs = open_ds(affs_dataset)
+
+    if roi_offset is not None:
+        roi = (roi_offset, roi_shape)
+    else:
+        roi = (affs.roi.offset, affs.roi.shape)
+
+    if blockwise:
+        block_size = (
+            Coordinate(block_shape) if block_shape else Coordinate(affs.chunk_shape[1:])
+        )
+        ctx = (
+            Coordinate(context)
+            if context
+            else Coordinate([max(1, s // 8) for s in block_size])
+        )
+    else:
+        block_size = affs.shape[1:]
+        ctx = Coordinate([0] * affs.roi.dims)
+
+    # dataset names
+    shift_name = _build_shift_name(filter_fragments, noise_eps, sigma, bias, strides)
+    frags_ds_name = str(Path(fragments_dataset_prefix) / shift_name)
+    lut_name = str(Path(lut_dir) / shift_name)
+    seg_name = str(Path(seg_dataset_prefix) / f"gb{global_bias[-1]}--{shift_name}")
+
+    affinities = Affs(store=affs_dataset, neighborhood=neighborhood)
+    mask_data = Raw(store=mask_dataset) if mask_dataset else None
+    if "db_file" in db_config:
+        db = SQLite(path=db_config["db_file"], edge_attrs={"zyx_aff": "float"})
+    else:
+        db = PostgreSQL(
+            name=db_config["db_name"],
+            host=db_config["db_host"],
+            user=db_config["db_user"],
+            password=db_config["db_password"],
+            edge_attrs={"zyx_aff": "float"},
+        )
+    fragments = Labels(store=frags_ds_name)
+    segments = Labels(store=seg_name)
+    os.makedirs(lut_dir, exist_ok=True)
+    lut = LUT(path=lut_name)
+
+    extract_frags = ExtractFrags(
+        db=db,
+        affs_data=affinities,
+        frags_data=fragments,
+        mask_data=mask_data,
+        block_size=block_size,
+        context=ctx,
+        num_workers=num_workers,
+        roi=roi,
+        bias=bias,
+        sigma=sigma,
+        noise_eps=noise_eps,
+        filter_fragments=filter_fragments,
+        remove_debris=remove_debris,
+        strides=strides,
+        randomized_strides=randomized_strides,
+    )
+    extract_frags.drop()
+    extract_frags.run_blockwise(multiprocessing=blockwise)
+
+    aff_agglom = AffAgglom(
+        db=db,
+        affs_data=affinities,
+        frags_data=fragments,
+        block_size=block_size,
+        context=ctx,
+        scores={"zyx_aff": affinities.neighborhood},
+        num_workers=num_workers,
+        roi=roi,
+    )
+    aff_agglom.run_blockwise(multiprocessing=blockwise)
+
+    global_mws = GraphMWS(
+        db=db,
+        lut=lut,
+        weights={"zyx_aff": global_bias},
+        roi=roi,
+    )
+    global_mws.run_blockwise(multiprocessing=False)
+
+    relabel = Relabel(
+        frags_data=fragments,
+        seg_data=segments,
+        lut=lut,
+        block_size=block_size,
+        roi=roi,
+        num_workers=num_workers * 2,
+    )
+    relabel.run_blockwise(multiprocessing=blockwise)
 
 
 def simple_mutex(config):
