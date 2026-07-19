@@ -127,6 +127,8 @@ def volara_pipeline(config):
         strides=strides,
         randomized_strides=randomized_strides,
     )
+    # drop each task first: volara caches completed blocks on disk, so a re-run
+    # otherwise skips a stage and leaves stale/empty output after the db reset.
     extract_frags.drop()
     extract_frags.run_blockwise(multiprocessing=blockwise)
 
@@ -140,6 +142,7 @@ def volara_pipeline(config):
         num_workers=num_workers,
         roi=roi,
     )
+    aff_agglom.drop()
     aff_agglom.run_blockwise(multiprocessing=blockwise)
 
     global_mws = GraphMWS(
@@ -148,6 +151,7 @@ def volara_pipeline(config):
         weights={"zyx_aff": global_bias},
         roi=roi,
     )
+    global_mws.drop()
     global_mws.run_blockwise(multiprocessing=False)
 
     relabel = Relabel(
@@ -158,6 +162,7 @@ def volara_pipeline(config):
         roi=roi,
         num_workers=num_workers * 2,
     )
+    relabel.drop()
     relabel.run_blockwise(multiprocessing=blockwise)
 
 

@@ -49,7 +49,7 @@ dependencies = [
 
 [project.optional-dependencies]
 waterz = [
-    "waterz @ git+https://github.com/funkey/waterz",
+    "waterz @ git+https://github.com/ZettaAI/waterz",
     "funlib.segment @ git+https://github.com/funkelab/funlib.segment",
 ]
 
