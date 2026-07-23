@@ -42,7 +42,7 @@ def view(snapshot, datasets):
     else:
         logging.info(f"Running neuroglancer with datasets: {datasets}")
         neuroglancer_args = ["neuroglancer", "-d"] + list(datasets)
-        subprocess.run(neuroglancer_args)
+        subprocess.run(neuroglancer_args, check=True)
 
 
 def create_coordinate_space(voxel_size, is_2d):

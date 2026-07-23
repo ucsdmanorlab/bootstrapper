@@ -47,7 +47,8 @@ def process_zarr(path, output_zarr, type, style="prepare"):
                 path,
                 "-o",
                 out_ds_path,
-            ]
+            ],
+            check=True,
         )
     else:
         if not copy_to_output:
@@ -137,7 +138,7 @@ def process_non_zarr(path, output_zarr, type, style="prepare"):
     if crop:
         args.append("-c")
 
-    subprocess.run(args)
+    subprocess.run(args, check=True)
 
     return out_array, tuple(map(int, voxel_size))
 
@@ -177,7 +178,8 @@ def process_dataset(path, output_zarr, type, style="prepare"):
                     mask_ds_name,
                     "-m",
                     type,
-                ]
+                ],
+                check=True,
             )
         elif cli_confirm("Provide mask?", style, default=False):
             mask_ds_name = cli_prompt(

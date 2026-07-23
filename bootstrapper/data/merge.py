@@ -6,6 +6,8 @@ from funlib.persistence import open_ds, prepare_ds
 from functools import partial
 import logging
 
+from bootstrapper.blockwise import run_blockwise
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -120,12 +122,8 @@ def merge(in_seg, out_seg, luts):
         fit="shrink",
     )
 
-    ret = daisy.run_blockwise([task])
-
-    if ret:
-        logger.info("Ran all blocks successfully!")
-    else:
-        logger.error("Did not run all blocks successfully...")
+    run_blockwise([task])
+    logger.info("Ran all blocks successfully!")
 
     return out_ds
 

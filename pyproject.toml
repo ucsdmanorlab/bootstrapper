@@ -29,7 +29,7 @@ dependencies = [
     "requests",
     "pyyaml",
     "gunpowder<1.5",
-    "daisy",
+    "daisy<2",
     "funlib.geometry",
     "funlib.persistence<0.7",
     "mwatershed",

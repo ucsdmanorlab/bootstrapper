@@ -7,6 +7,8 @@ import zarr
 from functools import partial
 import logging
 
+from bootstrapper.blockwise import run_blockwise
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -78,12 +80,8 @@ def scale_array(in_array, out_array, factor, write_size, mode):
         fit="shrink",
     )
 
-    ret = daisy.run_blockwise([task])
-
-    if ret:
-        logger.info("Ran all blocks successfully!")
-    else:
-        logger.error("Did not run all blocks successfully...")
+    run_blockwise([task])
+    logger.info("Ran all blocks successfully!")
 
 
 @click.command()

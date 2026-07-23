@@ -31,6 +31,8 @@ def volara_pipeline(config):
     from volara.dbs import SQLite, PostgreSQL
     from volara.lut import LUT
 
+    from ..blockwise import run_volara_task
+
     affs_dataset = config["affs_dataset"]
     fragments_dataset_prefix = config["fragments_dataset"]
     db_config = config["db"]
@@ -127,10 +129,7 @@ def volara_pipeline(config):
         strides=strides,
         randomized_strides=randomized_strides,
     )
-    # drop each task first: volara caches completed blocks on disk, so a re-run
-    # otherwise skips a stage and leaves stale/empty output after the db reset.
-    extract_frags.drop()
-    extract_frags.run_blockwise(multiprocessing=blockwise)
+    run_volara_task(extract_frags, blockwise)
 
     aff_agglom = AffAgglom(
         db=db,
@@ -142,8 +141,7 @@ def volara_pipeline(config):
         num_workers=num_workers,
         roi=roi,
     )
-    aff_agglom.drop()
-    aff_agglom.run_blockwise(multiprocessing=blockwise)
+    run_volara_task(aff_agglom, blockwise)
 
     global_mws = GraphMWS(
         db=db,
@@ -151,8 +149,7 @@ def volara_pipeline(config):
         weights={"zyx_aff": global_bias},
         roi=roi,
     )
-    global_mws.drop()
-    global_mws.run_blockwise(multiprocessing=False)
+    run_volara_task(global_mws, multiprocessing=False)
 
     relabel = Relabel(
         frags_data=fragments,
@@ -162,8 +159,7 @@ def volara_pipeline(config):
         roi=roi,
         num_workers=num_workers * 2,
     )
-    relabel.drop()
-    relabel.run_blockwise(multiprocessing=blockwise)
+    run_volara_task(relabel, blockwise)
 
 
 def simple_mutex(config):

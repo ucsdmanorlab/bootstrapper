@@ -7,6 +7,8 @@ from funlib.geometry import Roi, Coordinate
 from funlib.persistence import open_ds, prepare_ds, Array
 import fastremap
 
+from .blockwise import run_blockwise
+
 
 @click.group()
 def refine():
@@ -68,8 +70,10 @@ def _run_blockwise(name, in_ds, out_ds, process_block, num_workers,
         max_retries=2,
         fit="shrink",
     )
-    if not daisy.run_blockwise([task]):
-        raise click.ClickException(f"{name}: some blocks failed (see daisy_logs/)")
+    try:
+        run_blockwise([task])
+    except RuntimeError as e:
+        raise click.ClickException(f"{name}: {e} (see daisy_logs/)")
 
 
 def _scan_tiles(in_ds, tile=4096):

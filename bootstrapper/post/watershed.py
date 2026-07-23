@@ -5,17 +5,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def _run_blockwise(task, multiprocessing):
-    # always drop first: volara caches completed blocks on disk, so without this
-    # a re-run skips agglomeration/relabel and leaves stale (often empty) output
-    # even though the db was reset upstream.
-    task.drop()
-    if not task.run_blockwise(multiprocessing=multiprocessing):
-        raise RuntimeError(
-            f"blockwise task {task.task_name!r} did not complete all blocks"
-        )
-
-
 def _ws_shift_name(noise_eps, sigma, bias, min_seed_distance):
     parts = []
     if noise_eps is not None:
@@ -45,6 +34,7 @@ def waterz_pipeline(config):
 
     from .blockwise.watershed_frags import WatershedFrags
     from .blockwise.waterz_agglom import WaterzAgglom, WATERZ_MERGE_FUNCTIONS
+    from ..blockwise import run_volara_task
 
     affs_dataset = config["affs_dataset"]
     fragments_dataset_prefix = config["fragments_dataset"]
@@ -137,10 +127,10 @@ def waterz_pipeline(config):
         filter_fragments=filter_fragments,
         remove_debris=remove_debris,
     )
-    _run_blockwise(frags_task, blockwise)
+    run_volara_task(frags_task, blockwise)
 
     # score RAG edges with waterz
-    _run_blockwise(
+    run_volara_task(
         WaterzAgglom(
             db=db,
             affs_data=affinities,
@@ -186,7 +176,7 @@ def waterz_pipeline(config):
         lut = LUT(path=str(Path(lut_dir) / name))
         lut.save(np.array([nodes, components]))
 
-        _run_blockwise(
+        run_volara_task(
             Relabel(
                 frags_data=fragments,
                 seg_data=Labels(store=str(Path(seg_dataset_prefix) / name)),

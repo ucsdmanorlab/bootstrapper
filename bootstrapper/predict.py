@@ -1,5 +1,6 @@
 import click
 import os
+import sys
 import toml
 import json
 import daisy
@@ -10,6 +11,7 @@ from pprint import pprint
 from funlib.geometry import Roi, Coordinate
 from funlib.persistence import open_ds, prepare_ds
 
+from .blockwise import run_blockwise
 from .configs import download_checkpoints, MODEL_URLS
 from .styles import cli_echo, cli_confirm
 
@@ -37,17 +39,14 @@ def predict_blockwise(config):
         fit="overhang",
     )
 
-    done = daisy.run_blockwise([task])
-    if not done:
-        raise RuntimeError("At least one block failed!")
-    else:
-        logger.info("All blocks finished successfully!")
+    run_blockwise([task])
+    logger.info("All blocks finished successfully!")
 
 
 def call_predict(config):
     worker_id = daisy.Context.from_env()["worker_id"]
     os.environ["CUDA_VISIBLE_DEVICES"] = f"{int(worker_id) % config['num_gpus']}"
-    subprocess.run(["python", config["worker"], *config["args"]])
+    subprocess.run([sys.executable, config["worker"], *config["args"]], check=True)
 
 
 def get_pred_config(config_file, setup_id, **kwargs):
@@ -236,7 +235,9 @@ def run_prediction(config_file, setup_ids=None, **kwargs):
         if config["num_gpus"] > 1:
             predict_blockwise(config)
         else:
-            subprocess.run(["python", config["worker"], *config["args"]])
+            subprocess.run(
+                [sys.executable, config["worker"], *config["args"]], check=True
+            )
 
 
 @click.command()

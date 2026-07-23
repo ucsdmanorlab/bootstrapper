@@ -1,6 +1,7 @@
 import glob
 import toml
 import subprocess
+import sys
 import os
 import click
 import logging
@@ -120,16 +121,11 @@ def run_training(config_file, **kwargs):
     train_script, config_file = setup_train(config_file, **kwargs)
 
     # Run the training script with the temporary config file
-    command = ["python", train_script, config_file]
+    command = [sys.executable, train_script, config_file]
     logging.info(f"Starting training with command: {' '.join(command)}")
 
-    try:
-        result = subprocess.run(command)
-        logging.info("Training completed successfully.")
-        logging.debug(f"Training output:\n{result.stdout}")
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Training failed with error code {e.returncode}")
-        logging.error(f"Error output:\n{e.stderr}")
+    subprocess.run(command, check=True)
+    logging.info("Training completed successfully.")
 
 
 @click.command()
