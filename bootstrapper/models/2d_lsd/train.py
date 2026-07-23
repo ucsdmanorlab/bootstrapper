@@ -1,39 +1,33 @@
-import torch
-import gunpowder as gp
-from funlib.persistence import open_ds
-from model import Model, WeightedMSELoss
-
-import sys
-import toml
 import json
 import logging
 import os
+import sys
+
+import gunpowder as gp
+import pytorch_lightning as pl
+import toml
+import torch
+from funlib.persistence import open_ds
 
 from bootstrapper.gp import (
     SmoothAugment,
     Add2DLSDs,
     CreateMask,
     Renumber,
-    calc_max_padding, 
-    DefectAugment, 
-    GammaAugment, 
-    ImpulseNoiseAugment
+    DefectAugment,
+    GammaAugment,
+    ImpulseNoiseAugment,
 )
+from bootstrapper.training import GunpowderDataset, SnapshotCallback, fit
+from model import Model, WeightedMSELoss
 
 logging.getLogger().setLevel(logging.INFO)
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
-torch.backends.cudnn.benchmark = True
 
+def create_pipeline(voxel_size, net_config, samples):
+    batch_size = 10
 
-def train(
-    setup_dir,
-    voxel_size,
-    max_iterations,
-    samples,
-    save_checkpoints_every,
-    save_snapshots_every,
-):
     # array keys
     raw = gp.ArrayKey("RAW")
     labels = gp.ArrayKey("LABELS")
@@ -41,21 +35,13 @@ def train(
 
     gt_lsds = gp.ArrayKey("GT_LSDS")
     lsds_weights = gp.ArrayKey("LSDS_WEIGHTS")
-    pred_lsds = gp.ArrayKey("PRED_LSDS")
 
-    # model training setup
-    model = Model(stack_infer=True)
-    model.train()
-    loss = WeightedMSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-4)
-    batch_size = 10
-
-    # load net config
-    with open(os.path.join(setup_dir, "net_config.json")) as f:
-        logging.info(
-            "Reading setup config from %s" % os.path.join(setup_dir, "net_config.json")
-        )
-        net_config = json.load(f)
+    # batch keys for training
+    keys = {
+        "raw": raw,
+        "gt_lsds": gt_lsds,
+        "lsds_weights": lsds_weights,
+    }
 
     # get lsd task params
     sigma = net_config["outputs"]["2d_lsds"]["sigma"]
@@ -77,7 +63,6 @@ def train(
     request.add(labels, output_size)
     request.add(gt_lsds, output_size)
     request.add(lsds_weights, output_size)
-    request.add(pred_lsds, output_size)
 
     # prepare pipeline
     source = tuple(
@@ -147,45 +132,54 @@ def train(
 
     pipeline += gp.Stack(batch_size)
 
-    pipeline += gp.PreCache()
+    return pipeline, request, keys
 
-    pipeline += gp.torch.Train(
-        model,
-        loss,
-        optimizer,
-        inputs={0: raw},
-        loss_inputs={
-            0: pred_lsds,
-            1: gt_lsds,
-            2: lsds_weights,
-        },
-        outputs={
-            0: pred_lsds,
-        },
-        log_dir=os.path.join(setup_dir, "log"),
-        checkpoint_basename=os.path.join(setup_dir, "model"),
-        save_every=save_checkpoints_every,
+
+class LitModel(pl.LightningModule):
+    def __init__(self):
+        super().__init__()
+        self.model = Model(stack_infer=True)
+        self.loss_fn = WeightedMSELoss()
+
+    def forward(self, raw):
+        return self.model(raw)
+
+    def training_step(self, batch, batch_idx):
+        pred_lsds = self(batch["raw"])
+        loss = self.loss_fn(pred_lsds, batch["gt_lsds"], batch["lsds_weights"])
+        self.log("train_loss", loss, on_step=True, prog_bar=True, logger=True)
+        return {"loss": loss, "pred_lsds": pred_lsds.detach()}
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=1.0e-4)
+
+
+def train(
+    setup_dir,
+    voxel_size,
+    max_iterations,
+    samples,
+    save_checkpoints_every,
+    save_snapshots_every,
+):
+    # load net config
+    with open(os.path.join(setup_dir, "net_config.json")) as f:
+        net_config = json.load(f)
+
+    # prepare dataset
+    dataset = GunpowderDataset(create_pipeline, voxel_size, net_config, samples)
+    snapshot_callback = SnapshotCallback(setup_dir, voxel_size, save_snapshots_every)
+
+    # train
+    fit(
+        LitModel(),
+        dataset,
+        setup_dir,
+        max_iterations,
+        save_checkpoints_every,
+        snapshot_callback,
+        num_workers=8,
     )
-
-    pipeline += gp.IntensityScaleShift(raw, 0.5, 0.5)
-
-    pipeline += gp.Snapshot(
-        dataset_names={
-            raw: "raw",
-            gt_lsds: "gt_lsds",
-            pred_lsds: "pred_lsds",
-            lsds_weights: "lsds_weights",
-        },
-        output_filename="batch_{iteration}.zarr",
-        output_dir=os.path.join(setup_dir, "snapshots"),
-        every=save_snapshots_every,
-    )
-
-    # pipeline += gp.PrintProfilingStats(every=100)
-
-    with gp.build(pipeline):
-        for i in range(max_iterations):
-            pipeline.request_batch(request)
 
 
 if __name__ == "__main__":

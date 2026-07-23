@@ -12,9 +12,9 @@ def setup_train(config_file, **kwargs):
     with open(config_file, "r") as file:
         config = toml.load(file)
 
-    # get training samples
-    samples = config["samples"]
-    if not samples:
+    # get training samples (synthetic *_from_* setups have none)
+    samples = config.get("samples", [])
+    if "samples" in config and not samples:
         raise ValueError(f"No training samples provided in {config_file}")
 
     # check training samples
@@ -84,7 +84,8 @@ def setup_train(config_file, **kwargs):
             )
 
     # update samples in config
-    config["samples"] = out_samples
+    if samples:
+        config["samples"] = out_samples
 
     # Override config values with provided kwargs
     if any(kwargs.values()):

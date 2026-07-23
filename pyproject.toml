@@ -40,6 +40,8 @@ dependencies = [
     "connected-components-3d",
     "fastremap",
     "tqdm",
+    "natsort",
+    "rich",
     "lsds @ git+https://github.com/yajivunev/lsd",
     "funlib.learn.torch @ git+https://github.com/funkelab/funlib.learn.torch",
     "funlib.show.neuroglancer @ git+https://github.com/funkelab/funlib.show.neuroglancer",

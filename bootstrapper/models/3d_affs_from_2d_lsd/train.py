@@ -1,36 +1,30 @@
-import os
 import json
 import logging
-import numpy as np
-import torch
-from torch.utils.data import IterableDataset, DataLoader
+import os
+import sys
+
 import gunpowder as gp
-import zarr
-import glob
-
-from natsort import natsorted
-
+import numpy as np
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, Callback
+import toml
+import torch
 
-from model import AffsUNet, WeightedMSELoss
 from bootstrapper.gp import (
     CreateLabels,
     Add2DLSDs,
     ObfuscateLabels,
     SmoothAugment,
     CustomGrowBoundary,
-    DefectAugment, 
+    DefectAugment,
 )
+from bootstrapper.training import GunpowderDataset, SnapshotCallback, fit
+from model import AffsUNet, WeightedMSELoss
 
-setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 logging.getLogger().setLevel(logging.INFO)
+setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
 
 def create_pipeline(voxel_size, net_config):
-    """
-    Returns Gunpowder pipeline, request, and keys.
-    """
     batch_size = 1
 
     # array keys
@@ -40,10 +34,11 @@ def create_pipeline(voxel_size, net_config):
     gt_affs = gp.ArrayKey("GT_AFFS")
     affs_weights = gp.ArrayKey("AFFS_WEIGHTS")
 
+    # batch keys for training
     keys = {
-        'input_lsds': input_lsds,
-        'gt_affs': gt_affs,
-        'affs_weights': affs_weights,
+        "input_lsds": input_lsds,
+        "gt_affs": gt_affs,
+        "affs_weights": affs_weights,
     }
 
     # get affs task params
@@ -123,200 +118,59 @@ def create_pipeline(voxel_size, net_config):
     return pipeline, request, keys
 
 
-def gunpowder_generator(voxel_size, net_config):
-    """
-    Generator function that yields batches from gunpowder pipeline.
-    """
-
-    pipeline, request, keys = create_pipeline(
-        voxel_size, net_config
-    )
-    
-    with gp.build(pipeline):
-        while True:
-            try:
-                batch = pipeline.request_batch(request)
-                yield {k: torch.from_numpy(batch[v].data) for k,v in keys.items()}
-
-            except Exception as e:
-                logging.error(f"Error requesting batch: {e}")
-                raise
-
-
-class GunpowderDataset(IterableDataset):
-    def __init__(self, generator, *args, **kwargs):
-        super().__init__()
-        self.generator = generator
-        self.args = args
-        self.kwargs = kwargs
-        
-    def __iter__(self):
-        return self.generator(*self.args, **self.kwargs)
-
-
-class SnapshotCallback(Callback):
-    """
-    PyTorch Lightning callback to save snapshots during training.
-    """
-    def __init__(self, voxel_size, setup_dir, save_every=100):
-        super().__init__()
-        self.voxel_size = voxel_size
-        self.setup_dir = setup_dir
-        self.save_every = save_every
-        self.snapshots_dir = os.path.join(setup_dir, 'snapshots')
-        os.makedirs(self.snapshots_dir, exist_ok=True)
-    
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        """Called when the training batch ends."""
-        
-        # Only save every N steps
-        if trainer.global_step != 1 and trainer.global_step % self.save_every != 0:
-            return
-
-        # # only save from rank 0
-        # if trainer.global_rank != 0:
-        #     return
-        
-        # Get predictions from the model
-        with torch.no_grad():
-            input_lsds = batch['input_lsds'].detach()
-            pred_affs = pl_module(input_lsds).detach()
-        
-        # Prepare data for snapshot
-        preds = {
-            'pred_affs': pred_affs
-        }
-
-        name = f"batch_{trainer.global_step}_rank_{trainer.global_rank}.zarr"
-        
-        # Save snapshot
-        self._save_snapshot(batch, preds, name)
-    
-    def _save_snapshot(self, batch, preds, name):
-        """Save snapshot to zarr file."""
-        
-        snapshot_name = os.path.join(
-            self.snapshots_dir,
-            name
-        )
-        
-        # Combine batch and predictions
-        data = {**batch, **preds}
-        
-        # Calculate offset and voxel_size
-        voxel_offset = (
-            gp.Coordinate(data['input_lsds'].shape[-3:]) - 
-            gp.Coordinate(data[list(preds.keys())[0]].shape[-3:])
-        ) // 2
-        voxel_size = gp.Coordinate(self.voxel_size)
-        
-        # Create zarr store
-        store = zarr.DirectoryStore(snapshot_name)
-        root = zarr.group(store=store, overwrite=True)
-        
-        for name, array in data.items():
-            if isinstance(array, torch.Tensor):
-                array = array.detach().cpu().numpy()
-            
-            root.create_dataset(
-                name,
-                data=array[0],
-                overwrite=True
-            )
-            root[name].attrs['offset'] = (
-                voxel_offset * voxel_size if name != 'input_lsds' else [0, 0, 0]
-            )
-            root[name].attrs['voxel_size'] = voxel_size
-        
-        logging.info(f"Snapshot saved at: {os.path.abspath(snapshot_name)}")
-
-
-class LitModel(pl.LightningModule):    
-    def __init__(self, input_shape=[6, 10, 10, 10]):
+class LitModel(pl.LightningModule):
+    def __init__(self):
         super().__init__()
         self.model = AffsUNet()
         self.loss_fn = WeightedMSELoss()
-        self.example_input_array = torch.rand([1,] + input_shape)
-        
-    def forward(self, x):
-        return self.model(x)
-    
+
+    def forward(self, input_lsds):
+        return self.model(input_lsds)
+
     def training_step(self, batch, batch_idx):
-        input_lsds = batch['input_lsds']
-        gt_affs = batch['gt_affs']
-        affs_weights = batch['affs_weights']
-        
-        pred_affs = self(input_lsds)
-        
-        loss = self.loss_fn(pred_affs, gt_affs, affs_weights)
-        
-        self.log('train_loss', loss, on_step=True, prog_bar=True, logger=True)
-        return loss
-    
+        pred_affs = self(batch["input_lsds"])
+        loss = self.loss_fn(pred_affs, batch["gt_affs"], batch["affs_weights"])
+        self.log("train_loss", loss, on_step=True, prog_bar=True, logger=True)
+        return {"loss": loss, "pred_affs": pred_affs.detach()}
+
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=0.5e-4)
-        return optimizer    
+        return torch.optim.Adam(self.parameters(), lr=0.5e-4)
 
 
 def train(
-    setup_dir=setup_dir,
-    voxel_size=(1, 1, 1),
-    max_iterations=25001,
-    save_checkpoints_every=5000,
-    save_snapshots_every=5000,
+    setup_dir,
+    voxel_size,
+    max_iterations,
+    save_checkpoints_every,
+    save_snapshots_every,
 ):
-    # Load net config
+    # load net config
     with open(os.path.join(setup_dir, "net_config.json")) as f:
         net_config = json.load(f)
 
-    num_workers = 10
-    
-    # Create dataset
-    dataset = GunpowderDataset(
-        gunpowder_generator,
-        voxel_size,
-        net_config
-    )
-    
-    # Create dataloader
-    pl.seed_everything(42, workers=True)
-    dataloader = DataLoader(
+    # prepare dataset
+    dataset = GunpowderDataset(create_pipeline, voxel_size, net_config)
+    snapshot_callback = SnapshotCallback(setup_dir, voxel_size, save_snapshots_every)
+
+    # train
+    fit(
+        LitModel(),
         dataset,
-        batch_size=None,
-        num_workers=num_workers,
-        persistent_workers=True if num_workers > 0 else False,
-        pin_memory=True,
-    )
-    
-    # Setup model, loss, optimizer
-    model = LitModel(input_shape=[net_config['inputs']['2d_lsds']['dims'],] + net_config['input_shape'])
-    
-    logger = pl.loggers.TensorBoardLogger(".", name="log", log_graph=True)
-    checkpoint_callback = ModelCheckpoint(
-        dirpath='.', 
-        filename='model_checkpoint_{step}',
-        save_top_k=-1, 
-        every_n_train_steps=save_checkpoints_every,
-        auto_insert_metric_name=False,
-    )
-    snapshot_callback = SnapshotCallback(
-        voxel_size=voxel_size,
-        setup_dir=setup_dir,
-        save_every=save_snapshots_every
+        setup_dir,
+        max_iterations,
+        save_checkpoints_every,
+        snapshot_callback,
+        num_workers=10,
     )
 
-    trainer = pl.Trainer(
-        max_steps=max_iterations,
-        accelerator="gpu",
-        devices=-1,
-        benchmark=True,
-        logger=logger,
-        log_every_n_steps=10,
-        callbacks=[checkpoint_callback, snapshot_callback]
-    )
-
-    latest_checkpoint = max(natsorted(glob.glob('model_*'))) if glob.glob('model_*') else None
-    trainer.fit(model, dataloader, ckpt_path=latest_checkpoint)
 
 if __name__ == "__main__":
-    train()
+
+    config_file = sys.argv[1]
+    with open(config_file, "r") as f:
+        config = toml.load(f)
+
+    assert config["setup_dir"] in setup_dir, "model directories do not match"
+    config["setup_dir"] = setup_dir
+
+    train(**config)
