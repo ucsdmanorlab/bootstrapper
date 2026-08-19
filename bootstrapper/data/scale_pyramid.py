@@ -13,7 +13,22 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def scale_block(in_array, out_array, factor, mode, block):
+LABEL_WORDS = ("label", "lbl", "ids", "mask", "seg")
+
+
+def is_label_array(name, dtype):
+    """True when the array holds object ids, which must never be averaged.
+
+    Averaging id 5 and id 9 gives id 7, an object that never existed. The name
+    decides for narrow dtypes, so a uint8 mask is still safe.
+    """
+    import numpy as np
+
+    lowered = os.path.basename(name).lower()
+    return dtype in (np.uint32, np.uint64) or any(w in lowered for w in LABEL_WORDS)
+
+
+def scale_block(in_array, out_array, factor, mode, labels, block):
     import numpy as np
     from funlib.persistence import Array
     from skimage.measure import block_reduce
@@ -21,18 +36,12 @@ def scale_block(in_array, out_array, factor, mode, block):
 
     dims = len(factor)
     in_data = in_array.to_ndarray(block.read_roi, fill_value=0)
-    name = in_array.data.name
 
     n_channels = len(in_data.shape) - dims
     if n_channels >= 1:
         factor = (1,) * n_channels + factor
 
-    if (
-        in_data.dtype in [np.uint32, np.uint64]
-        or "label" in name
-        or "id" in name
-        or "mask" in name
-    ):
+    if labels:
         if mode == "down":
             slices = tuple(slice(k // 2, None, k) for k in factor)
             out_data = in_data[slices]
@@ -56,7 +65,7 @@ def scale_block(in_array, out_array, factor, mode, block):
     return 0
 
 
-def scale_array(in_array, out_array, factor, write_size, mode):
+def scale_array(in_array, out_array, factor, write_size, mode, labels):
     logger.info(f"{mode.capitalize()}scaling by factor {factor}")
 
     dims = in_array.roi.dims
@@ -73,7 +82,7 @@ def scale_array(in_array, out_array, factor, write_size, mode):
         out_array.roi.grow(context, context),
         read_block_roi,
         write_block_roi,
-        process_function=partial(scale_block, in_array, out_array, factor, mode),
+        process_function=partial(scale_block, in_array, out_array, factor, mode, labels),
         read_write_conflict=True,
         num_workers=20,
         max_retries=0,
@@ -84,37 +93,34 @@ def scale_array(in_array, out_array, factor, write_size, mode):
     logger.info("Ran all blocks successfully!")
 
 
+def parse_factor(value):
+    """Comma or space separated integers, as a tuple."""
+    return tuple(int(v) for v in value.replace(",", " ").split())
+
+
 @click.command()
 @click.option(
-    "--in_file",
-    "-f",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    "--in_array",
+    "-i",
+    type=click.Path(exists=True),
     required=True,
-    help="The path to the input zarr container",
-)
-@click.option(
-    "--in_ds_name",
-    "-ds",
-    type=str,
-    required=True,
-    help="The name of the input dataset within the container",
+    help="The path of the input zarr array, which may already end in a scale level",
+    prompt="Enter the path to the input array",
 )
 @click.option(
     "--scales",
     "-s",
     multiple=True,
     required=True,
-    type=(int, int, int),
-    help="The scale factors for each dimension",
-    prompt="Enter the scale factors for each dimension",
+    type=str,
+    help="Spatial scale factors for one level, e.g. 2,2,2. Repeat per level",
 )
 @click.option(
     "--chunk_shape",
     "-c",
-    type=(int, int, int),
+    type=str,
     default=None,
-    help="The size of a chunk in voxels",
-    prompt="Enter the chunk shape",
+    help="Spatial chunk shape in voxels, e.g. 64,64,64. Defaults to the input's",
 )
 @click.option(
     "--mode",
@@ -123,121 +129,127 @@ def scale_array(in_array, out_array, factor, write_size, mode):
     required=True,
     prompt="Specify whether to upscale or downscale",
 )
-def scale_pyramid(in_file, in_ds_name, scales, chunk_shape, mode):
+def scale_pyramid(in_array, scales, chunk_shape, mode):
     """
-    Create a scale pyramid of an array in a zarr container.
+    Create a scale pyramid of a zarr array, in place.
+
+    The array becomes s0 of a group of its own name, and every further level
+    is coarser: s0 is always the finest. Upscaling counts down to s0 instead.
 
     Args:
-        in_file (str): Path to the input zarr container.
-        in_ds_name (str): Name of the input dataset.
-        scales (tuple): Scale factors for each dimension.
-        chunk_shape (tuple): Size of a chunk in voxels.
+        in_array (str): Path to the input zarr array.
+        scales (tuple): Spatial scale factors, one string per level.
+        chunk_shape (str): Spatial chunk shape, or None to reuse the input's.
         mode (str): 'up' for upscaling, 'down' for downscaling.
     """
-    ds = zarr.open(in_file)
+    in_array = os.path.normpath(in_array)
+    # the parent group, so no ".zarr" is needed anywhere in the path
+    parent_path, ds_name = os.path.split(in_array)
+    parent = zarr.open(parent_path)
 
-    logger.info(f"Creating scale pyramid for {in_file}")
-    logger.info(f"Input dataset: {in_ds_name}")
-    logger.info(f"Chunk shape: {chunk_shape}")
-    logger.info(f"Mode: {mode}")
-    logger.info(f"Scale factors: {scales}")
+    prev_array = open_ds(in_array)
+    dims = prev_array.roi.dims
+    channel_shape = tuple(prev_array.shape[: prev_array.channel_dims])
 
-    # make sure in_ds_name points to a dataset
-    try:
-        prev_array = open_ds(os.path.join(in_file, in_ds_name))
-    except Exception:
-        logger.error(
-            f"{os.path.join(in_file, in_ds_name)} does not seem to be a dataset"
-        )
-        raise RuntimeError(
-            f"{os.path.join(in_file, in_ds_name)} does not seem to be a dataset"
-        )
+    scales = [parse_factor(s) for s in scales]
+    for scale in scales:
+        if len(scale) != dims:
+            raise click.ClickException(
+                f"Scale factor {scale} has {len(scale)} values, but "
+                f"{in_array} has {dims} spatial dimensions."
+            )
 
     if chunk_shape is not None:
-        chunk_shape = daisy.Coordinate(chunk_shape)
+        chunk_shape = daisy.Coordinate(parse_factor(chunk_shape))
+        if chunk_shape.dims != dims:
+            raise click.ClickException(
+                f"Chunk shape {tuple(chunk_shape)} has {chunk_shape.dims} values, "
+                f"but {in_array} has {dims} spatial dimensions."
+            )
     else:
-        chunk_shape = daisy.Coordinate(prev_array.chunk_shape)
-        logger.info(f"Reusing chunk shape of {chunk_shape} for new datasets")
+        chunk_shape = daisy.Coordinate(prev_array.chunk_shape[prev_array.channel_dims :])
+        logger.info(f"Reusing chunk shape of {tuple(chunk_shape)} for new datasets")
 
-    # get scales
-    logger.info(f"{mode.capitalize()}scaling by a factor of {scales}")
+    # the name the user gave the data, which an input already at a level carries
+    # on its group instead
+    at_level = re.match(r"^s(\d+)$", ds_name)
+    pyramid_name = os.path.basename(parent_path) if at_level else ds_name
+    labels = is_label_array(pyramid_name, prev_array.dtype)
+    logger.info(
+        f"{mode.capitalize()}scaling {in_array} by {scales} "
+        f"({'labels: sampling' if labels else 'image: averaging'})"
+    )
 
-    # get ds_name
-    match = re.search(r"/s(\d+)$", in_ds_name)
-    if match:
-        start_scale = int(match.group(1))
-        if mode == "down":
-            ds_name = in_ds_name
-            in_ds_name = in_ds_name[:-3]
-        else:
-            if start_scale - len(scales) < 0:
-                ds_name = in_ds_name[:-3] + f"/s{len(scales) - start_scale}"
-                logger.info(f"Renaming {in_ds_name} to {ds_name}, {start_scale}")
-                ds.store.rename(in_ds_name, ds_name)
-                in_ds_name = in_ds_name[:3]
-            else:
-                ds_name = in_ds_name
-                in_ds_name = in_ds_name[:-3]
+    # find the level this array already is, or make it one
+    if at_level:
+        start_scale = int(at_level.group(1))
+        base_path = parent_path
+        if mode == "up" and start_scale - len(scales) < 0:
+            # no room below start_scale, so the input becomes the new top
+            start_scale = len(scales)
+            new_name = f"s{start_scale}"
+            _refuse_if_exists(parent, new_name, base_path)
+            logger.info(f"Renaming {ds_name} to {new_name}")
+            parent.store.rename(ds_name, new_name)
+            ds_name = new_name
     else:
-        ds_name = (
-            in_ds_name + "/s0" if mode == "down" else in_ds_name + f"/s{len(scales)}"
-        )
-        logger.info(f"Renaming {in_ds_name} to {ds_name}")
-        ds.store.rename(in_ds_name, in_ds_name + "__tmp")
-        ds.create_group(in_ds_name)
-        ds.store.rename(in_ds_name + "__tmp", ds_name)
-        start_scale = int(ds_name[-1])
+        start_scale = 0 if mode == "down" else len(scales)
+        base_path = in_array
+        logger.info(f"Renaming {ds_name} to {ds_name}/s{start_scale}")
+        parent.store.rename(ds_name, ds_name + "__tmp")
+        parent.create_group(ds_name)
+        parent.store.rename(ds_name + "__tmp", f"{ds_name}/s{start_scale}")
+        parent = zarr.open(base_path)
+        ds_name = f"s{start_scale}"
 
     scale_numbers = [
         start_scale + (1 if mode == "down" else -1) * i
         for i in range(1, 1 + len(scales))
     ]
-    prev_array = open_ds(os.path.join(in_file, ds_name))
-
-    if prev_array.channel_dims == 0:
-        num_channels = 1
-    elif prev_array.channel_dims == 1:
-        num_channels = prev_array.shape[0]
-    else:
-        logger.error("More than one channel not yet implemented")
-        raise RuntimeError("more than one channel not yet implemented, sorry...")
+    prev_array = open_ds(os.path.join(base_path, ds_name))
 
     for scale_num, scale in zip(scale_numbers, scales):
-        try:
-            scale = daisy.Coordinate(scale)
-        except Exception:
-            scale = daisy.Coordinate((scale,) * chunk_shape.dims)
+        scale = daisy.Coordinate(scale)
 
         if mode == "up":
             next_voxel_size = prev_array.voxel_size / scale
         else:  # downscale
             next_voxel_size = prev_array.voxel_size * scale
 
-        next_ds_name = f"{in_ds_name}/s{scale_num}"
+        next_name = f"s{scale_num}"
+        _refuse_if_exists(parent, next_name, base_path)
         next_write_size = chunk_shape * next_voxel_size
         next_total_roi = prev_array.roi.snap_to_grid(next_voxel_size, mode="grow")
 
         logger.info(f"Next voxel size: {next_voxel_size}")
         logger.info(f"Next total ROI: {next_total_roi}")
         logger.info(f"Next chunk size: {next_write_size}")
-        logger.info(f"Preparing {next_ds_name}")
+        logger.info(f"Preparing {next_name}")
 
         next_array = prepare_ds(
-            os.path.join(in_file, next_ds_name),
-            shape=next_total_roi.shape / next_voxel_size,
+            os.path.join(base_path, next_name),
+            shape=channel_shape + tuple(next_total_roi.shape / next_voxel_size),
             offset=next_total_roi.offset,
             voxel_size=next_voxel_size,
             axis_names=prev_array.axis_names,
             units=prev_array.units,
             dtype=prev_array.dtype,
-            chunk_shape=chunk_shape,
+            chunk_shape=channel_shape + tuple(chunk_shape),
         )
 
-        scale_array(prev_array, next_array, scale, next_write_size, mode)
+        scale_array(prev_array, next_array, scale, next_write_size, mode, labels)
 
         prev_array = next_array
 
     logger.info("Scale pyramid creation completed.")
+
+
+def _refuse_if_exists(group, name, base_path):
+    if name in group:
+        raise click.ClickException(
+            f"{os.path.join(base_path, name)} already exists. "
+            "Remove it or pick another input."
+        )
 
 
 if __name__ == "__main__":
