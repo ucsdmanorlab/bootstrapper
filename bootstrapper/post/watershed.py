@@ -5,20 +5,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def _ws_shift_name(noise_eps, sigma, bias, min_seed_distance):
-    parts = []
-    if noise_eps is not None:
-        parts.append(f"eps{noise_eps}")
-    if sigma is not None:
-        parts.append(f"sigma{'_'.join(map(str, sigma))}")
-    if bias is not None:
-        b = bias if isinstance(bias, (list, tuple)) else [bias]
-        parts.append(f"bias{'_'.join(map(str, b))}")
-    prefix = "--".join(parts)
-    prefix = f"{prefix}--" if prefix else ""
-    return f"{prefix}minseed{min_seed_distance}"
-
-
 def waterz_pipeline(config):
     import os
     from pathlib import Path
@@ -32,8 +18,11 @@ def waterz_pipeline(config):
     from volara.dbs import SQLite, PostgreSQL
     from volara.lut import LUT
 
+    from volara.logging import set_log_basedir
+
     from .blockwise.watershed_frags import WatershedFrags
     from .blockwise.waterz_agglom import WaterzAgglom, WATERZ_MERGE_FUNCTIONS
+    from .naming import build_name, dump_params, dump_lut_params
     from ..blockwise import run_volara_task
 
     affs_dataset = config["affs_dataset"]
@@ -68,6 +57,13 @@ def waterz_pipeline(config):
     block_shape = config.get("block_shape")
     context = config.get("context")
 
+    # per-volume volara logs and done-block caches (CWD-relative by default,
+    # which collides across volumes and concurrent runs)
+    container = seg_dataset_prefix.rsplit(".zarr", 1)[0] + ".zarr"
+    set_log_basedir(
+        os.path.join(os.path.dirname(container), f"{Path(container).stem}_volara_logs")
+    )
+
     affs = open_ds(affs_dataset)
 
     if roi_offset is not None:
@@ -89,7 +85,18 @@ def waterz_pipeline(config):
         block_size = Coordinate(affs.shape[1:])
         ctx = Coordinate([0] * affs.roi.dims)
 
-    shift_name = _ws_shift_name(noise_eps, sigma, bias, min_seed_distance)
+    frag_params = {
+        "fragments_in_xy": fragments_in_xy,
+        "min_seed_distance": min_seed_distance,
+        "seed_eps": seed_eps,
+        "epsilon_agglomerate": epsilon_agglomerate,
+        "sigma": sigma,
+        "noise_eps": noise_eps,
+        "bias": bias,
+        "filter_fragments": filter_fragments,
+        "remove_debris": remove_debris,
+    }
+    shift_name = build_name(frag_params)
     frags_ds_name = str(Path(fragments_dataset_prefix) / shift_name)
 
     affinities = Raw(store=affs_dataset)
@@ -128,6 +135,7 @@ def waterz_pipeline(config):
         remove_debris=remove_debris,
     )
     run_volara_task(frags_task, blockwise)
+    dump_params(frags_ds_name, {"method": "ws", "blockwise": blockwise, **frag_params})
 
     # score RAG edges with waterz
     run_volara_task(
@@ -172,14 +180,19 @@ def waterz_pipeline(config):
             components = nodes.copy()
         else:
             components = connected_components(nodes, edges, scores, threshold)
-        name = f"{merge_function}--{threshold}--{shift_name}"
+        params = {"merge_function": merge_function, "threshold": threshold, **frag_params}
+        name = build_name(params)
+        recorded = {"method": "ws", "blockwise": blockwise, **params}
+
         lut = LUT(path=str(Path(lut_dir) / name))
         lut.save(np.array([nodes, components]))
+        dump_lut_params(str(Path(lut_dir) / name), recorded)
 
+        seg_store = str(Path(seg_dataset_prefix) / name)
         run_volara_task(
             Relabel(
                 frags_data=fragments,
-                seg_data=Labels(store=str(Path(seg_dataset_prefix) / name)),
+                seg_data=Labels(store=seg_store),
                 lut=lut,
                 block_size=block_size,
                 roi=roi,
@@ -187,6 +200,7 @@ def waterz_pipeline(config):
             ),
             blockwise,
         )
+        dump_params(seg_store, recorded)
 
 
 def simple_watershed(config):
@@ -195,6 +209,7 @@ def simple_watershed(config):
     from funlib.persistence import open_ds, prepare_ds
     from funlib.geometry import Roi
     from scipy.ndimage import gaussian_filter
+    from .naming import build_name, dump_params
     from .ws import watershed_from_affinities
     import waterz
 
@@ -256,17 +271,24 @@ def simple_watershed(config):
     if mask is not None:
         affs_data *= (mask > 0).astype(np.uint8)
 
+    # params this path actually applies (no seed_eps/epsilon_agglomerate/
+    # filter_fragments/remove_debris here, unlike the blockwise pipeline)
+    frag_params = {
+        "fragments_in_xy": fragments_in_xy,
+        "min_seed_distance": min_seed_distance,
+        "sigma": sigma,
+        "noise_eps": noise_eps,
+        "bias": bias,
+    }
+
     # shift affs with noise, smoothing, and bias
-    shift_name = []
     if any([sigma, noise_eps, bias]):
         shift = np.zeros_like(affs_data)
 
         if noise_eps is not None:
             shift += np.random.randn(*affs_data.shape) * noise_eps
-            shift_name.append(f"eps{noise_eps}")
 
         if sigma is not None:
-            shift_name.append(f"sigma{"_".join([str(x) for x in sigma[-3:]])}")
             sigma = (0, *sigma)
             shift += gaussian_filter(affs_data, sigma=sigma) - affs_data
 
@@ -277,10 +299,8 @@ def simple_watershed(config):
                 assert len(bias) == affs_data.shape[0]
 
             shift += np.array([bias]).reshape((-1, *((1,) * (len(affs.shape) - 1))))
-            shift_name.append(f"bias{'_'.join([str(x) for x in bias])}")
 
         affs_data += shift
-    shift_name = "--".join(shift_name)
 
     if affs_data.shape[0] == 2:
         affs_data = np.stack(
@@ -296,11 +316,9 @@ def simple_watershed(config):
     )
 
     # write fragments
-    shift_name = f"{shift_name}--" if shift_name != "" else ""
-    shift_name = f"{shift_name}minseed{min_seed_distance}"
-    frags_ds_name = os.path.join(frags_ds_prefix, shift_name)
+    frags_ds_name = os.path.join(frags_ds_prefix, build_name(frag_params))
     frags = prepare_ds(
-        frags_ds_name,   
+        frags_ds_name,
         shape=fragments_data.shape,
         offset=roi.offset,
         voxel_size=affs.voxel_size,
@@ -309,6 +327,7 @@ def simple_watershed(config):
         units=affs.units,
     )
     frags[roi] = fragments_data
+    dump_params(frags_ds_name, {"method": "ws", "blockwise": False, **frag_params})
 
     # agglomerate
     generator = waterz.agglomerate(
@@ -320,7 +339,8 @@ def simple_watershed(config):
 
     for threshold, segmentation in zip(thresholds, generator):
         # write segmentation
-        seg_ds_name = os.path.join(seg_ds_prefix, f"{merge_function}--{str(threshold)}--{shift_name}")
+        params = {"merge_function": merge_function, "threshold": threshold, **frag_params}
+        seg_ds_name = os.path.join(seg_ds_prefix, build_name(params))
         seg = prepare_ds(
             seg_ds_name,
             shape=segmentation.shape,
@@ -331,22 +351,15 @@ def simple_watershed(config):
             units=affs.units,
         )
         seg[roi] = segmentation
+        dump_params(seg_ds_name, {"method": "ws", "blockwise": False, **params})
 
 
 def watershed_segmentation(config):
     # blockwise or not
     blockwise = config.get("blockwise", False)
 
-    roi_offset = config.get("roi_offset", None)
-    roi_shape = config.get("roi_shape", None)
-    block_shape = config.get("block_shape", None)
-
-    if roi_offset is not None and type(roi_offset) == str:
-        config["roi_offset"] = list(map(int, roi_offset.strip().split(" ")))
-        config["roi_shape"] = list(map(int, roi_shape.strip().split(" ")))
-
     if blockwise:
-        if block_shape == "roi":
+        if config.get("block_shape") == "roi":
             config["blockwise"] = False
         waterz_pipeline(config)
     else:

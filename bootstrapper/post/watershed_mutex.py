@@ -5,21 +5,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def _build_shift_name(filter_fragments, noise_eps, sigma, bias, strides):
-    parts = []
-    if filter_fragments is not None:
-        parts.append(f"filt{filter_fragments}")
-    if noise_eps is not None:
-        parts.append(f"eps{noise_eps}")
-    if sigma is not None:
-        parts.append(f"sigma{'_'.join(map(str, sigma))}")
-    if bias is not None:
-        parts.append(f"bias{'_'.join(map(str, bias))}")
-    if strides is not None:
-        parts.append(f"strides{'_'.join(str(s[0]) for s in strides)}")
-    return "--".join(parts) if parts else ""
-
-
 def volara_pipeline(config):
     import os
     from pathlib import Path
@@ -29,8 +14,10 @@ def volara_pipeline(config):
     from volara.blockwise import ExtractFrags, AffAgglom, GraphMWS, Relabel
     from volara.datasets import Affs, Labels, Raw
     from volara.dbs import SQLite, PostgreSQL
+    from volara.logging import set_log_basedir
     from volara.lut import LUT
 
+    from .naming import build_name, dump_params, dump_lut_params
     from ..blockwise import run_volara_task
 
     affs_dataset = config["affs_dataset"]
@@ -52,6 +39,7 @@ def volara_pipeline(config):
     strides = config.get("strides")
     randomized_strides = config.get("randomized_strides", False)
     remove_debris = config.get("remove_debris", 0)
+    min_seed_distance = config.get("min_seed_distance")
 
     # blockwise params
     roi_offset = config.get("roi_offset")
@@ -68,6 +56,13 @@ def volara_pipeline(config):
     assert len(neighborhood) == len(
         bias
     ), "Number of biases must match number of affinities channels"
+
+    # per-volume volara logs and done-block caches (CWD-relative by default,
+    # which collides across volumes and concurrent runs)
+    container = seg_dataset_prefix.rsplit(".zarr", 1)[0] + ".zarr"
+    set_log_basedir(
+        os.path.join(os.path.dirname(container), f"{Path(container).stem}_volara_logs")
+    )
 
     affs = open_ds(affs_dataset)
 
@@ -89,11 +84,24 @@ def volara_pipeline(config):
         block_size = affs.shape[1:]
         ctx = Coordinate([0] * affs.roi.dims)
 
-    # dataset names
-    shift_name = _build_shift_name(filter_fragments, noise_eps, sigma, bias, strides)
+    # dataset names: frags from fragment params; lut/seg add the global mws
+    # bias so runs differing only in global_bias cannot clobber each other
+    frag_params = {
+        "min_seed_distance": min_seed_distance,
+        "sigma": sigma,
+        "noise_eps": noise_eps,
+        "bias": bias,
+        "strides": strides,
+        "randomized_strides": randomized_strides,
+        "filter_fragments": filter_fragments,
+        "remove_debris": remove_debris,
+    }
+    seg_params = {"global_bias": list(global_bias), **frag_params}
+    shift_name = build_name(frag_params)
+    agglom_name = build_name(seg_params)
     frags_ds_name = str(Path(fragments_dataset_prefix) / shift_name)
-    lut_name = str(Path(lut_dir) / shift_name)
-    seg_name = str(Path(seg_dataset_prefix) / f"gb{global_bias[-1]}--{shift_name}")
+    lut_name = str(Path(lut_dir) / agglom_name)
+    seg_name = str(Path(seg_dataset_prefix) / agglom_name)
 
     affinities = Affs(store=affs_dataset, neighborhood=neighborhood)
     mask_data = Raw(store=mask_dataset) if mask_dataset else None
@@ -128,8 +136,10 @@ def volara_pipeline(config):
         remove_debris=remove_debris,
         strides=strides,
         randomized_strides=randomized_strides,
+        min_seed_distance=min_seed_distance,
     )
     run_volara_task(extract_frags, blockwise)
+    dump_params(frags_ds_name, {"method": "mws", "blockwise": blockwise, **frag_params})
 
     aff_agglom = AffAgglom(
         db=db,
@@ -150,6 +160,7 @@ def volara_pipeline(config):
         roi=roi,
     )
     run_volara_task(global_mws, multiprocessing=False)
+    dump_lut_params(lut_name, {"method": "mws", "blockwise": blockwise, **seg_params})
 
     relabel = Relabel(
         frags_data=fragments,
@@ -160,6 +171,7 @@ def volara_pipeline(config):
         num_workers=num_workers * 2,
     )
     run_volara_task(relabel, blockwise)
+    dump_params(seg_name, {"method": "mws", "blockwise": blockwise, **seg_params})
 
 
 def simple_mutex(config):
@@ -168,6 +180,7 @@ def simple_mutex(config):
     from funlib.persistence import open_ds, prepare_ds
     from funlib.geometry import Roi
     from .mws import mwatershed_from_affinities
+    from .naming import build_name, dump_params
     from skimage.morphology import remove_small_objects
 
     affs_ds = config["affs_dataset"]
@@ -234,26 +247,15 @@ def simple_mutex(config):
         affs_data, neighborhood, bias, sigma, noise_eps, strides, randomized_strides
     )
 
-    # write fragments
-    shift_name = []
-    if any([sigma, noise_eps, bias, strides]):
-        if noise_eps is not None:
-            shift_name.append(f"eps{noise_eps}")
-        if sigma is not None:
-            shift_name.append(f"sigma{'_'.join([str(x) for x in sigma])}")
-        if bias is not None:
-            if type(bias) == float:
-                bias = [bias] * affs_data.shape[0]
-            else:
-                assert len(bias) == affs_data.shape[0]
-            shift_name.append(f"bias{'_'.join([str(x) for x in bias])}")
-        if strides is not None:
-            shift_name.append(f"strides{'_'.join([str(x[0]) for x in strides])}")
-
-    shift_name = "--".join(shift_name)
-
-
-    frags_ds_name = os.path.join(frags_ds_prefix, shift_name)
+    # write fragments; no global_bias here (mwatershed segments in one shot)
+    frag_params = {
+        "sigma": sigma,
+        "noise_eps": noise_eps,
+        "bias": bias,
+        "strides": strides,
+        "randomized_strides": randomized_strides,
+    }
+    frags_ds_name = os.path.join(frags_ds_prefix, build_name(frag_params))
     frags = prepare_ds(
         frags_ds_name,
         shape=fragments_data.shape,
@@ -264,6 +266,7 @@ def simple_mutex(config):
         units=affs.units,
     )
     frags[roi] = fragments_data
+    dump_params(frags_ds_name, {"method": "mws", "blockwise": False, **frag_params})
 
     # remove small debris
     if remove_debris > 0:
@@ -273,7 +276,8 @@ def simple_mutex(config):
         fragments_data = fragments_data.astype(fragments_dtype)
 
     # write segmentation
-    seg_ds_name = os.path.join(seg_ds_prefix, f"{shift_name}--rm{remove_debris}")
+    seg_params = {**frag_params, "remove_debris": remove_debris}
+    seg_ds_name = os.path.join(seg_ds_prefix, build_name(seg_params))
     seg = prepare_ds(
         seg_ds_name,
         shape=fragments_data.shape,
@@ -284,22 +288,15 @@ def simple_mutex(config):
         units=affs.units,
     )
     seg[roi] = fragments_data
+    dump_params(seg_ds_name, {"method": "mws", "blockwise": False, **seg_params})
 
 
 def mutex_watershed_segmentation(config):
     # blockwise or not
     blockwise = config.get("blockwise", False)
 
-    roi_offset = config.get("roi_offset", None)
-    roi_shape = config.get("roi_shape", None)
-    block_shape = config.get("block_shape", None)
-
-    if roi_offset is not None and type(roi_offset) == str:
-        config["roi_offset"] = list(map(int, roi_offset.strip().split(" ")))
-        config["roi_shape"] = list(map(int, roi_shape.strip().split(" ")))
-
     if blockwise:
-        if block_shape == "roi":
+        if config.get("block_shape") == "roi":
             config["blockwise"] = False
         volara_pipeline(config)
     else:

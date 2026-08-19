@@ -68,7 +68,7 @@ def run_pred_evaluation(config, seg_ds):
     from .eval.compute_errors import compute_errors, compute_stats
 
     pred_dataset = config["pred"]["pred_dataset"]
-    thresholds = config["pred"].get("thresholds", [0.0, 1.0])
+    thresholds = config["pred"].get("thresholds", [0.1, 1.0])
     params = config["pred"].get("params", {})
     mask_dataset = config.get("mask_dataset")
 

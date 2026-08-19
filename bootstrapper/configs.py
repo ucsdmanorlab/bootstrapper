@@ -611,7 +611,7 @@ def create_segmentation_configs(
             # "roi_offset": roi_offset,
             # "roi_shape": roi_shape,
             "block_shape": block_shape,
-            "context": block_shape,
+            "context": context,
             "blockwise": do_blockwise,
             "num_workers": num_workers,
             f"{method}_params": params,

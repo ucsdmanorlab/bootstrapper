@@ -11,11 +11,10 @@ DEFAULTS = {
     "ws": {
         "fragments_in_xy": True,
         "min_seed_distance": 10,
+        "seed_eps": None,
         "epsilon_agglomerate": 0.0,
-        "filter_fragments": 0.05,
-        "replace_sections": None,
-        "thresholds_minmax": [0, 1],
-        "thresholds_step": 0.05,
+        "filter_fragments": 0.1,
+        "remove_debris": 64,
         "thresholds": [0.2, 0.35, 0.5],
         "merge_function": "mean",
         "sigma": None,
@@ -51,7 +50,8 @@ DEFAULTS = {
         "randomized_strides": True,
         "filter_fragments": 0.1,
         "remove_debris": 64,
-        "seed_eps": 0.01
+        "min_seed_distance": None,
+        "global_bias": [1.0, -0.5],
     },
     "cc": {
         "threshold": 0.5,
@@ -67,6 +67,16 @@ def parse_params(param_str):
         return literal_eval(param_str)
     except:
         return param_str
+
+
+def parse_shape(value):
+    """Parse a coords value: list of ints, or space/comma separated string.
+    The string "roi" is passed through."""
+    if value is None or value == "roi":
+        return value
+    if isinstance(value, str):
+        value = value.replace(",", " ").split()
+    return [int(v) for v in value]
 
 
 def get_method_params(method, params):
@@ -90,23 +100,30 @@ def get_seg_config(config_file, method, **kwargs):
     # override config values with provided kwargs, except method specific params
     for key, value in kwargs.items():
         if key != "param" and value is not None:
-            config[key] = value
+            config["context" if key == "block_context" else key] = value
 
-    # override method specific defaults with provided params
-    if "param" in kwargs:
-        params = config.get(f"{method}_params", {}) | get_method_params(
-            method, kwargs["param"]
-        )
-    else:
-        params = DEFAULTS[method] | config.get(f"{method}_params", {})
+    # merge method defaults with config params and provided params
+    params = (
+        DEFAULTS[method]
+        | config.get(f"{method}_params", {})
+        | get_method_params(method, kwargs.get("param", ()))
+    )
 
     # delete config param dicts
     for x in config.copy():
         if x.endswith("_params"):
             del config[x]
 
+    # parse coordinate args
+    for key in ("roi_offset", "roi_shape", "block_shape", "context"):
+        if key in config:
+            config[key] = parse_shape(config[key])
+
     # check blockwise -- check if db info is provided
     if config.get("blockwise", False):
+        if method == "cc":
+            raise ValueError("Blockwise connected components is not supported!")
+
         if "db" not in config:
             raise ValueError("Blockwise requires a database config!")
 

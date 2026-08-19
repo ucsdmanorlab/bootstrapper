@@ -15,6 +15,7 @@ def cc_affs(config):
     from funlib.persistence import open_ds, prepare_ds
     from funlib.geometry import Roi
     from .cc import compute_connected_component_segmentation
+    from .naming import build_name, dump_params
     from scipy.ndimage import gaussian_filter
     from skimage.morphology import remove_small_objects
 
@@ -61,19 +62,17 @@ def cc_affs(config):
     if mask is not None:
         affs_data *= (mask > 0).astype(np.uint8)
 
+    frag_params = {"threshold": threshold, "sigma": sigma, "noise_eps": noise_eps}
+
     # add shift and noise
-    shift_name = []
     if sigma is not None or noise_eps is not None:
         shift = np.zeros_like(affs_data)
         if noise_eps is not None:
             shift += np.random.randn(*affs_data.shape) * noise_eps
-            shift_name.append(f"{noise_eps}")
         if sigma is not None:
             sigma = (0, *sigma)
             shift += gaussian_filter(affs_data, sigma=sigma) - affs_data
-            shift_name.append(f"{"_".join([str(x) for x in sigma[-3:]])}")
         affs_data += shift
-    shift_name = "--".join(shift_name)
 
     # threshold affs
     hard_affs = affs_data > threshold
@@ -82,9 +81,7 @@ def cc_affs(config):
     fragments_data = compute_connected_component_segmentation(hard_affs)
 
     # write fragments
-    shift_name = f"--{shift_name}" if shift_name != "" else ""
-    shift_name = f"threshold_{threshold}{shift_name}"
-    frags_ds_name = os.path.join(frags_ds_prefix, shift_name)
+    frags_ds_name = os.path.join(frags_ds_prefix, build_name(frag_params))
     frags = prepare_ds(
         frags_ds_name,
         shape=fragments_data.shape,
@@ -95,6 +92,7 @@ def cc_affs(config):
         units=affs.units,
     )
     frags[roi] = fragments_data
+    dump_params(frags_ds_name, {"method": "cc", "blockwise": False, **frag_params})
 
     # remove small debris
     if remove_debris > 0:
@@ -104,7 +102,8 @@ def cc_affs(config):
         fragments_data = fragments_data.astype(fragments_dtype)
 
     # write segmentation
-    seg_ds_name = os.path.join(seg_ds_prefix, f"{shift_name}--rm{remove_debris}")
+    seg_params = {**frag_params, "remove_debris": remove_debris}
+    seg_ds_name = os.path.join(seg_ds_prefix, build_name(seg_params))
     seg = prepare_ds(
         seg_ds_name,
         shape=fragments_data.shape,
@@ -115,18 +114,12 @@ def cc_affs(config):
         units=affs.units,
     )
     seg[roi] = fragments_data
+    dump_params(seg_ds_name, {"method": "cc", "blockwise": False, **seg_params})
 
 
 def cc_segmentation(config):
     # blockwise or not
     blockwise = config.get("blockwise", False)
-
-    roi_offset = config.get("roi_offset", None)
-    roi_shape = config.get("roi_shape", None)
-
-    if roi_offset is not None:
-        config["roi_offset"] = list(map(int, roi_offset.strip().split(" ")))
-        config["roi_shape"] = list(map(int, roi_shape.strip().split(" ")))
 
     if blockwise:
         cc_blockwise(config)
