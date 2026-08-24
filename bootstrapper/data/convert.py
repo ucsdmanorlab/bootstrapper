@@ -129,7 +129,7 @@ def convert(
     # do bounding box crop
     if crop:
         logging.info("Performing bounding box crop")
-        bbox = find_objects(full_array > 0)[0]
+        bbox = find_objects((full_array > 0).astype(np.uint8))[0]
         full_array = full_array[bbox]
         shape = full_array.shape
         bbox_offset = [x.start for x in bbox]

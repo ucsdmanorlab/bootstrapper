@@ -1,5 +1,6 @@
 import os
 import logging
+import numpy as np
 from scipy.ndimage import find_objects
 from funlib.persistence import open_ds, prepare_ds
 import click
@@ -42,7 +43,7 @@ def bbox(in_array, out_array, padding):
     arr = in_ds[in_ds.roi]
 
     logger.info("Finding bounding box")
-    slices = find_objects(arr > 0)[0]
+    slices = find_objects((arr > 0).astype(np.uint8))[0]
     slices = [
         slice(max(0, s.start - padding), min(s.stop + padding, arr.shape[i]))
         for i, s in enumerate(slices)
