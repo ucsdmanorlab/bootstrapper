@@ -1,19 +1,23 @@
-import subprocess
+import os
 import h5py
+import requests
 import zarr
 import tifffile
 import numpy as np
 from skimage.transform import rescale
 
 # download cremi_c data
-subprocess.run([
-    "wget",
-    "https://cremi.org/static/data/sample_C_20160501.hdf"
-])
+response = requests.get(
+    "https://cremi.org/static/data/sample_C_20160501.hdf", stream=True
+)
+response.raise_for_status()
+with open("sample_C_20160501.hdf", "wb") as f:
+    for chunk in response.iter_content(chunk_size=1024 * 1024):
+        f.write(chunk)
 
 # create zarr
 h5_file = h5py.File("sample_C_20160501.hdf", "r")
-out_zarr = zarr.open("cremi_c.zarr","w")
+out_zarr = zarr.open("cremi_c.zarr", mode="w")
 
 out_zarr["raw"] = h5_file["volumes/raw"][:]
 out_zarr["raw"].attrs["offset"] = [0,0,0]
@@ -43,4 +47,4 @@ out_zarr["sparse_labels"].attrs["units"] = ["nm","nm","nm"]
 
 # remote hdf5 file
 h5_file.close()
-subprocess.run(["rm", "sample_C_20160501.hdf"])
+os.remove("sample_C_20160501.hdf")
