@@ -18,8 +18,15 @@ logging.getLogger().setLevel(logging.INFO)
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
     help="Path to the Zarr container of a snapshot",
 )
+@click.option(
+    "--bind",
+    "-b",
+    type=str,
+    default="0.0.0.0",
+    help="Address to serve the viewer on",
+)
 @click.argument("datasets", nargs=-1)
-def view(snapshot, datasets):
+def view(snapshot, bind, datasets):
     """
     View a snapshot or run neuroglancer -d <args>
 
@@ -27,6 +34,8 @@ def view(snapshot, datasets):
     ----------
     snapshot : str
         Path to the Zarr container of a snapshot.
+    bind : str
+        Address to serve the viewer on.
     datasets : str
         Datasets to be viewed with neuroglancer.
 
@@ -37,11 +46,11 @@ def view(snapshot, datasets):
     logging.info("Starting view command")
     if snapshot:
         logging.info(f"Viewing snapshot: {snapshot}")
-        view_snapshot(snapshot)
+        view_snapshot(snapshot, bind)
         click.pause("Press any key to exit...")
     else:
         logging.info(f"Running neuroglancer with datasets: {datasets}")
-        neuroglancer_args = ["neuroglancer", "-d"] + list(datasets)
+        neuroglancer_args = ["neuroglancer", "-b", bind, "-d"] + list(datasets)
         subprocess.run(neuroglancer_args, check=True)
 
 
@@ -124,8 +133,8 @@ def create_shader(ds, is_2d):
     return shader
 
 
-def view_snapshot(zarr_path):
-    neuroglancer.set_server_bind_address("0.0.0.0")
+def view_snapshot(zarr_path, bind):
+    neuroglancer.set_server_bind_address(bind)
     viewer = neuroglancer.Viewer()
 
     if zarr_path.endswith("/"):
