@@ -4,6 +4,7 @@ import zarr
 import subprocess
 
 from ..styles import cli_echo, cli_prompt, cli_confirm
+from .paths import mask_dataset_path
 
 
 def process_zarr(path, output_zarr, type, style="prepare"):
@@ -160,33 +161,36 @@ def process_dataset(path, output_zarr, type, style="prepare"):
     out_ds_name = f"{ds_name}"
 
     # make or provide mask
+    mask_ds_name = None
     if cli_confirm(
         f"Make or provide {type} mask?",
         style,
         default=False,
     ):
         if cli_confirm("Make mask?", style, default=False):
-            mask_ds_name = out_ds_name.replace(type, f"{type}_mask")
-            subprocess.run(
-                [
-                    "bs",
-                    "utils",
-                    "mask",
-                    "-i",
-                    out_ds_name,
-                    "-o",
-                    mask_ds_name,
-                    "-m",
-                    type,
-                ],
-                check=True,
-            )
+            try:
+                mask_ds_name = mask_dataset_path(out_ds_name)
+            except click.ClickException as e:
+                cli_echo(e.format_message(), style, "error")
+            else:
+                subprocess.run(
+                    [
+                        "bs",
+                        "utils",
+                        "mask",
+                        "-i",
+                        out_ds_name,
+                        "-o",
+                        mask_ds_name,
+                        "-m",
+                        type,
+                    ],
+                    check=True,
+                )
         elif cli_confirm("Provide mask?", style, default=False):
             mask_ds_name = cli_prompt(
                 "Enter path to mask dataset", style, type=click.Path(exists=True)
             )
-    else:
-        mask_ds_name = None
 
     return out_ds_name, mask_ds_name, vs
 

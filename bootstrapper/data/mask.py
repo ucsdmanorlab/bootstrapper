@@ -6,6 +6,7 @@ from functools import partial
 import logging
 
 from bootstrapper.blockwise import run_blockwise
+from bootstrapper.data.paths import mask_dataset_path
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -105,10 +106,7 @@ def mask(in_array, out_array, mode):
     write_block_roi = daisy.Roi((0,) * dims, block_size)
     read_block_roi = write_block_roi.grow(context, context)
 
-    if out_array is None:
-        in_f, in_ds_name = in_array.split(".zarr")
-        out_ds = in_ds_name.replace(mode, f"{mode}_mask")
-        out_array = f"{in_f}.zarr/{out_ds}"
+    out_array = mask_dataset_path(in_array, out_array)
 
     print(f"Writing mask to {out_array}")
     out_ds = prepare_ds(
