@@ -166,6 +166,7 @@ def train(
     samples,
     save_checkpoints_every,
     save_snapshots_every,
+    devices=None,
 ):
     # load net config
     with open(os.path.join(setup_dir, "net_config.json")) as f:
@@ -184,6 +185,7 @@ def train(
         save_checkpoints_every,
         snapshot_callback,
         num_workers=8,
+        devices=devices,
     )
 
 

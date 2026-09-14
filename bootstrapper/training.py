@@ -101,6 +101,7 @@ def fit(
     save_checkpoints_every,
     snapshot_callback,
     num_workers=8,
+    devices=None,
 ):
     pl.seed_everything(42, workers=True)
 
@@ -122,7 +123,9 @@ def fit(
         auto_insert_metric_name=False,
     )
 
+    # indices are positions within the inherited CUDA_VISIBLE_DEVICES set
     trainer = pl.Trainer(
+        devices="auto" if devices is None else devices,
         max_steps=max_iterations,
         max_epochs=1,
         use_distributed_sampler=False,

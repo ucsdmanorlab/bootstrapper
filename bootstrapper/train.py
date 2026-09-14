@@ -33,7 +33,10 @@ def setup_train(config_file, **kwargs):
 
         # check labels, find all contained arrays if just a prefix
         if not os.path.exists(labels):
-            raise ValueError(f"Labels dataset path {labels} does not exist")
+            raise ValueError(
+                f"Labels dataset path {labels} does not exist:"
+                "point the config at an existing labels dataset"
+            )
         elif ".zarray" not in os.listdir(labels):
             # recursively search for all arrays matching the prefix
             labels_datasets = [
@@ -94,7 +97,7 @@ def setup_train(config_file, **kwargs):
             if value is not None:
                 config[key] = value
 
-        base_name = config_file.replace(".toml", "_modified.toml")
+        base_name = os.path.splitext(config_file)[0] + "_modified"
         counter = 0
 
         # write updated config

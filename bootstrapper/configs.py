@@ -418,6 +418,8 @@ def create_training_config(volumes, parent_dir=None, style="train"):
         train_config = {
             "setup_dir": setup_dir,
             "voxel_size": voxel_size,
+            # "auto" takes every granted gpu; a list narrows it
+            "devices": "auto",
             "max_iterations": max_iterations,
             "save_checkpoints_every": save_checkpoints_every,
             "save_snapshots_every": save_snapshots_every,
