@@ -28,6 +28,8 @@ class CreateLabels(gp.BatchProvider):
         shape (tuple): The shape of the labels array.
         dtype (numpy.dtype): The data type of the labels.
         voxel_size (tuple): The voxel size of the labels.
+        background_prob (float): The probability of each label id being set to
+            background.
     """
 
     def __init__(
@@ -37,12 +39,14 @@ class CreateLabels(gp.BatchProvider):
         shape=(20, 20, 20),
         dtype=np.uint32,
         voxel_size=None,
+        background_prob=0.1,
     ):
         self.array_key = array_key
         self.anisotropy_range = anisotropy_range
         self.shape = shape
         self.dtype = dtype
         self.voxel_size = voxel_size
+        self.background_prob = background_prob
         self.ndims = None
 
     def setup(self):
@@ -158,7 +162,6 @@ class CreateLabels(gp.BatchProvider):
             labels = label(labels)
 
         if choice == "random":
-            np.random.seed()
             peaks = np.random.random(shape).astype(np.float32)
             peaks = gaussian_filter(peaks, sigma=10.0)
             max_filtered = maximum_filter(peaks, 15)
@@ -166,14 +169,14 @@ class CreateLabels(gp.BatchProvider):
             seeds = label(maxima, connectivity=1)
             labels = watershed(1.0 - peaks, seeds)
 
-        # black out a percentage of label ids
-        for divisor in [3, 5]:
-            if np.random.random() < 0.2:
-                labels[labels % divisor == 0] = 0
+        # each label id becomes background with probability background_prob
+        ids = np.unique(labels[labels != 0])
+        background_ids = ids[np.random.random(len(ids)) < self.background_prob]
+        labels[np.isin(labels, background_ids)] = 0
 
         if anisotropy <= labels.shape[0]:
-            labels = labels[::anisotropy].astype(np.uint32)
+            labels = labels[::anisotropy].astype(self.dtype)
         else:
-            labels = labels[0:1].astype(np.uint32)
+            labels = labels[0:1].astype(self.dtype)
 
         return labels

@@ -76,12 +76,11 @@ class ObfuscateLabels(gp.BatchFilter):
     def _generate_operations(self):
         operations = []
         for _ in range(self.num_tries):
-            r = random.random()
-            if r < self.split_p:
+            if random.random() < self.split_p:
                 operations.append('split')
-            if r < self.merge_p:
+            if random.random() < self.merge_p:
                 operations.append('merge')
-            if r < self.artifact_p:
+            if random.random() < self.artifact_p:
                 operations.append('artifact')
         return operations
 

@@ -55,7 +55,7 @@ class ImpulseNoiseAugment(gp.BatchFilter):
 
         assert all([batch.arrays[array].data.shape == batch.arrays[self.arrays[0]].data.shape for array in self.arrays])
 
-        noise_locations = (np.random.binomial(1, self.p, batch.arrays[self.arrays[0]].data.shape)).astype(bool)
+        noise_locations = (np.random.binomial(1, self.pixel_p, batch.arrays[self.arrays[0]].data.shape)).astype(bool)
         noise_values = np.random.uniform(self.range[0], self.range[1], np.sum(noise_locations))
 
         for array in self.arrays:
