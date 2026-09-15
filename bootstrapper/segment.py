@@ -1,5 +1,6 @@
 import click
 import logging
+import os
 from pprint import pprint
 import toml
 from ast import literal_eval
@@ -119,18 +120,21 @@ def get_seg_config(config_file, method, **kwargs):
         if key in config:
             config[key] = parse_shape(config[key])
 
-    # check blockwise -- check if db info is provided
-    if config.get("blockwise", False):
-        if method == "cc":
+    if method == "cc":
+        if config.get("blockwise", False):
             raise ValueError("Blockwise connected components is not supported!")
-
-        if "db" not in config:
-            raise ValueError("Blockwise requires a database config!")
+    else:
+        # ws and mws run as volara tasks, so they always need a graph database
+        # and a place for the LUTs
+        out_dir = os.path.dirname(config["seg_dataset_prefix"])
 
         if "lut_dir" not in config:
-            config["lut_dir"] = config["seg_dataset_prefix"].replace(
-                "segmentations", "luts"
-            )
+            config["lut_dir"] = os.path.join(out_dir, f"luts_{method}")
+
+        if "db" not in config:
+            db_file = os.path.join(out_dir, f"rag_{method}.db")
+            config["db"] = {"db_file": db_file}
+            click.echo(f"No database in config: using SQLite at {db_file}")
 
     return config | params
 
@@ -183,7 +187,11 @@ def run_segmentation(config_file, mode="ws", **kwargs):
     help="Shape of ROI in world units (space separated integers)",
 )
 @click.option(
-    "--blockwise", "-b", is_flag=True, default=None, help="Run blockwise segmentation, with daisy"
+    "--blockwise",
+    "-b",
+    is_flag=True,
+    default=None,
+    help="Run ws or mws over many daisy blocks. They run as one block otherwise. Not available for cc.",
 )
 @click.option(
     "--num-workers",

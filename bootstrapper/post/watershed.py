@@ -5,8 +5,9 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def waterz_pipeline(config):
+def watershed_segmentation(config):
     import os
+    from importlib.metadata import version
     from pathlib import Path
 
     import numpy as np
@@ -32,8 +33,7 @@ def waterz_pipeline(config):
     db_config = config["db"]
     mask_dataset = config.get("mask_dataset")
 
-    # watershed fragment params (same as simple_watershed, plus seed_eps /
-    # epsilon_agglomerate for blockwise)
+    # watershed fragment params
     fragments_in_xy = config.get("fragments_in_xy", True)
     min_seed_distance = config.get("min_seed_distance", 10)
     seed_eps = config.get("seed_eps")
@@ -47,22 +47,42 @@ def waterz_pipeline(config):
     # waterz agglomeration params
     thresholds = config.get("thresholds", [0.2, 0.35, 0.5])
     merge_function = config.get("merge_function", "mean")
+    if merge_function not in WATERZ_MERGE_FUNCTIONS:
+        raise ValueError(
+            f"Unknown merge_function '{merge_function}'. Valid values: "
+            f"{sorted(WATERZ_MERGE_FUNCTIONS)}. The ZettaAI waterz build only "
+            "ships a working 'mean' scorer."
+        )
     waterz_merge_function = WATERZ_MERGE_FUNCTIONS[merge_function]
 
     # blockwise params
     roi_offset = config.get("roi_offset")
     roi_shape = config.get("roi_shape")
-    blockwise = config.get("blockwise", False)
-    num_workers = config.get("num_workers", 1) if blockwise else 1
     block_shape = config.get("block_shape")
+    # a whole-array run is the one-block case
+    blockwise = config.get("blockwise", False) and block_shape != "roi"
+    num_workers = config.get("num_workers", 1) if blockwise else 1
     context = config.get("context")
 
     # per-volume volara logs and done-block caches (CWD-relative by default,
     # which collides across volumes and concurrent runs)
-    container = seg_dataset_prefix.rsplit(".zarr", 1)[0] + ".zarr"
-    set_log_basedir(
-        os.path.join(os.path.dirname(container), f"{Path(container).stem}_volara_logs")
-    )
+    if ".zarr" in seg_dataset_prefix:
+        container = seg_dataset_prefix.rsplit(".zarr", 1)[0] + ".zarr"
+        log_basedir = os.path.join(
+            os.path.dirname(container), f"{Path(container).stem}_volara_logs"
+        )
+    else:
+        # no ".zarr" container to name the logs after
+        log_basedir = f"{seg_dataset_prefix}_volara_logs"
+    # daisy ships this path to every worker in DAISY_CONTEXT as "key=value"
+    # pairs joined by ":", so either character there fails every worker
+    if ":" in log_basedir or "=" in log_basedir:
+        logger.warning(
+            "log dir %s contains ':' or '='; keeping the default volara log dir",
+            log_basedir,
+        )
+    else:
+        set_log_basedir(log_basedir)
 
     affs = open_ds(affs_dataset)
 
@@ -98,6 +118,20 @@ def waterz_pipeline(config):
     }
     shift_name = build_name(frag_params)
     frags_ds_name = str(Path(fragments_dataset_prefix) / shift_name)
+
+    # recorded on every output: the inputs and the region a name cannot show
+    run_params = {
+        "method": "ws",
+        "blockwise": blockwise,
+        "affs_dataset": affs_dataset,
+        "mask_dataset": mask_dataset,
+        "aff_neighborhood": config.get("aff_neighborhood"),
+        "roi_offset": list(total_roi.offset),
+        "roi_shape": list(total_roi.shape),
+        "block_shape": list(block_size),
+        "context": list(ctx),
+        "bootstrapper_version": version("bootstrapper"),
+    }
 
     affinities = Raw(store=affs_dataset)
     mask_data = Raw(store=mask_dataset) if mask_dataset else None
@@ -135,7 +169,7 @@ def waterz_pipeline(config):
         remove_debris=remove_debris,
     )
     run_volara_task(frags_task, blockwise)
-    dump_params(frags_ds_name, {"method": "ws", "blockwise": blockwise, **frag_params})
+    dump_params(frags_ds_name, {**run_params, **frag_params})
 
     # score RAG edges with waterz
     run_volara_task(
@@ -182,7 +216,7 @@ def waterz_pipeline(config):
             components = connected_components(nodes, edges, scores, threshold)
         params = {"merge_function": merge_function, "threshold": threshold, **frag_params}
         name = build_name(params)
-        recorded = {"method": "ws", "blockwise": blockwise, **params}
+        recorded = {**run_params, **params}
 
         lut = LUT(path=str(Path(lut_dir) / name))
         lut.save(np.array([nodes, components]))
@@ -201,166 +235,3 @@ def waterz_pipeline(config):
             blockwise,
         )
         dump_params(seg_store, recorded)
-
-
-def simple_watershed(config):
-    import os
-    import numpy as np
-    from funlib.persistence import open_ds, prepare_ds
-    from funlib.geometry import Roi
-    from scipy.ndimage import gaussian_filter
-    from .naming import build_name, dump_params
-    from .ws import watershed_from_affinities
-    import waterz
-
-    affs_ds = config["affs_dataset"]
-    frags_ds_prefix = config["fragments_dataset"]
-    seg_ds_prefix = config["seg_dataset_prefix"]
-    mask_ds = config.get("mask_dataset", None)
-    roi_offset = config.get("roi_offset", None)
-    roi_shape = config.get("roi_shape", None)
-
-    # optional waterz params
-    thresholds = config.get("thresholds", [0.2, 0.35, 0.5])
-    fragments_in_xy = config.get("fragments_in_xy", True)
-    min_seed_distance = config.get("min_seed_distance", 10)
-    merge_function = config.get("merge_function", "mean")
-    sigma = config.get("sigma", None)
-    noise_eps = config.get("noise_eps", None)
-    bias = config.get("bias", None)
-
-    waterz_merge_function = {
-        "hist_quant_10": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 10, ScoreValue, 256, false>>",
-        "hist_quant_10_initmax": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 10, ScoreValue, 256, true>>",
-        "hist_quant_25": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 25, ScoreValue, 256, false>>",
-        "hist_quant_25_initmax": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 25, ScoreValue, 256, true>>",
-        "hist_quant_50": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 50, ScoreValue, 256, false>>",
-        "hist_quant_50_initmax": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 50, ScoreValue, 256, true>>",
-        "hist_quant_75": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 75, ScoreValue, 256, false>>",
-        "hist_quant_75_initmax": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 75, ScoreValue, 256, true>>",
-        "hist_quant_90": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 90, ScoreValue, 256, false>>",
-        "hist_quant_90_initmax": "OneMinus<HistogramQuantileAffinity<RegionGraphType, 90, ScoreValue, 256, true>>",
-        "mean": "OneMinus<MeanAffinity<RegionGraphType, ScoreValue>>",
-    }[merge_function]
-
-    # load affs
-    affs = open_ds(affs_ds)
-
-    # get total ROI
-    if roi_offset is not None:
-        roi = Roi(roi_offset, roi_shape)
-    else:
-        roi = affs.roi
-
-    # load data
-    affs_data = affs[roi][:3]
-
-    # normalize
-    if affs_data.dtype == np.uint8:
-        affs_data = affs_data.astype(np.float32) / 255.0
-    else:
-        affs_data = affs_data.astype(np.float32)
-
-    # load mask
-    if mask_ds is not None:
-        mask = open_ds(mask_ds)
-        mask = mask[roi]
-    else:
-        mask = None
-
-    if mask is not None:
-        affs_data *= (mask > 0).astype(np.uint8)
-
-    # params this path actually applies (no seed_eps/epsilon_agglomerate/
-    # filter_fragments/remove_debris here, unlike the blockwise pipeline)
-    frag_params = {
-        "fragments_in_xy": fragments_in_xy,
-        "min_seed_distance": min_seed_distance,
-        "sigma": sigma,
-        "noise_eps": noise_eps,
-        "bias": bias,
-    }
-
-    # shift affs with noise, smoothing, and bias
-    if any([sigma, noise_eps, bias]):
-        shift = np.zeros_like(affs_data)
-
-        if noise_eps is not None:
-            shift += np.random.randn(*affs_data.shape) * noise_eps
-
-        if sigma is not None:
-            sigma = (0, *sigma)
-            shift += gaussian_filter(affs_data, sigma=sigma) - affs_data
-
-        if bias is not None:
-            if type(bias) == float:
-                bias = [bias] * affs_data.shape[0]
-            else:
-                assert len(bias) == affs_data.shape[0]
-
-            shift += np.array([bias]).reshape((-1, *((1,) * (len(affs.shape) - 1))))
-
-        affs_data += shift
-
-    if affs_data.shape[0] == 2:
-        affs_data = np.stack(
-            [np.zeros_like(affs_data[0]), affs_data[0], affs_data[1]]
-        )
-
-    # watershed
-    fragments_data, n = watershed_from_affinities(
-        affs_data,
-        fragments_in_xy=fragments_in_xy,
-        return_seeds=False,
-        min_seed_distance=min_seed_distance,
-    )
-
-    # write fragments
-    frags_ds_name = os.path.join(frags_ds_prefix, build_name(frag_params))
-    frags = prepare_ds(
-        frags_ds_name,
-        shape=fragments_data.shape,
-        offset=roi.offset,
-        voxel_size=affs.voxel_size,
-        axis_names=affs.axis_names[1:],
-        dtype=np.uint64,
-        units=affs.units,
-    )
-    frags[roi] = fragments_data
-    dump_params(frags_ds_name, {"method": "ws", "blockwise": False, **frag_params})
-
-    # agglomerate
-    generator = waterz.agglomerate(
-        affs_data,
-        thresholds=thresholds,
-        fragments=fragments_data.copy(),
-        scoring_function=waterz_merge_function,
-    )
-
-    for threshold, segmentation in zip(thresholds, generator):
-        # write segmentation
-        params = {"merge_function": merge_function, "threshold": threshold, **frag_params}
-        seg_ds_name = os.path.join(seg_ds_prefix, build_name(params))
-        seg = prepare_ds(
-            seg_ds_name,
-            shape=segmentation.shape,
-            offset=roi.offset,
-            voxel_size=affs.voxel_size,
-            axis_names=affs.axis_names[1:],
-            dtype=np.uint64,
-            units=affs.units,
-        )
-        seg[roi] = segmentation
-        dump_params(seg_ds_name, {"method": "ws", "blockwise": False, **params})
-
-
-def watershed_segmentation(config):
-    # blockwise or not
-    blockwise = config.get("blockwise", False)
-
-    if blockwise:
-        if config.get("block_shape") == "roi":
-            config["blockwise"] = False
-        waterz_pipeline(config)
-    else:
-        simple_watershed(config)
