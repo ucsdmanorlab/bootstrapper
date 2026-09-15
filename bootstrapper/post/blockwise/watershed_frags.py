@@ -31,9 +31,9 @@ logger = logging.getLogger(__name__)
 class WatershedFrags(BlockwiseTask):
     """
     A blockwise task that extracts fragments from affinities with a seeded
-    watershed (the same fragmentation as the non-blockwise ``simple_watershed``)
-    and writes fragment supervoxel nodes (position, size) into the volara graph
-    database (SQLite or PostgreSQL) for downstream waterz agglomeration.
+    watershed and writes fragment supervoxel nodes (position, size) into 
+    the volara graph database (SQLite or PostgreSQL) 
+    for downstream waterz agglomeration.
     """
 
     task_type: Literal["watershed-frags"] = "watershed-frags"
@@ -153,7 +153,7 @@ class WatershedFrags(BlockwiseTask):
             [f for f, m in zip(fragment_ids, means) if m < filter_value],
             dtype=fragments_data.dtype,
         )
-        replace_values(fragments_data, filtered, np.zeros_like(filtered))
+        return replace_values(fragments_data, filtered, np.zeros_like(filtered))
 
     def epsilon_agglomerate_fragments(self, affs_data, fragments_data):
         # quick initial waterz merge of the watershed fragments up to a low
@@ -161,7 +161,14 @@ class WatershedFrags(BlockwiseTask):
         # only ships a working "mean" scorer, so we use that).
         import waterz
 
-        affs = np.ascontiguousarray(affs_data[:3].astype(np.float32))
+        affs = affs_data[:3].astype(np.float32)
+
+        # waterz reads 3 (z, y, x) channels off the raw pointer, so a 2 channel
+        # array segfaults unless it is padded with an empty z channel
+        if affs.shape[0] == 2:
+            affs = np.stack([np.zeros_like(affs[0]), affs[0], affs[1]], axis=0)
+
+        affs = np.ascontiguousarray(affs)
         generator = waterz.agglomerate(
             affs=affs,
             thresholds=[self.epsilon_agglomerate],
@@ -183,7 +190,9 @@ class WatershedFrags(BlockwiseTask):
             fragments_data = self.epsilon_agglomerate_fragments(affs_data, fragments_data)
 
         if self.filter_fragments > 0:
-            self.filter_avg_fragments(affs_data, fragments_data, self.filter_fragments)
+            fragments_data = self.filter_avg_fragments(
+                affs_data, fragments_data, self.filter_fragments
+            )
 
         if self.remove_debris > 0:
             dtype = fragments_data.dtype
