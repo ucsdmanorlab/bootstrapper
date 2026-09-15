@@ -10,7 +10,7 @@ from tqdm import tqdm
 import zipfile
 from ast import literal_eval
 
-from funlib.geometry import Roi
+from funlib.geometry import Roi, Coordinate
 from funlib.persistence import open_ds
 
 from .segment import DEFAULTS as SEG_DEFAULTS
