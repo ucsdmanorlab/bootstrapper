@@ -2,9 +2,6 @@ from gunpowder import BatchFilter, Array, BatchRequest, Batch, Coordinate
 import logging
 import numpy as np
 
-from scipy.ndimage import binary_erosion, binary_dilation
-from skimage.morphology import ball, disk
-
 from gunpowder.nodes.add_affinities import seg_to_affgraph
 
 logger = logging.getLogger(__name__)
@@ -168,13 +165,8 @@ class AddAffErrors(BatchFilter):
         if mask_data is not None:
             diff_data *= mask_data
 
-        # normalize
-        max_value = np.max(diff_data)
-
-        if max_value > 0:
-            diff_data /= max_value
-        else:
-            diff_data[:] = 0
+        # normalize by the number of affinity channels
+        diff_data /= a_data.shape[0]
 
         return diff_data
 
@@ -184,24 +176,6 @@ class AddAffErrors(BatchFilter):
 
         # threshold
         o_data = (i_data > floor) & (i_data < ceil)
-
-        # # TODO: make erode-dilate optional
-        # # dilate/erode
-        # z_struct = np.stack(
-        #     [
-        #         ball(1)[0],
-        #     ]
-        #     * 3
-        # )
-        # xy_struct = np.stack([np.zeros((3, 3)), disk(1), np.zeros((3, 3))])
-
-        # # to remove minor pixel-wise differences along xy boundaries
-        # o_data = binary_erosion(o_data, xy_struct, iterations=4)
-        # o_data = binary_dilation(o_data, xy_struct, iterations=4)
-
-        # # to join gaps between z-splits in error mask
-        # o_data = binary_dilation(o_data, z_struct)
-        # o_data = binary_erosion(o_data, z_struct)
 
         o_data = o_data.astype(np.uint8)
         return o_data

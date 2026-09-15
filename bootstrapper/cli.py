@@ -85,7 +85,7 @@ def run(ctx, config_path):
     elif "affs_dataset" in config:
         cli_echo(f"Running segment command on {config_path}", "segment")
         ctx.invoke(segment, config_file=config_path)
-    elif "out_result_dir" in config or "self" in config or "gt" in config:
+    elif "seg_datasets_prefix" in config or "pred" in config or "gt" in config:
         cli_echo(f"Running evaluate command on {config_path}", "evaluate")
         ctx.invoke(evaluate, config_file=config_path)
     else:

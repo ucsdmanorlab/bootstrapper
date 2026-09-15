@@ -232,13 +232,8 @@ class AddLSDErrors(BatchFilter):
         if mask_data is not None:
             diff_data *= mask_data
 
-        # normalize
-        max_value = np.max(diff_data)
-
-        if max_value > 0:
-            diff_data /= max_value
-        else:
-            diff_data[:] = 0
+        # normalize by the number of descriptor channels
+        diff_data /= a_data.shape[0]
 
         return diff_data
 

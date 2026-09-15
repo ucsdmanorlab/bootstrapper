@@ -10,7 +10,6 @@ from bootstrapper.gp import AddLSDErrors, AddAffErrors, calc_max_padding
 
 logging.getLogger().setLevel(logging.INFO)
 
-
 class PrintArray(gp.BatchFilter):
 
     def __init__(self, array_key):
@@ -57,24 +56,28 @@ def compute_errors(
     pred_name = os.path.basename(pred_dataset)
     if "3d_lsds" in pred_name:
         error_type = "lsd"
-        sigma = kwargs.get("lsd_sigma", int(pred_ds.voxel_size[-1] * 10))
+        sigma = kwargs.get("lsd_sigma")
+        if sigma is None:
+            raise ValueError(
+                f"Set lsd_sigma in the eval config for {pred_dataset}: the sigma the "
+                "model was trained with"
+            )
         logging.info(f"Computing LSD errors with sigma={sigma}")
     elif "3d_affs" in pred_name:
         error_type = "aff"
         num_aff_offsets = pred_ds.shape[0]
-        neighborhood = kwargs.get(
-            "aff_neighborhood",
-            [
-                [1, 0, 0],
-                [0, 1, 0],
-                [0, 0, 1],
-                [2, 0, 0],
-                [0, 8, 0],
-                [0, 0, 8],
-            ],
-        )
-        neighborhood = neighborhood[:num_aff_offsets]
-        logging.info(f"Computing Affinities errors with neighborhood={neighborhood}")
+        neighborhood = kwargs.get("aff_neighborhood")
+        if neighborhood is None:
+            raise ValueError(
+                f"Set aff_neighborhood in the eval config for {pred_dataset}: one "
+                "offset per predicted channel, in the order the model was trained with"
+            )
+        if len(neighborhood) != num_aff_offsets:
+            raise ValueError(
+                f"aff_neighborhood has {len(neighborhood)} offsets, but "
+                f"{pred_dataset} has {num_aff_offsets} channels"
+            )
+        logging.info(f"Computing affinity errors with neighborhood={neighborhood}")
     else:
         raise ValueError(f"Unknown type for {pred_dataset}")
 

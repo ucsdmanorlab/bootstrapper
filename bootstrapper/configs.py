@@ -719,12 +719,14 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
                 )
             else:
                 pred_ds_name = None
+                cli_echo(
+                    f"No 3d_ prediction dataset for {volume_name}: skipping prediction errors",
+                    style,
+                    "warning",
+                )
 
-            pred_type = pred_ds_name.split("/")[-1][3:7]
-            try:
-                pred_ds = pred_datasets[pred_ds_name]
-            except:
-                pred_ds = {}
+            pred_type = pred_ds_name.split("/")[-1][3:7] if pred_ds_name else None
+            pred_ds = pred_datasets.get(pred_ds_name, {}) if pred_ds_name else None
 
             # check pred type, params
             if pred_type == "lsds":
@@ -738,7 +740,12 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
                     )
             elif pred_type == "affs":
                 if "neighborhood" not in pred_ds:
-                    default_nbhd_str = "[[-1, 0, 0], [0, -1, 0], [0, 0, -1], [-2, 0, 0], [0, -8, 0], [0, 0, -8]]"
+                    # the neighborhood every shipped 3d_affs model declares
+                    default_nbhd_str = (
+                        "[[-1, 0, 0], [0, -1, 0], [0, 0, -1], "
+                        "[-2, 0, 0], [0, -9, 0], [0, 0, -9], "
+                        "[-3, 0, 0], [0, -27, 0], [0, 0, -27]]"
+                    )
                     pred_ds["neighborhood"] = literal_eval(
                         cli_prompt(
                             f"Enter literal string of list of offsets to compute affinities from segmentation",
@@ -754,7 +761,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
                         raise ValueError(
                             f"{pred_ds_name}'s neighborhood must be a list of lists of int, not {pred_ds['neighborhood']}"
                         )
-            else:
+            elif pred_ds_name is not None:
                 raise ValueError(f"Unknown prediction type for {pred_ds_name}")
         else:
             pred_ds = None
@@ -770,7 +777,6 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
         # roi_offset, roi_shape, voxel_size = get_roi(in_array=out_segs)
 
         eval_config = {
-            "out_result_dir": os.path.join(container, output_prefix),
             "seg_datasets_prefix": os.path.join(container, out_seg_prefix),
             "mask_dataset": mask_dataset,
             # "roi_offset": roi_offset,

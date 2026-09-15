@@ -31,7 +31,11 @@ def get_eval_config(config_file, mode, **kwargs):
             config[key] = value
 
     if "out_result" not in config:
-        config["out_result"] = config_file.replace("04_eval_",f"results_{mode}_").replace(".toml", ".json")
+        config["out_result"] = config_file.replace("04_eval_","results_").replace(".toml", ".json")
+
+    # one file per mode, so gt results do not overwrite pred results
+    root, ext = os.path.splitext(config["out_result"])
+    config["out_result"] = f"{root}_{mode}{ext}"
 
     return config
 
@@ -91,8 +95,8 @@ def run_pred_evaluation(config, seg_ds):
         "seg_ds": seg_ds,
         "pred_ds": pred_dataset,
         "mask_ds": mask_dataset,
-        "map_ds": out_map_dataset,
-        "mask_ds": out_mask_dataset,
+        "error_map_ds": out_map_dataset,
+        "error_mask_ds": out_mask_dataset,
         "thresholds": thresholds,
         "error_map": compute_stats(open_ds(out_map_dataset, mode="r")[:]),
         "error_mask": compute_stats(open_ds(out_mask_dataset, mode="r")[:]),
@@ -121,7 +125,7 @@ def run_evaluation(config_file, mode="pred", **kwargs):
         pprint(stats)
         seg_stats[seg_ds] = stats
 
-    out_result = kwargs.get("out_result") or config["out_result"]
+    out_result = config["out_result"]
     logger.info(f"Saving stats to {out_result}")
     with open(out_result, "w") as f:
         json.dump(seg_stats, f, indent=4)
