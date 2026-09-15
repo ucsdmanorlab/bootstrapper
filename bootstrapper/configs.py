@@ -2,6 +2,7 @@ import click
 import toml
 import json
 import os
+from glob import glob
 from shutil import copytree
 from pprint import pprint
 import requests
@@ -47,6 +48,25 @@ def get_setup_name(setup_dir):
         return setup_name
 
 
+def checkpoint_iteration(checkpoint):
+    """Training iteration in a checkpoint name, or None if the name carries none.
+
+    `model_checkpoint_5000` and `model_checkpoint_5000.ckpt` both give 5000."""
+    name = os.path.splitext(os.path.basename(checkpoint))[0]
+    iteration = name.rsplit("_", 1)[-1]
+    return int(iteration) if iteration.isdigit() else None
+
+
+def find_checkpoints(setup_dir):
+    """Checkpoints of a setup by iteration. Look one level down as well."""
+    paths = glob(os.path.join(setup_dir, "*", "model_checkpoint_*")) + glob(
+        os.path.join(setup_dir, "model_checkpoint_*")
+    )
+    iterations = {checkpoint_iteration(p): p for p in paths}
+    iterations.pop(None, None)
+    return iterations
+
+
 def check_and_update(configs, style=None):
     click.echo()
     cli_echo(pprint(configs))
@@ -79,9 +99,7 @@ def copy_model_scripts(model_name, setup_dir, style="train", cli_edit=True):
 def get_sub_roi(in_array, offset=None, shape=None, style=None):
     """Get desired ROI within volume."""
     in_array = open_ds(in_array)
-    full_roi = in_array.roi
     voxel_size = in_array.voxel_size
-    full_shape = [s // v for s, v in zip(in_array.roi.shape, voxel_size)]
 
     if offset is None:
         offset = cli_prompt(
@@ -99,28 +117,14 @@ def get_sub_roi(in_array, offset=None, shape=None, style=None):
         )
         shape = tuple(map(int, shape.strip().split())) if shape != "0 0 0" else None
 
-    roi_offset = [o * v for o, v in zip(offset, voxel_size)]
+    begin = in_array.roi.begin + Coordinate(offset) * voxel_size
+    end = in_array.roi.end if shape is None else begin + Coordinate(shape) * voxel_size
+    requested = Roi(begin, end - begin)
 
-    if shape is None and roi_offset == [0, 0, 0]:
-        roi_shape = [s * v for s, v in zip(full_shape, voxel_size)]
-    else:
-        remaining_shape = [
-            fs - (ro // vs) for fs, ro, vs in zip(full_shape, roi_offset, voxel_size)
-        ]
-        if shape is None:
-            roi_shape = [rem * vs for rem, vs in zip(remaining_shape, voxel_size)]
-        else:
-            roi_shape = [s * v for s, v in zip(shape, voxel_size)]
-            roi_shape = [
-                min(rs, rem * vs)
-                for rs, rem, vs in zip(roi_shape, remaining_shape, voxel_size)
-            ]
-
-    roi = Roi(roi_offset, roi_shape)
-    if not full_roi.contains(roi):
-        roi = roi.intersect(full_roi)
+    roi = requested.intersect(in_array.roi)
+    if roi != requested:
         cli_echo(
-            "ROI is not contained within the full volume's ROI. Cropping to {roi}..",
+            f"ROI is not contained within the full volume's ROI. Cropping to {roi}..",
             style,
             "warning",
         )
@@ -303,11 +307,7 @@ def setup_models(model_names, parent_dir=None, style="train"):
                 setup_dir = os.path.abspath(setup_dir)
 
                 # check if pretrained model checkpoints exist
-                checkpoints = [
-                    c for c in os.listdir(setup_dir) if "model_checkpoint_" in c
-                ]
-
-                if not checkpoints:
+                if not find_checkpoints(setup_dir):
                     cli_echo(f"No pretrained checkpoints found in {setup_dir}", style)
 
                     download = cli_confirm(
@@ -450,19 +450,30 @@ def create_prediction_configs(volumes, setup_dirs, style="predict"):
     click.echo()
     cli_echo(f"Creating prediction configs for {" -> ".join(setup_dirs)}", style)
 
-    # get prediction iterations and setup names
+    # get prediction iterations, checkpoints and setup names
     iterations = []
     setup_names = []
+    checkpoints = []
     for i, setup_dir in enumerate(setup_dirs):
+        trained = find_checkpoints(setup_dir)
+        default_iteration = 10000 * len(volumes) if i == 0 else 30000
+        if trained:
+            default_iteration = min(default_iteration, max(trained))
+
         iteration = cli_prompt(
             f"Enter checkpoint iteration for model {i+1}: {os.path.basename(setup_dir)}",
             style,
             type=int,
-            default=10000 * len(volumes) if i == 0 else 30000,
+            default=default_iteration,
             show_default=True,
         )
         iterations.append(iteration)
         setup_names.append(get_setup_name(setup_dir))
+        checkpoints.append(
+            trained.get(
+                iteration, os.path.join(setup_dir, f"model_checkpoint_{iteration}")
+            )
+        )
 
     num_gpus = cli_prompt(
         "Enter number of GPUs to use for prediction", style, type=int, default=1
@@ -524,7 +535,7 @@ def create_prediction_configs(volumes, setup_dirs, style="predict"):
                 "input_datasets": in_ds,
                 "roi_offset": list(roi_offset),
                 "roi_shape": list(roi_shape),
-                "checkpoint": os.path.join(setup_dir, f"model_checkpoint_{iteration}"),
+                "checkpoint": checkpoints[i],
                 "output_datasets_prefix": os.path.join(container, out_ds_prefix),
                 "chain_str": chain_str,
                 "num_workers": num_workers,

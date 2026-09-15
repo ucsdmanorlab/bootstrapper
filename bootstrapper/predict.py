@@ -12,7 +12,8 @@ from funlib.geometry import Roi, Coordinate
 from funlib.persistence import open_ds, prepare_ds
 
 from .blockwise import run_blockwise
-from .configs import download_checkpoints, MODEL_URLS
+from .configs import checkpoint_iteration, download_checkpoints, MODEL_URLS
+from .segment import parse_shape
 from .styles import cli_echo, cli_confirm
 
 logger = logging.getLogger(__name__)
@@ -43,10 +44,43 @@ def predict_blockwise(config):
     logger.info("All blocks finished successfully!")
 
 
+def get_devices(num_gpus):
+    """The devices this process may use, as CUDA_VISIBLE_DEVICES tokens.
+
+    Tokens are passed through as written, so UUID and MIG forms survive."""
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+
+    if visible is None:
+        # unset means every local device is visible, so position is the token
+        return [str(i) for i in range(num_gpus)]
+
+    devices = [d for d in (token.strip() for token in visible.split(",")) if d]
+
+    if not devices:
+        raise ValueError(
+            "CUDA_VISIBLE_DEVICES is set to an empty value, so no GPU is available. "
+            "Unset it to use all local devices, or list the devices to use."
+        )
+
+    if len(devices) < num_gpus:
+        cli_echo(
+            f"Only {len(devices)} of the {num_gpus} requested GPUs are visible "
+            f"(CUDA_VISIBLE_DEVICES={visible}). Using {len(devices)}.",
+            "predict",
+            "warning",
+        )
+
+    return devices[:num_gpus]
+
+
 def call_predict(config):
-    worker_id = daisy.Context.from_env()["worker_id"]
-    os.environ["CUDA_VISIBLE_DEVICES"] = f"{int(worker_id) % config['num_gpus']}"
-    subprocess.run([sys.executable, config["worker"], *config["args"]], check=True)
+    worker_id = int(daisy.Context.from_env()["worker_id"])
+    devices = config["devices"]
+    subprocess.run(
+        [sys.executable, config["worker"], *config["args"]],
+        check=True,
+        env=os.environ | {"CUDA_VISIBLE_DEVICES": devices[worker_id % len(devices)]},
+    )
 
 
 def get_pred_config(config_file, setup_id, **kwargs):
@@ -65,9 +99,10 @@ def get_pred_config(config_file, setup_id, **kwargs):
     output_datasets_prefix = config["output_datasets_prefix"]
     chain_str = config.get("chain_str", "")
     num_workers = config.get("num_workers", 1)
-    num_gpus = config.get("num_gpus", 1)
-    roi_offset = config.get("roi_offset", None)
-    roi_shape = config.get("roi_shape", None)
+    devices = get_devices(config.get("num_gpus", 1))
+    num_gpus = len(devices)
+    roi_offset = parse_shape(config.get("roi_offset", None))
+    roi_shape = parse_shape(config.get("roi_shape", None))
 
     # check if checkpoint exists
     if not os.path.exists(checkpoint) and not os.path.exists(checkpoint+'.ckpt'):
@@ -140,7 +175,13 @@ def get_pred_config(config_file, setup_id, **kwargs):
 
     # get output dataset names and prepare output datasets if using daisy
     output_datasets = []
-    iteration = checkpoint.split("_")[-1]
+    iteration = checkpoint_iteration(checkpoint)
+    if iteration is None:
+        raise ValueError(
+            f"Cannot read a training iteration from checkpoint "
+            f"'{os.path.basename(checkpoint)}'. Prediction needs a checkpoint named "
+            f"model_checkpoint_<iteration>[.ckpt], which names its output datasets."
+        )
     for output_name, val in net_config["outputs"].items():
         output_dims = val["dims"]
         output_dtype = val["dtype"]
@@ -195,6 +236,7 @@ def get_pred_config(config_file, setup_id, **kwargs):
             "write_roi": write_roi,
             "num_workers": num_workers,
             "num_gpus": num_gpus,
+            "devices": devices,
             "worker": worker,
             "args": args,
         }
