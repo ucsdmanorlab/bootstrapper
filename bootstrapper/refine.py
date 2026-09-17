@@ -314,16 +314,69 @@ def remap(in_array, out_array, remove_ids, merge_ids, num_workers):
 MORPH_OPS = ("dilate", "erode", "opening", "closing", "fill_holes")
 
 
-def _fill_holes(data):
+def _fill_holes(data, threshold=0.95):
+    """Fill background enclosed by one label.
+
+    3D: fastmorph, 2x faster; it can absorb an object enclosed by another label.
+    2D: every object survives. A background component whose contacts are >= threshold
+    one label takes that label; then components with no path to the outside (fastmorph's
+    hole groups) take the single label around the group, background voxels only.
+    """
     import fastmorph
 
-    two_d = data.ndim == 2
-    vol = data[None] if two_d else data
-    small, fwd = fastremap.renumber(vol, in_place=False)
-    filled,_ = fastmorph.fill_holes_v2(small, fix_borders=two_d, merge_threshold=0.95)
-    filled = fastremap.remap(filled, {v: k for k, v in fwd.items()},
-                             preserve_missing_labels=True, in_place=True)
-    return filled[0] if two_d else filled
+    if data.ndim == 3:
+        small, fwd = fastremap.renumber(data, in_place=False)
+        filled, _ = fastmorph.fill_holes_v2(small, fix_borders=False, merge_threshold=threshold)
+        return fastremap.remap(filled.astype(data.dtype), {v: k for k, v in fwd.items()},
+                               preserve_missing_labels=True, in_place=True)
+
+    import cc3d
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    out = data.copy()
+    for grouped in (False, True):
+        lab = out + 1  # background is a component too
+        comps, n = cc3d.connected_components(lab, connectivity=4, return_N=True)
+        label = np.zeros(n + 1, np.int64)
+        label[comps] = lab
+        border = np.zeros(n + 1, bool)
+        border[np.concatenate([comps[0], comps[-1], comps[:, 0], comps[:, -1]])] = True
+        contacts = cc3d.contacts(comps, connectivity=4, surface_area=True)
+        if not contacts:
+            break
+        a, b = np.array(list(contacts), dtype=np.int64).T
+        area = np.fromiter(contacts.values(), np.float64, len(contacts))
+        if not grouped:  # each enclosed background component decides on its own
+            hole = (label == 1) & ~border
+            unit = np.arange(n + 1)
+        else:  # fastmorph's hole groups: everything with no path to the outside
+            outside = (label == 1) & border
+            edge = border.copy()
+            edge[np.concatenate([a[outside[b]], b[outside[a]]])] = True
+            inner = ~edge[a] & ~edge[b]
+            graph = coo_matrix((np.ones(inner.sum()), (a[inner], b[inner])), shape=(n + 1, n + 1))
+            _, unit = connected_components(graph, directed=False)
+            hole = ~edge
+        swap = hole[b]  # hole side first; drop pairs that are both holes or both not
+        u, v = np.where(swap, b, a), np.where(swap, a, b)
+        keep = hole[u] & ~hole[v]
+        if not keep.any():
+            continue
+        key, inv = np.unique(np.stack([unit[u[keep]], label[v[keep]]], 1), axis=0, return_inverse=True)
+        share = np.bincount(inv, weights=area[keep])
+        total = np.bincount(key[:, 0], weights=share)
+        order = np.lexsort((-share, key[:, 0]))
+        first = np.r_[True, key[order][1:, 0] != key[order][:-1, 0]]
+        owner, best, top = key[order][first, 0], key[order][first, 1], share[order][first]
+        fill = owner[top / total[owner] >= threshold]
+        if not len(fill):
+            continue
+        new = np.zeros(unit.max() + 1, np.int64)
+        new[fill] = best[top / total[owner] >= threshold] - 1
+        target = (new[unit] * (hole & (label == 1)))[comps]
+        out = np.where(target > 0, target.astype(out.dtype), out)
+    return out
 
 
 def _apply_morph(data, op, iterations):
@@ -364,7 +417,8 @@ def _morph_block(in_ds, out_ds, op, iterations, xy, block):
 @click.option("--in_array", "-i", type=click.Path(exists=True), required=True)
 @click.option("--out_array", "-o", type=click.Path())
 @click.option("--op", type=click.Choice(MORPH_OPS), required=True,
-              help="Morphological operation")
+              help="Morphological operation. fill_holes with --xy keeps every object and "
+              "fills the gap around a nested one; in 3D it can absorb an enclosed object")
 @click.option("--iterations", "-n", type=int, default=1,
               help="Iterations for dilate/erode/opening/closing")
 @click.option("--xy", is_flag=True, default=False,
