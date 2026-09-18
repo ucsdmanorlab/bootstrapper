@@ -308,6 +308,42 @@ def remap(in_array, out_array, remove_ids, merge_ids, num_workers):
 
 
 # ---------------------------------------------------------------------------
+# mask: zero every label outside a mask
+# ---------------------------------------------------------------------------
+
+
+def _apply_mask_block(in_ds, mask_ds, out_ds, block):
+    data = in_ds.to_ndarray(block.write_roi)
+    mask = mask_ds.to_ndarray(block.write_roi, fill_value=0)  # beyond the mask counts as outside
+    data[mask == 0] = 0
+    out_ds[block.write_roi] = data
+    return 0
+
+
+@refine.command("mask")
+@click.option("--in_array", "-i", type=click.Path(exists=True), required=True)
+@click.option("--mask", "-m", "mask_array", type=click.Path(exists=True), required=True,
+              help="Mask array at the labels' voxel size; labels where it is zero become 0")
+@click.option("--out_array", "-o", type=click.Path())
+@click.option("--num_workers", "-w", type=int, default=20)
+def mask(in_array, mask_array, out_array, num_workers):
+    """Zero every label outside a mask, blockwise."""
+    in_ds, mask_ds = open_ds(in_array), open_ds(mask_array)
+    if mask_ds.voxel_size != in_ds.voxel_size:
+        raise click.ClickException(
+            f"mask voxel size {tuple(mask_ds.voxel_size)} differs from the labels' "
+            f"{tuple(in_ds.voxel_size)}: {mask_array}"
+        )
+    if not mask_ds.roi.contains(in_ds.roi):
+        print(f"mask covers {mask_ds.roi} of the labels' {in_ds.roi}; labels beyond it become 0")
+    out_array = out_array or _default_out(in_array, "masked")
+    print(f"Writing to {out_array}")
+    out_ds = _prepare_like(in_ds, out_array)
+    _run_blockwise("Mask", in_ds, out_ds,
+                   partial(_apply_mask_block, in_ds, mask_ds, out_ds), num_workers)
+
+
+# ---------------------------------------------------------------------------
 # morph: dilation / erosion / opening / closing / fill_holes
 # ---------------------------------------------------------------------------
 
