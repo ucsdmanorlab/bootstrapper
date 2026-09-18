@@ -12,7 +12,7 @@ from funlib.geometry import Roi, Coordinate
 from funlib.persistence import open_ds, prepare_ds
 
 from .blockwise import run_blockwise
-from .configs import checkpoint_iteration, download_checkpoints, MODEL_URLS
+from .configs import checkpoint_iteration, download_checkpoints, find_checkpoints, MODEL_URLS
 from .segment import parse_shape
 from .styles import cli_echo, cli_confirm
 
@@ -83,6 +83,34 @@ def call_predict(config):
     )
 
 
+def resolve_checkpoint(setup_dir, checkpoint):
+    """The checkpoint file for a config's checkpoint path, also when the setup keeps it
+    one level down or has to download it first."""
+    for path in (checkpoint, checkpoint + ".ckpt"):
+        if os.path.exists(path):
+            return path
+    iteration = checkpoint_iteration(checkpoint)
+    if iteration is None:
+        raise click.ClickException(
+            f"cannot read a training iteration from checkpoint {checkpoint}; "
+            "name it model_checkpoint_<iteration>[.ckpt]"
+        )
+    found = find_checkpoints(setup_dir)
+    model_name = os.path.basename(setup_dir)
+    if iteration not in found and model_name in MODEL_URLS and cli_confirm(
+        f"{checkpoint} not found; download the pretrained checkpoints for {model_name}?",
+        "predict", default=True,
+    ):
+        download_checkpoints(model_name, setup_dir)
+        found = find_checkpoints(setup_dir)
+    if iteration not in found:
+        raise click.ClickException(
+            f"checkpoint {checkpoint} not found in {setup_dir}; "
+            f"iterations there: {sorted(found) or 'none'}"
+        )
+    return found[iteration]
+
+
 def get_pred_config(config_file, setup_id, **kwargs):
     # load config
     with open(config_file, "r") as f:
@@ -104,26 +132,7 @@ def get_pred_config(config_file, setup_id, **kwargs):
     roi_offset = parse_shape(config.get("roi_offset", None))
     roi_shape = parse_shape(config.get("roi_shape", None))
 
-    # check if checkpoint exists
-    if not os.path.exists(checkpoint) and not os.path.exists(checkpoint+'.ckpt'):
-        model_name = os.path.basename(setup_dir)
-        if model_name in MODEL_URLS:
-            cli_echo(f"{checkpoint} not found in {setup_dir}", "predict")
-
-            download = cli_confirm(
-                f"Enter whether to download pretrained checkpoints for {model_name}?", 
-                "predict",
-                default=True,
-            )
-
-            if download:
-                download_checkpoints(model_name, setup_dir)
-            else:
-                raise ValueError(
-                    f"Please either download checkpoints or train from scratch"
-                )
-        else:
-            raise ValueError(f"Checkpoint {checkpoint} does not exist!")
+    checkpoint = resolve_checkpoint(setup_dir, checkpoint)
 
     # try reading all input datasets, get voxel size
     in_channels_sum = 0

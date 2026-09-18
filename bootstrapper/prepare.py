@@ -3,6 +3,7 @@ import os
 import toml
 
 from .configs import (
+    find_checkpoints,
     save_config,
     download_checkpoints,
     copy_model_scripts,
@@ -260,9 +261,7 @@ def prep_predict_config():
                         f"Invalid setup: directory {setup_dir} does not exist"
                     )
 
-                checkpoints = [
-                    c for c in os.listdir(setup_dir) if "model_checkpoint_" in c
-                ]
+                checkpoints = find_checkpoints(setup_dir)
                 if not checkpoints:
                     cli_echo(f"No checkpoints found in {setup_dir}", style="predict")
                     download = cli_confirm(
