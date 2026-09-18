@@ -53,8 +53,8 @@ def read_skeletons(gt_skeletons_file, roi):
     for node in remove_nodes:
         skels.remove_node(node)
 
-    # remove isolated nodes
-    remove_nodes.extend(list(nx.isolates(skels)))
+    # remove isolated nodes 
+    skels.remove_nodes_from(list(nx.isolates(skels)))
 
     # return skels
     skeletons = nx.Graph()

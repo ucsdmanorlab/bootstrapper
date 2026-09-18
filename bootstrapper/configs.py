@@ -19,6 +19,8 @@ from .styles import cli_echo, cli_prompt, cli_confirm
 
 BS_DIR = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 MODEL_DIR = os.path.join(BS_DIR, "models")
+EVAL_ERROR_THRESHOLDS = {"lsds": [0.01, 1.0], "affs": [0.1, 1.0]}
+
 MODEL_NAMES = sorted(
         [
             d
@@ -786,7 +788,7 @@ def create_evaluation_configs(volumes, out_seg_prefix, pred_datasets, style="eva
         if pred_ds is not None:
             eval_config["pred"] = {
                 "pred_dataset": os.path.join(container, pred_ds_name),
-                "thresholds": [0.1, 1.0],
+                "thresholds": EVAL_ERROR_THRESHOLDS[pred_type],
             }
             if pred_type == "lsds":
                 eval_config["pred"]["params"] = {"lsd_sigma": pred_ds["sigma"]}

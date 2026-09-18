@@ -31,6 +31,7 @@ def compute_errors(
     roi_offset=None,
     roi_shape=None,
     return_arrays=False,
+    num_workers=1,
     **kwargs,
 ):
 
@@ -220,7 +221,7 @@ def compute_errors(
         store=out_mask_dataset.split(".zarr")[0] + ".zarr",
     )
 
-    pipeline += gp.Scan(chunk_request)
+    pipeline += gp.Scan(chunk_request, num_workers=num_workers)
 
     # request
     predict_request = gp.BatchRequest()

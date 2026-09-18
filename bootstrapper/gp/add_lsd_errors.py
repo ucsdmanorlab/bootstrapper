@@ -3,9 +3,6 @@ from gunpowder import BatchFilter, Array, BatchRequest, Batch
 import logging
 import numpy as np
 
-from scipy.ndimage import binary_erosion, binary_dilation
-from skimage.morphology import ball, disk
-
 logger = logging.getLogger(__name__)
 
 
@@ -238,29 +235,5 @@ class AddLSDErrors(BatchFilter):
         return diff_data
 
     def _create_mask(self, i_data, thresholds):
-
         floor, ceil = thresholds
-
-        # threshold
-        o_data = (i_data > floor) & (i_data < ceil)
-
-        # TODO: make erode-dilate optional
-        # dilate/erode
-        z_struct = np.stack(
-            [
-                ball(1)[0],
-            ]
-            * 3
-        )
-        xy_struct = np.stack([np.zeros((3, 3)), disk(1), np.zeros((3, 3))])
-
-        # to remove minor pixel-wise differences along xy boundaries
-        o_data = binary_erosion(o_data, xy_struct, iterations=4)
-        o_data = binary_dilation(o_data, xy_struct, iterations=4)
-
-        # to join gaps between z-splits in error mask
-        o_data = binary_dilation(o_data, z_struct)
-        o_data = binary_erosion(o_data, z_struct)
-
-        o_data = o_data.astype(np.uint8)
-        return o_data
+        return ((i_data > floor) & (i_data < ceil)).astype(np.uint8)

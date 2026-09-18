@@ -1,6 +1,7 @@
 import click
 import toml
 import glob
+import multiprocessing
 import os
 import logging
 import json
@@ -21,7 +22,7 @@ def get_seg_datasets(seg_datasets_prefix):
     return seg_datasets
 
 
-def get_eval_config(config_file, mode, **kwargs):
+def get_eval_config(config_file, mode, suffix=True, **kwargs):
     with open(config_file, "r") as f:
         config = toml.load(f)
 
@@ -33,9 +34,11 @@ def get_eval_config(config_file, mode, **kwargs):
     if "out_result" not in config:
         config["out_result"] = config_file.replace("04_eval_","results_").replace(".toml", ".json")
 
-    # one file per mode, so gt results do not overwrite pred results
-    root, ext = os.path.splitext(config["out_result"])
-    config["out_result"] = f"{root}_{mode}{ext}"
+    # one file per mode when several modes run, so gt results do not overwrite
+    # pred results; a single mode keeps the name it was given
+    if suffix:
+        root, ext = os.path.splitext(config["out_result"])
+        config["out_result"] = f"{root}_{mode}{ext}"
 
     return config
 
@@ -68,6 +71,12 @@ def run_gt_evaluation(config, seg_ds):
     return stats
 
 
+def _compute_errors(kwargs):
+    from .eval.compute_errors import compute_errors
+
+    compute_errors(**kwargs)
+
+
 def run_pred_evaluation(config, seg_ds):
     from .eval.compute_errors import compute_errors, compute_stats
 
@@ -77,19 +86,35 @@ def run_pred_evaluation(config, seg_ds):
     mask_dataset = config.get("mask_dataset")
 
     pred_name = os.path.basename(pred_dataset)
-    out_map_dataset = os.path.join(seg_ds + f"__vs__{pred_name}", "error_map")
-    out_mask_dataset = os.path.join(seg_ds + f"__vs__{pred_name}", "error_mask")
+    # error maps land beside the segmentation unless out_dir says where; the
+    # segmentation may live in a read-only container (a ground-truth labels array)
+    out_group = seg_ds + f"__vs__{pred_name}"
+    if config.get("out_dir"):
+        out_group = os.path.join(config["out_dir"], os.path.basename(seg_ds) + f"__vs__{pred_name}")
+    out_map_dataset = os.path.join(out_group, "error_map")
+    out_mask_dataset = os.path.join(out_group, "error_mask")
 
-    compute_errors(
-        seg_ds,
-        pred_dataset,
-        mask_dataset,
-        out_map_dataset,
-        out_mask_dataset,
+    kwargs = dict(
+        seg_dataset=seg_ds,
+        pred_dataset=pred_dataset,
+        mask_dataset=mask_dataset,
+        out_map_dataset=out_map_dataset,
+        out_mask_dataset=out_mask_dataset,
         thresholds=thresholds,
         return_arrays=False,
+        num_workers=config.get("num_workers", 1),
         **params,
     )
+    if kwargs["num_workers"] > 1:
+        # gunpowder forks its scan workers; after one scan the parent holds thread
+        # pools that deadlock the next fork, so every scan starts from a fresh process
+        proc = multiprocessing.get_context("spawn").Process(target=_compute_errors, args=(kwargs,))
+        proc.start()
+        proc.join()
+        if proc.exitcode:
+            raise click.ClickException(f"error map for {seg_ds} failed (exit code {proc.exitcode})")
+    else:
+        compute_errors(**kwargs)
 
     stats = {
         "seg_ds": seg_ds,
@@ -105,8 +130,8 @@ def run_pred_evaluation(config, seg_ds):
     return stats
 
 
-def run_evaluation(config_file, mode="pred", **kwargs):
-    config = get_eval_config(config_file, mode, **kwargs)
+def run_evaluation(config_file, mode="pred", suffix=True, **kwargs):
+    config = get_eval_config(config_file, mode, suffix, **kwargs)
     if "seg_datasets" in config:
         seg_datasets = [ds.rstrip("/") for ds in config["seg_datasets"]]
     else:
@@ -160,4 +185,4 @@ def evaluate(config_file, gt, pred, out_result=None):
         eval_modes = ["pred"]
 
     for mode in eval_modes:
-        run_evaluation(config_file, mode, out_result=out_result)
+        run_evaluation(config_file, mode, suffix=len(eval_modes) > 1, out_result=out_result)
