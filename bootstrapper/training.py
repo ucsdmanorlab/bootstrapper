@@ -1,4 +1,5 @@
 import glob
+import click
 import logging
 import os
 
@@ -10,6 +11,15 @@ import zarr
 from natsort import natsorted
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint, RichProgressBar
 from torch.utils.data import DataLoader, IterableDataset
+
+
+def device_warning():
+    """One line when training runs on the CPU: the GPU grant is empty, or no GPU is visible."""
+    if torch.cuda.is_available():
+        return None
+    grant = os.environ.get("CUDA_VISIBLE_DEVICES")
+    why = "CUDA_VISIBLE_DEVICES is set but empty" if grant == "" else "no CUDA device is visible"
+    return f"WARNING: training on the CPU: {why}. Set CUDA_VISIBLE_DEVICES to the GPUs you were granted."
 
 
 class GunpowderDataset(IterableDataset):
@@ -122,6 +132,10 @@ def fit(
         every_n_train_steps=save_checkpoints_every,
         auto_insert_metric_name=False,
     )
+
+    warning = device_warning()
+    if warning:
+        click.secho(warning, fg="red", bold=True, err=True)
 
     # indices are positions within the inherited CUDA_VISIBLE_DEVICES set
     trainer = pl.Trainer(
