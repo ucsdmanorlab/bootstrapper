@@ -1,3 +1,8 @@
+import os
+import sys
+import time
+import traceback
+
 import click
 import toml
 
@@ -47,8 +52,22 @@ class CommandGroup(click.Group):
             return click.Group.get_command(self, ctx, aliases[cmd_name])
         return None
 
+    def invoke(self, ctx):
+        try:
+            return super().invoke(ctx)
+        except (click.ClickException, click.Abort, click.exceptions.Exit):
+            raise
+        except Exception as e:
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            log = os.path.abspath(f"bs_error_{stamp}.log")
+            with open(log, "w") as f:
+                f.write(f"{stamp} {os.getcwd()}\n$ {' '.join(sys.argv)}\n\n")
+                traceback.print_exc(file=f)
+            raise click.ClickException(f"{type(e).__name__}: {e} (traceback in {log})") from e
+
 
 @click.group(cls=CommandGroup)
+@click.version_option(package_name="bootstrapper")
 def cli():
     """Bootstrapper CLI"""
     pass
