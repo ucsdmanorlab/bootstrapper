@@ -11,6 +11,7 @@ def cc_blockwise(config):
 
 def cc_affs(config):
     import os
+
     import numpy as np
     from funlib.persistence import open_ds, prepare_ds
     from funlib.geometry import Roi
@@ -63,6 +64,14 @@ def cc_affs(config):
         affs_data *= (mask > 0).astype(np.uint8)
 
     frag_params = {"threshold": threshold, "sigma": sigma, "noise_eps": noise_eps}
+    run_params = {
+        "method": "cc",
+        "blockwise": False,
+        "affs_dataset": affs_ds,
+        "mask_dataset": mask_ds,
+        "roi_offset": list(roi.offset),
+        "roi_shape": list(roi.shape),
+    }
 
     # add shift and noise
     if sigma is not None or noise_eps is not None:
@@ -92,7 +101,7 @@ def cc_affs(config):
         units=affs.units,
     )
     frags[roi] = fragments_data
-    dump_params(frags_ds_name, {"method": "cc", "blockwise": False, **frag_params})
+    dump_params(frags_ds_name, {**run_params, **frag_params})
 
     # remove small debris
     if remove_debris > 0:
@@ -114,7 +123,7 @@ def cc_affs(config):
         units=affs.units,
     )
     seg[roi] = fragments_data
-    dump_params(seg_ds_name, {"method": "cc", "blockwise": False, **seg_params})
+    dump_params(seg_ds_name, {**run_params, **seg_params})
 
 
 def cc_segmentation(config):
