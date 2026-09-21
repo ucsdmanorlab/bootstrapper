@@ -40,7 +40,7 @@ def read_from(in_path):
 
 @click.command()
 @click.option(
-    "--in_path",
+    "--in-path",
     "-i",
     type=click.Path(exists=True, dir_okay=True, file_okay=True),
     required=True,
@@ -48,7 +48,7 @@ def read_from(in_path):
     prompt="Enter the path to the input file or directory",
 )
 @click.option(
-    "--out_array",
+    "--out-array",
     "-o",
     type=click.Path(),
     required=True,
@@ -64,7 +64,7 @@ def read_from(in_path):
     help="Output data type",
 )
 @click.option(
-    "--voxel_size",
+    "--voxel-size",
     "-vs",
     nargs=3,
     type=int,
@@ -73,7 +73,7 @@ def read_from(in_path):
     help="Size of each voxel in physical units (space-separated integers)",
 )
 @click.option(
-    "--voxel_offset",
+    "--voxel-offset",
     "-vo",
     nargs=3,
     default=(0, 0, 0),
@@ -81,7 +81,7 @@ def read_from(in_path):
     help="Offset in voxels (space-separated integers)",
 )
 @click.option(
-    "--axis_names",
+    "--axis-names",
     "-ax",
     nargs=3,
     type=str,

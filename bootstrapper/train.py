@@ -133,18 +133,18 @@ def run_training(config_file, **kwargs):
 
 @click.command()
 @click.argument("config_file", type=click.Path(exists=True))
-@click.option("--max_iterations", "-i", type=int, help="Number of training iterations")
+@click.option("--max-iterations", "-n", type=int, help="Number of training iterations")
 @click.option(
-    "--save_checkpoints_every",
+    "--save-checkpoints-every",
     "-ce",
     type=int,
     help="Save checkpoints every n iterations",
 )
 @click.option(
-    "--save_snapshots_every", "-s", type=int, help="Save snapshots every n iterations"
+    "--save-snapshots-every", "-s", type=int, help="Save snapshots every n iterations"
 )
 @click.option(
-    "--voxel_size", "-v", type=str, help="Voxel size (space-separated integers)"
+    "--voxel-size", "-v", type=str, help="Voxel size (space-separated integers)"
 )
 def train(
     config_file,

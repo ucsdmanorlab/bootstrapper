@@ -38,14 +38,14 @@ def quick_merge_block(in_ds, out_ds, luts, block):
 
 @click.command()
 @click.option(
-    "--in_seg",
+    "--in-seg",
     "-i",
     type=click.Path(exists=True),
     required=True,
     help="The path of the input segmentation zarr array",
 )
 @click.option(
-    "--out_seg",
+    "--out-seg",
     "-o",
     type=click.Path(),
     help="The path of the output segmentation zarr array",

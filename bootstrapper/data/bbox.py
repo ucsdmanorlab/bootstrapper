@@ -11,14 +11,14 @@ logger = logging.getLogger(__name__)
 
 @click.command()
 @click.option(
-    "--in_array",
+    "--in-array",
     "-i",
     type=click.Path(exists=True),
     required=True,
     help="Path to input Zarr array.",
     prompt="Enter the path to the input array",
 )
-@click.option("--out_array", "-o", type=click.Path(), help="Path to output array")
+@click.option("--out-array", "-o", type=click.Path(), help="Path to output array")
 @click.option(
     "--padding", "-p", type=int, default=0, help="Padding to add to the bounding box."
 )

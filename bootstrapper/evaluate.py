@@ -162,7 +162,7 @@ def run_evaluation(config_file, mode="pred", suffix=True, **kwargs):
 )
 @click.option("--gt", "-gt", is_flag=True, help="Evaluate only against ground-truth")
 @click.option("--pred", "-p", is_flag=True, help="Evaluate only against predictions")
-@click.option("--out_result", "-o", type=click.Path())
+@click.option("--out-result", "-o", type=click.Path())
 def evaluate(config_file, gt, pred, out_result=None):
     """
     Evaluate segmentations as specified in the config file.

@@ -63,14 +63,14 @@ def make_obj_mask(in_ds, out_ds, block):
 
 @click.command()
 @click.option(
-    "--in_array",
+    "--in-array",
     "-i",
     type=click.Path(exists=True),
     required=True,
     help="The path of the input zarr array",
 )
 @click.option(
-    "--out_array",
+    "--out-array",
     "-o",
     type=click.Path(),
     help="The path of the output mask zarr array",

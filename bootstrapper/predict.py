@@ -310,7 +310,7 @@ def run_prediction(config_file, setup_ids=None, **kwargs):
     type=str,
     help="Shape of ROI in world units (space separated integers)",
 )
-@click.option("--num-workers", "-nw", type=int, help="Number of workers")
+@click.option("--num-workers", "-w", type=int, help="Number of workers")
 @click.option("--num-gpus", "-ng", type=int, help="Number of GPUs to use")
 def predict(config_file, setup_id, **kwargs):
     """Run prediction for a setup or all setups in a prediction config file."""

@@ -133,16 +133,16 @@ def _finish_filter(in_ds, in_array, out_array, remove_ids, num_workers,
 # ---------------------------------------------------------------------------
 
 
-@refine.command("outlier_filter")
-@click.option("--in_array", "-i", type=click.Path(exists=True), required=True)
-@click.option("--out_array", "-o", type=click.Path())
-@click.option("--num_std", "-n", type=float, default=3.0,
+@refine.command("outlier-filter")
+@click.option("--in-array", "-i", type=click.Path(exists=True), required=True)
+@click.option("--out-array", "-o", type=click.Path())
+@click.option("--num-std", "-n", type=float, default=3.0,
               help="Cut objects further than num_std * std from the mean object size")
-@click.option("--min_size", type=int, default=0,
+@click.option("--min-size", type=int, default=0,
               help="Objects smaller than this are excluded from the mean/std so debris "
               "does not skew the statistics")
-@click.option("--num_workers", "-w", type=int, default=20)
-@click.option("--dry_run", is_flag=True, default=False,
+@click.option("--num-workers", "-w", type=int, default=20)
+@click.option("--dry-run", is_flag=True, default=False,
               help="Print the cutoffs and objects to remove without writing")
 def outlier_filter(in_array, out_array, num_std, min_size, num_workers, dry_run):
     """Remove object-size outliers by a two-sided sigma cut, blockwise.
@@ -178,15 +178,15 @@ def outlier_filter(in_array, out_array, num_std, min_size, num_workers, dry_run)
 # ---------------------------------------------------------------------------
 
 
-@refine.command("size_filter")
-@click.option("--in_array", "-i", type=click.Path(exists=True), required=True)
-@click.option("--out_array", "-o", type=click.Path())
-@click.option("--min_size", type=int, default=0,
+@refine.command("size-filter")
+@click.option("--in-array", "-i", type=click.Path(exists=True), required=True)
+@click.option("--out-array", "-o", type=click.Path())
+@click.option("--min-size", type=int, default=0,
               help="Remove objects smaller than this many voxels (dust)")
-@click.option("--max_size", type=int, default=None,
+@click.option("--max-size", type=int, default=None,
               help="Remove objects larger than this many voxels (0/unset = no cap)")
-@click.option("--num_workers", "-w", type=int, default=20)
-@click.option("--dry_run", is_flag=True, default=False)
+@click.option("--num-workers", "-w", type=int, default=20)
+@click.option("--dry-run", is_flag=True, default=False)
 def size_filter(in_array, out_array, min_size, max_size, num_workers, dry_run):
     """Remove objects outside a [min_size, max_size] voxel-count range, blockwise.
 
@@ -219,13 +219,13 @@ def size_filter(in_array, out_array, min_size, max_size, num_workers, dry_run):
 # ---------------------------------------------------------------------------
 
 
-@refine.command("z_filter")
-@click.option("--in_array", "-i", type=click.Path(exists=True), required=True)
-@click.option("--out_array", "-o", type=click.Path())
-@click.option("--min_z", "-z", type=int, default=1,
+@refine.command("z-filter")
+@click.option("--in-array", "-i", type=click.Path(exists=True), required=True)
+@click.option("--out-array", "-o", type=click.Path())
+@click.option("--min-z", "-z", type=int, default=1,
               help="Remove objects whose z-extent is this many slices or fewer")
-@click.option("--num_workers", "-w", type=int, default=20)
-@click.option("--dry_run", is_flag=True, default=False)
+@click.option("--num-workers", "-w", type=int, default=20)
+@click.option("--dry-run", is_flag=True, default=False)
 def z_filter(in_array, out_array, min_z, num_workers, dry_run):
     """Remove thin objects that span few z-slices, blockwise.
 
@@ -270,14 +270,14 @@ def _remap_block(in_ds, out_ds, mapping, block):
 
 
 @refine.command("remap")
-@click.option("--in_array", "-i", type=click.Path(exists=True), required=True)
-@click.option("--out_array", "-o", type=click.Path())
-@click.option("--remove_ids", "-r", type=str, default=None,
+@click.option("--in-array", "-i", type=click.Path(exists=True), required=True)
+@click.option("--out-array", "-o", type=click.Path())
+@click.option("--remove-ids", "-r", type=str, default=None,
               help="Comma-separated label ids to remove (set to 0)")
-@click.option("--merge_ids", "-m", type=str, multiple=True,
+@click.option("--merge-ids", "-m", type=str, multiple=True,
               help="Comma-separated ids to merge into the first of the group "
               "(repeatable for multiple groups)")
-@click.option("--num_workers", "-w", type=int, default=20)
+@click.option("--num-workers", "-w", type=int, default=20)
 def remap(in_array, out_array, remove_ids, merge_ids, num_workers):
     """Remove and/or merge specific label ids, blockwise."""
     remove = set()
@@ -321,11 +321,11 @@ def _apply_mask_block(in_ds, mask_ds, out_ds, block):
 
 
 @refine.command("mask")
-@click.option("--in_array", "-i", type=click.Path(exists=True), required=True)
+@click.option("--in-array", "-i", type=click.Path(exists=True), required=True)
 @click.option("--mask", "-m", "mask_array", type=click.Path(exists=True), required=True,
               help="Mask array at the labels' voxel size; labels where it is zero become 0")
-@click.option("--out_array", "-o", type=click.Path())
-@click.option("--num_workers", "-w", type=int, default=20)
+@click.option("--out-array", "-o", type=click.Path())
+@click.option("--num-workers", "-w", type=int, default=20)
 def mask(in_array, mask_array, out_array, num_workers):
     """Zero every label outside a mask, blockwise."""
     in_ds, mask_ds = open_ds(in_array), open_ds(mask_array)
@@ -450,8 +450,8 @@ def _morph_block(in_ds, out_ds, op, iterations, xy, block):
 
 
 @refine.command("morph")
-@click.option("--in_array", "-i", type=click.Path(exists=True), required=True)
-@click.option("--out_array", "-o", type=click.Path())
+@click.option("--in-array", "-i", type=click.Path(exists=True), required=True)
+@click.option("--out-array", "-o", type=click.Path())
 @click.option("--op", type=click.Choice(MORPH_OPS), required=True,
               help="Morphological operation. fill_holes with --xy keeps every object and "
               "fills the gap around a nested one; in 3D it can absorb an enclosed object")
@@ -463,10 +463,10 @@ def _morph_block(in_ds, out_ds, op, iterations, xy, block):
               help="Halo in voxels covering the op's reach (xy only with --xy, "
               "else xy and z); >= iterations for dilate/erode, "
               ">= 2*iterations for opening/closing, >= largest hole for fill_holes")
-@click.option("--block_size", "-b", type=int, default=2048,
+@click.option("--block-size", "-b", type=int, default=2048,
               help="XY write-block size in voxels (snapped to a chunk multiple; "
               "z tiles by the chunk)")
-@click.option("--num_workers", "-w", type=int, default=20)
+@click.option("--num-workers", "-w", type=int, default=20)
 def morph(in_array, out_array, op, iterations, xy, context, block_size, num_workers):
     """Apply a morphological operation to a labelled volume, blockwise.
 

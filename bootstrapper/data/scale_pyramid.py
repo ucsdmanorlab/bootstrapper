@@ -100,7 +100,7 @@ def parse_factor(value):
 
 @click.command()
 @click.option(
-    "--in_array",
+    "--in-array",
     "-i",
     type=click.Path(exists=True),
     required=True,
@@ -116,7 +116,7 @@ def parse_factor(value):
     help="Spatial scale factors for one level, e.g. 2,2,2. Repeat per level",
 )
 @click.option(
-    "--chunk_shape",
+    "--chunk-shape",
     "-c",
     type=str,
     default=None,

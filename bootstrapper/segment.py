@@ -202,7 +202,7 @@ def run_segmentation(config_file, mode="ws", **kwargs):
 )
 @click.option(
     "--num-workers",
-    "-n",
+    "-w",
     type=int,
     help="Number of workers, for blockwise segmentation",
 )
