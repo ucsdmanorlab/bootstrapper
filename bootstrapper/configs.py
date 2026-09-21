@@ -124,6 +124,8 @@ def get_sub_roi(in_array, offset=None, shape=None, style=None):
     requested = Roi(begin, end - begin)
 
     roi = requested.intersect(in_array.roi)
+    if roi.empty:
+        raise click.ClickException(f"region {requested} lies outside the volume {in_array.roi}")
     if roi != requested:
         cli_echo(
             f"ROI is not contained within the full volume's ROI. Cropping to {roi}..",
@@ -361,7 +363,11 @@ def download_checkpoints(model_name, setup_dir, style="prepare"):
     file_path = os.path.join(setup_dir, "checkpoints.zip")
 
     cli_echo(f"Downloading {model_name} checkpoints zip to {setup_dir}...", style)
-    response = requests.get(url, stream=True)
+    try:
+        response = requests.get(url, stream=True, timeout=60)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        raise click.ClickException(f"download of {model_name} checkpoints from {url} failed: {e}")
     total_size = int(response.headers.get("content-length", 0))
 
     with open(file_path, "wb") as file, tqdm(
@@ -382,6 +388,8 @@ def download_checkpoints(model_name, setup_dir, style="prepare"):
 
     # clean up
     os.remove(file_path)
+    if not find_checkpoints(setup_dir):
+        raise click.ClickException(f"{url} holds no model_checkpoint_* file for {setup_dir}")
 
 
 def create_training_config(volumes, parent_dir=None, style="train"):
