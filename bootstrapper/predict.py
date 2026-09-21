@@ -4,6 +4,7 @@ import sys
 import toml
 import json
 import daisy
+import numpy as np
 import logging
 import subprocess
 from pprint import pprint
@@ -58,8 +59,8 @@ def get_devices(num_gpus):
 
     if not devices:
         raise ValueError(
-            "CUDA_VISIBLE_DEVICES is set to an empty value, so no GPU is available. "
-            "Unset it to use all local devices, or list the devices to use."
+            "CUDA_VISIBLE_DEVICES is set but empty, so no GPU is granted. "
+            "List the granted devices, for example CUDA_VISIBLE_DEVICES=0,1."
         )
 
     if len(devices) < num_gpus:
@@ -81,6 +82,22 @@ def call_predict(config):
         check=True,
         env=os.environ | {"CUDA_VISIBLE_DEVICES": devices[worker_id % len(devices)]},
     )
+
+
+def refuse_incompatible_output(path, **wanted):
+    """An existing output must match this run; prepare_ds would rewrite its metadata."""
+    if not os.path.exists(path):
+        return
+    have = open_ds(path)
+    found = dict(shape=have.shape, offset=have.roi.offset, voxel_size=have.voxel_size, units=have.units, dtype=have.dtype)
+    norm = lambda v: str(v) if isinstance(v, (str, np.dtype)) else tuple(v)
+    differ = {k: (found[k], v) for k, v in wanted.items() if norm(v) != norm(found[k])}
+    if differ:
+        raise click.ClickException(
+            f"{path} exists with another "
+            + ", ".join(f"{k} ({a} vs {b})" for k, (a, b) in differ.items())
+            + "; remove it or use another output_datasets_prefix"
+        )
 
 
 def resolve_checkpoint(setup_dir, checkpoint):
@@ -215,7 +232,14 @@ def get_pred_config(config_file, setup_id, **kwargs):
 
         logger.info(f"Preparing output dataset {output_dataset} with ROI {output_roi}")
 
-        # prepare output dataset
+        refuse_incompatible_output(
+            output_dataset,
+            shape=(output_dims, *(output_roi.shape / voxel_size)),
+            offset=output_roi.offset,
+            voxel_size=voxel_size,
+            units=in_ds.units,
+            dtype=output_dtype,
+        )
         prepare_ds(
             store=output_dataset,
             shape=(output_dims, *(output_roi.shape / voxel_size)),
