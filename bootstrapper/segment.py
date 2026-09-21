@@ -1,4 +1,6 @@
 import click
+
+from .config import steps_of, runs
 import logging
 import os
 from pprint import pprint
@@ -93,10 +95,10 @@ def get_method_params(method, params):
     return ret
 
 
-def get_seg_config(config_file, method, **kwargs):
-    # load config
-    with open(config_file, "r") as f:
-        config = toml.load(f)
+def get_seg_config(config, method, **kwargs):
+    config = dict(config)
+    config.pop("method", None)
+    method_params = config.pop("params", {})
 
     # override config values with provided kwargs, except method specific params
     for key, value in kwargs.items():
@@ -104,16 +106,7 @@ def get_seg_config(config_file, method, **kwargs):
             config["context" if key == "block_context" else key] = value
 
     # merge method defaults with config params and provided params
-    params = (
-        DEFAULTS[method]
-        | config.get(f"{method}_params", {})
-        | get_method_params(method, kwargs.get("param", ()))
-    )
-
-    # delete config param dicts
-    for x in config.copy():
-        if x.endswith("_params"):
-            del config[x]
+    params = DEFAULTS[method] | method_params | get_method_params(method, kwargs.get("param", ()))
 
     # parse coordinate args
     for key in ("roi_offset", "roi_shape", "block_shape", "context"):
@@ -146,8 +139,8 @@ def get_seg_config(config_file, method, **kwargs):
     return config | params
 
 
-def run_segmentation(config_file, mode="ws", **kwargs):
-    config = get_seg_config(config_file, mode, **kwargs)
+def run_segmentation(config, mode="ws", **kwargs):
+    config = get_seg_config(config, mode, **kwargs)
     pprint(config)
 
     if mode == "ws":
@@ -178,6 +171,7 @@ def run_segmentation(config_file, mode="ws", **kwargs):
 @click.argument(
     "config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False)
 )
+@click.option("--step", type=str, help="The segment step to run when the file has several")
 @click.option("--ws", "-ws", is_flag=True, help="Watershed segmentation (waterz)")
 @click.option("--mws", "-mws", is_flag=True, help="Mutex watershed segmentation")
 @click.option("--cc", "-cc", is_flag=True, help="Connected componenents segmentation")
@@ -224,33 +218,17 @@ def run_segmentation(config_file, mode="ws", **kwargs):
     multiple=True,
     help="Method specific parameters to override in config (e.g. -p 'thresholds=[0.2,0.3]')",
 )
-def segment(config_file, ws, mws, cc, **kwargs):
+def segment(config_file, step, ws, mws, cc, **kwargs):
+    """Segment affinities as the [segment] step of config_file says.
+
+    The step's method key picks the method; -ws, -mws or -cc overrides it.
     """
-    Segment affinities as specified in config_file.
-    """
-    methods = []
-
-    with open(config_file, "r") as f:
-        config = toml.load(f)
-        method_params = [
-            config.get(f"{method}_params", None) for method in ["ws", "mws", "cc"]
-        ]
-
-    if any([ws, mws, cc]):
-        if ws:
-            methods.append("ws")
-        if mws:
-            methods.append("mws")
-        if cc:
-            methods.append("cc")
-    elif any(method_params):
-        methods = [
-            method
-            for method, params in zip(["ws", "mws", "cc"], method_params)
-            if params
-        ]
-    else:
-        methods = ["ws"]
-
-    for method in methods:
-        run_segmentation(config_file, method, **kwargs)
+    flags = [m for m, on in (("ws", ws), ("mws", mws), ("cc", cc)) if on]
+    _, steps = steps_of(config_file, "segment", step)
+    for s in steps:
+        methods = flags or ([s.keys["method"]] if "method" in s.keys else [])
+        if not methods:
+            raise click.ClickException(f"{config_file}: [{s.label}] has no method; set method = \"ws\", \"mws\" or \"cc\", or pass -ws, -mws or -cc")
+        for volume, config in runs(s):
+            for method in methods:
+                run_segmentation(config, method, **kwargs)

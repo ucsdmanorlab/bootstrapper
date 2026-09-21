@@ -13,6 +13,7 @@ from funlib.geometry import Roi, Coordinate
 from funlib.persistence import open_ds, prepare_ds
 
 from .blockwise import run_blockwise
+from .config import steps_of, runs
 from .configs import checkpoint_iteration, download_checkpoints, find_checkpoints, MODEL_URLS
 from .segment import parse_shape
 from .styles import cli_echo, cli_confirm
@@ -128,10 +129,8 @@ def resolve_checkpoint(setup_dir, checkpoint):
     return found[iteration]
 
 
-def get_pred_config(config_file, setup_id, **kwargs):
-    # load config
-    with open(config_file, "r") as f:
-        config = toml.load(f)[setup_id]
+def get_pred_config(config, **kwargs):
+    config = dict(config)
 
     # override config values with provided kwargs
     for key, value in kwargs.items():
@@ -287,41 +286,24 @@ def get_pred_config(config_file, setup_id, **kwargs):
         }
 
 
-def run_prediction(config_file, setup_ids=None, **kwargs):
-
-    with open(config_file, "r") as f:
-        all_setup_ids = list(toml.load(f).keys())
-
-    valid_setups = {
-        **{s.split("-")[0]: s for s in all_setup_ids},
-        **{s.split("-")[-1]: s for s in all_setup_ids},
-        **{s: s for s in all_setup_ids},
-    }
-
-    setups = sorted(setup_ids.strip().split()) if setup_ids else all_setup_ids
-
-    for s_id in setups:
-        if s_id not in valid_setups:
-            raise ValueError(f"Setup ID {s_id} not found in {all_setup_ids}")
-
-        config = get_pred_config(config_file, valid_setups[s_id], **kwargs)
-        pprint(config)
-
-        if config["num_gpus"] > 1:
-            predict_blockwise(config)
-        else:
-            subprocess.run(
-                [sys.executable, config["worker"], *config["args"]], check=True
-            )
+def run_prediction(config_file, step=None, **kwargs):
+    """Run the [predict.*] steps of config_file in file order, or the one named."""
+    _, steps = steps_of(config_file, "predict", step)
+    for s in steps:
+        for volume, step_config in runs(s):
+            config = get_pred_config(step_config, **kwargs)
+            pprint(config)
+            if config["num_gpus"] > 1:
+                predict_blockwise(config)
+            else:
+                subprocess.run([sys.executable, config["worker"], *config["args"]], check=True)
 
 
 @click.command()
 @click.argument(
     "config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False)
 )
-@click.option(
-    "--setup-id", "-s", type=str, help="Setup ID(s) to run prediction for. 01, 02, etc."
-)
+@click.option("--step", "-s", type=str, help="The predict step to run when the file has several")
 @click.option(
     "--roi-offset",
     "-ro",
@@ -336,9 +318,9 @@ def run_prediction(config_file, setup_ids=None, **kwargs):
 )
 @click.option("--num-workers", "-w", type=int, help="Number of workers")
 @click.option("--num-gpus", "-ng", type=int, help="Number of GPUs to use")
-def predict(config_file, setup_id, **kwargs):
-    """Run prediction for a setup or all setups in a prediction config file."""
-    run_prediction(config_file, setup_id, **kwargs)
+def predict(config_file, step, **kwargs):
+    """Run the [predict.*] steps of config_file, in file order or the one named."""
+    run_prediction(config_file, step, **kwargs)
 
 
 if __name__ == "__main__":

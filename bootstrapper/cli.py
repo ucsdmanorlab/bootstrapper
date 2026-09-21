@@ -1,10 +1,10 @@
+import glob
 import os
 import sys
 import time
 import traceback
 
 import click
-import toml
 
 from . import (
     prepare,
@@ -17,12 +17,13 @@ from . import (
     utils,
 )
 
+from .config import load, runs, OPS
+from .refine import MORPH_OPS
 from .styles import cli_echo
 
 
 class CommandGroup(click.Group):
     def list_commands(self, ctx):
-        # Return the commands in the desired order
         return [
             "prepare",
             "train",
@@ -84,28 +85,56 @@ cli.add_command(utils)
 
 
 @cli.command()
-@click.argument("config_path", type=click.Path(exists=True))
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--only", multiple=True, help="Run only these steps: a kind, kind.name, or a file prefix in a directory")
+@click.option("--from", "from_", help="Run from this step to the end")
 @click.pass_context
-def run(ctx, config_path):
-    """Run the appropriate command based on the config file"""
-
-    # load config
-    with open(config_path, "r") as f:
-        config = toml.load(f)
-
-    # determine command to run
-    if "samples" in config:
-        cli_echo(f"Running train command on {config_path}", "train")
-        ctx.invoke(train, config_file=config_path)
-    #elif all(["chain_str" in config[setup] for setup in config]):
-    elif all(isinstance(value, dict) and "chain_str" in value for value in config.values()):
-        cli_echo(f"Running predict command on {config_path}", "predict")
-        ctx.invoke(predict, config_file=config_path)
-    elif "affs_dataset" in config:
-        cli_echo(f"Running segment command on {config_path}", "segment")
-        ctx.invoke(segment, config_file=config_path)
-    elif "seg_datasets_prefix" in config or "pred" in config or "gt" in config:
-        cli_echo(f"Running evaluate command on {config_path}", "evaluate")
-        ctx.invoke(evaluate, config_file=config_path)
+def run(ctx, path, only, from_):
+    """Run the steps of a config file in file order, or the numbered files of a directory."""
+    if os.path.isdir(path):
+        files = sorted(glob.glob(os.path.join(path, "[0-9]*.toml")))
+        if not files:
+            raise click.ClickException(f"{path}: no numbered .toml files")
     else:
-        raise ValueError(f"Unable to determine command for {config_path}")
+        files = [path]
+    todo = [(f, s) for f in files for s in load(f).steps]
+
+    def match(sel, f, s):
+        return sel in (s.kind, s.label) or os.path.basename(f).startswith(sel)
+
+    if from_:
+        first = next((i for i, (f, s) in enumerate(todo) if match(from_, f, s)), None)
+        if first is None:
+            raise click.ClickException(f"--from {from_}: no such step; steps are " + ", ".join(s.label for _, s in todo))
+        todo = todo[first:]
+    if only:
+        todo = [(f, s) for f, s in todo if any(match(o, f, s) for o in only)]
+        if not todo:
+            raise click.ClickException(f"--only {' '.join(only)}: no such step")
+
+    for f, s in todo:
+        cli_echo(f"Running {s.label} from {f}", s.kind)
+        if s.kind == "refine":
+            run_refine(ctx, s)
+        else:
+            command = {"train": train, "predict": predict, "segment": segment, "evaluate": evaluate}[s.kind]
+            ctx.invoke(command, config_file=f, step=None if s.name == s.kind else s.name)
+
+
+def run_refine(ctx, step):
+    """Run a refine step's ops in order; each op's output feeds the next."""
+    ops = step.keys.get("ops", {})
+    if not ops:
+        raise click.ClickException(f"[{step.label}] has no ops; ops are {', '.join(OPS)}")
+    for _, config in runs(step):
+        array = config.get("in_array")
+        if array is None:
+            raise click.ClickException(f"[{step.label}] needs in_array")
+        for op, keys in ops.items():
+            keys = dict(keys)
+            if op.replace("-", "_") in MORPH_OPS:
+                keys["op"] = op.replace("-", "_")
+                op = "morph"
+            array = ctx.invoke(refine.commands[op], in_array=array, **keys)
+
+

@@ -9,6 +9,8 @@ from pprint import pprint
 
 from funlib.persistence import open_ds
 
+from .config import steps_of, runs
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -22,9 +24,8 @@ def get_seg_datasets(seg_datasets_prefix):
     return seg_datasets
 
 
-def get_eval_config(config_file, mode, suffix=True, **kwargs):
-    with open(config_file, "r") as f:
-        config = toml.load(f)
+def get_eval_config(config, config_file, mode, suffix=True, **kwargs):
+    config = dict(config)
 
     # Override config values with provided kwargs
     for key, value in kwargs.items():
@@ -130,8 +131,8 @@ def run_pred_evaluation(config, seg_ds):
     return stats
 
 
-def run_evaluation(config_file, mode="pred", suffix=True, **kwargs):
-    config = get_eval_config(config_file, mode, suffix, **kwargs)
+def run_evaluation(config, config_file, mode="pred", suffix=True, **kwargs):
+    config = get_eval_config(config, config_file, mode, suffix, **kwargs)
     if "seg_datasets" in config:
         seg_datasets = [ds.rstrip("/") for ds in config["seg_datasets"]]
     else:
@@ -160,29 +161,16 @@ def run_evaluation(config_file, mode="pred", suffix=True, **kwargs):
 @click.argument(
     "config_file", type=click.Path(exists=True, file_okay=True, dir_okay=False)
 )
+@click.option("--step", type=str, help="The evaluate step to run when the file has several")
 @click.option("--gt", "-gt", is_flag=True, help="Evaluate only against ground-truth")
 @click.option("--pred", "-p", is_flag=True, help="Evaluate only against predictions")
 @click.option("--out-result", "-o", type=click.Path())
-def evaluate(config_file, gt, pred, out_result=None):
-    """
-    Evaluate segmentations as specified in the config file.
-    """
-
-    eval_modes = []
-
-    with open(config_file, "r") as f:
-        config = toml.load(f)
-        mode_configs = [config.get(mode, None) for mode in ["gt", "pred"]]
-
-    if any([gt, pred]):
-        if gt:
-            eval_modes.append("gt")
-        if pred:
-            eval_modes.append("pred")
-    elif any(mode_configs):
-        eval_modes = [mode for mode, mc in zip(["gt", "pred"], mode_configs) if mc]
-    else:
-        eval_modes = ["pred"]
-
-    for mode in eval_modes:
-        run_evaluation(config_file, mode, suffix=len(eval_modes) > 1, out_result=out_result)
+def evaluate(config_file, step, gt, pred, out_result=None):
+    """Evaluate segmentations as the [evaluate] step of config_file says."""
+    _, steps = steps_of(config_file, "evaluate", step)
+    for s in steps:
+        flags = [m for m, on in (("gt", gt), ("pred", pred)) if on]
+        modes = flags or [m for m in ("gt", "pred") if m in s.keys] or ["pred"]
+        for volume, config in runs(s):
+            for mode in modes:
+                run_evaluation(config, config_file, mode, suffix=len(modes) > 1, out_result=out_result)

@@ -126,6 +126,7 @@ def _finish_filter(in_ds, in_array, out_array, remove_ids, num_workers,
     out_ds = _prepare_like(in_ds, out_array)
     _run_blockwise(name, in_ds, out_ds,
                    partial(_mask_block, in_ds, out_ds, remove_ids), num_workers)
+    return out_array
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +170,7 @@ def outlier_filter(in_array, out_array, num_std, min_size, num_workers, dry_run)
     print(f"mean={mean:.1f} std={std:.1f} | cut lo={lo:.1f} hi={hi:.1f} "
           f"-> removing {remove_ids.size} objects")
 
-    _finish_filter(in_ds, in_array, out_array, remove_ids, num_workers,
+    return _finish_filter(in_ds, in_array, out_array, remove_ids, num_workers,
                    dry_run, "outlier_filtered", "OutlierFilter")
 
 
@@ -210,7 +211,7 @@ def size_filter(in_array, out_array, min_size, max_size, num_workers, dry_run):
           f"median={int(np.median(sizes))}")
     print(f"range [{min_size}, {max_size}] -> removing {remove_ids.size} objects")
 
-    _finish_filter(in_ds, in_array, out_array, remove_ids, num_workers,
+    return _finish_filter(in_ds, in_array, out_array, remove_ids, num_workers,
                    dry_run, "size_filtered", "SizeFilter")
 
 
@@ -253,7 +254,7 @@ def z_filter(in_array, out_array, min_z, num_workers, dry_run):
     remove_ids = ids[spans <= min_z]
     print(f"{ids.size} objects; removing {remove_ids.size} with z-extent <= {min_z}")
 
-    _finish_filter(in_ds, in_array, out_array, remove_ids, num_workers,
+    return _finish_filter(in_ds, in_array, out_array, remove_ids, num_workers,
                    dry_run, "z_filtered", "ZFilter")
 
 
@@ -305,6 +306,7 @@ def remap(in_array, out_array, remove_ids, merge_ids, num_workers):
     out_ds = _prepare_like(in_ds, out_array)
     _run_blockwise("Remap", in_ds, out_ds,
                    partial(_remap_block, in_ds, out_ds, mapping), num_workers)
+    return out_array
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +343,7 @@ def mask(in_array, mask_array, out_array, num_workers):
     out_ds = _prepare_like(in_ds, out_array)
     _run_blockwise("Mask", in_ds, out_ds,
                    partial(_apply_mask_block, in_ds, mask_ds, out_ds), num_workers)
+    return out_array
 
 
 # ---------------------------------------------------------------------------
@@ -489,3 +492,4 @@ def morph(in_array, out_array, op, iterations, xy, context, block_size, num_work
         context=context,
         xy_only=xy,
     )
+    return out_array

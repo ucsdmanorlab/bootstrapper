@@ -4,14 +4,19 @@ import subprocess
 import sys
 import os
 import click
+
+from .config import steps_of
 import logging
 
 logging.basicConfig(level=logging.INFO)
 
 
-def setup_train(config_file, **kwargs):
-    with open(config_file, "r") as file:
-        config = toml.load(file)
+def setup_train(config_file, step=None, **kwargs):
+    _, steps = steps_of(config_file, "train", step)
+    if len(steps) > 1:
+        names = ", ".join(s.name for s in steps)
+        raise click.ClickException(f"{config_file} has several train steps ({names}); pass --step")
+    config = dict(steps[0].keys)
 
     # get training samples (synthetic *_from_* setups have none)
     samples = config.get("samples", [])
@@ -91,37 +96,23 @@ def setup_train(config_file, **kwargs):
     if samples:
         config["samples"] = out_samples
 
-    # Override config values with provided kwargs
-    if any(kwargs.values()):
-        for key, value in kwargs.items():
-            if value is not None:
-                config[key] = value
+    for key, value in kwargs.items():
+        if value is not None:
+            config[key] = value
 
-        base_name = os.path.splitext(config_file)[0] + "_modified"
-        counter = 0
-
-        # write updated config
-        while True:
-            config_file = f"{base_name}_{counter}.toml"
-            if not os.path.exists(config_file):
-                break
-            counter += 1
-
-        # write updated config
-        logging.info(f"Using updated config {config_file}")
-        with open(config_file, "w") as file:
-            toml.dump(config, file)
-    else:
-        # No modifications made, use original file
-        logging.info(f"Using config {config_file}")
+    # the setup's train.py reads a flat file; it lives beside the checkpoints it makes
+    worker_config = os.path.join(config["setup_dir"], "train.toml")
+    with open(worker_config, "w") as file:
+        toml.dump(config, file)
+    logging.info(f"Wrote {worker_config}")
 
     train_script = os.path.join(config["setup_dir"], "train.py")
-    return train_script, config_file
+    return train_script, worker_config
 
 
-def run_training(config_file, **kwargs):
+def run_training(config_file, step=None, **kwargs):
 
-    train_script, config_file = setup_train(config_file, **kwargs)
+    train_script, config_file = setup_train(config_file, step, **kwargs)
 
     # Run the training script with the temporary config file
     command = [sys.executable, train_script, config_file]
@@ -133,6 +124,7 @@ def run_training(config_file, **kwargs):
 
 @click.command()
 @click.argument("config_file", type=click.Path(exists=True))
+@click.option("--step", "-s", type=str, help="The train step to run when the file has several")
 @click.option("--max-iterations", "-n", type=int, help="Number of training iterations")
 @click.option(
     "--save-checkpoints-every",
@@ -148,6 +140,7 @@ def run_training(config_file, **kwargs):
 )
 def train(
     config_file,
+    step,
     max_iterations,
     save_checkpoints_every,
     save_snapshots_every,
@@ -164,6 +157,7 @@ def train(
 
     run_training(
         config_file,
+        step,
         max_iterations=max_iterations,
         save_checkpoints_every=save_checkpoints_every,
         save_snapshots_every=save_snapshots_every,
