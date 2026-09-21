@@ -189,6 +189,8 @@ class DefectAugment(BatchFilter):
 
         deps[self.intensities] = spec
 
+        return deps
+
     def process(self, batch, request):
         assert batch.get_total_roi().dims == 3, "defectaugment works on 3d batches only"
 
