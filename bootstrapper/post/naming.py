@@ -28,7 +28,7 @@ def fmt(value, sep="_"):
         parts = [fmt(v, sep=".") for v in value]
         return parts[0] if len(set(parts)) == 1 else sep.join(parts)
     if isinstance(value, float):
-        return f"{value:g}"
+        return f"{value:.12g}"
     return str(value)
 
 
@@ -55,6 +55,23 @@ def _jsonable(value):
     if isinstance(value, np.floating):
         return float(value)
     return value
+
+
+def inputs_differ(store, run_params):
+    """Warning text when the output at store was made from other inputs, else None."""
+    try:
+        recorded = zarr.open(store, mode="r").attrs.get("bs_params", {})
+    except Exception:
+        return None
+    changed = {
+        k: (recorded[k], run_params[k])
+        for k in ("affs_dataset", "mask_dataset", "roi_offset", "roi_shape")
+        if k in recorded and _jsonable(run_params.get(k)) != recorded[k]
+    }
+    if not changed:
+        return None
+    lines = "; ".join(f"{k}: recorded {a!r}, now {b!r}" for k, (a, b) in changed.items())
+    return f"{store} was made from other inputs ({lines}); overwriting it. Use another seg_dataset_prefix to keep both."
 
 
 def dump_params(store, params):

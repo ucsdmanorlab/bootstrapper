@@ -9,6 +9,23 @@ from daisy.tcp import IOLooper
 logger = logging.getLogger(__name__)
 
 
+def volara_log_dir(seg_dataset_prefix):
+    """Volara log dir beside the output container; ':' or '=' in the path breaks
+    daisy's worker context, so such a path gets a hashed name in the cwd."""
+    import hashlib
+    import os
+    from pathlib import Path
+
+    if ".zarr" in seg_dataset_prefix:
+        container = seg_dataset_prefix.rsplit(".zarr", 1)[0] + ".zarr"
+        log_dir = os.path.join(os.path.dirname(container), f"{Path(container).stem}_volara_logs")
+    else:
+        log_dir = f"{seg_dataset_prefix}_volara_logs"
+    if ":" in log_dir or "=" in log_dir:
+        log_dir = f"volara_logs_{hashlib.sha1(seg_dataset_prefix.encode()).hexdigest()[:8]}"
+    return log_dir
+
+
 def check_task_states(task_states):
     # daisy 1.x counts failed and orphaned blocks as done, so its
     # run_blockwise bool is True even when every block failed

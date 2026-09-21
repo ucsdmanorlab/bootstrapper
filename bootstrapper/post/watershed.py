@@ -7,7 +7,6 @@ logger.setLevel(logging.INFO)
 
 def watershed_segmentation(config):
     import os
-    from importlib.metadata import version
     from pathlib import Path
 
     import numpy as np
@@ -23,8 +22,8 @@ def watershed_segmentation(config):
 
     from .blockwise.watershed_frags import WatershedFrags
     from .blockwise.waterz_agglom import WaterzAgglom, WATERZ_MERGE_FUNCTIONS
-    from .naming import build_name, dump_params, dump_lut_params
-    from ..blockwise import run_volara_task
+    from .naming import build_name, dump_params, dump_lut_params, inputs_differ
+    from ..blockwise import run_volara_task, volara_log_dir
 
     affs_dataset = config["affs_dataset"]
     fragments_dataset_prefix = config["fragments_dataset"]
@@ -64,25 +63,7 @@ def watershed_segmentation(config):
     num_workers = config.get("num_workers", 1) if blockwise else 1
     context = config.get("context")
 
-    # per-volume volara logs and done-block caches (CWD-relative by default,
-    # which collides across volumes and concurrent runs)
-    if ".zarr" in seg_dataset_prefix:
-        container = seg_dataset_prefix.rsplit(".zarr", 1)[0] + ".zarr"
-        log_basedir = os.path.join(
-            os.path.dirname(container), f"{Path(container).stem}_volara_logs"
-        )
-    else:
-        # no ".zarr" container to name the logs after
-        log_basedir = f"{seg_dataset_prefix}_volara_logs"
-    # daisy ships this path to every worker in DAISY_CONTEXT as "key=value"
-    # pairs joined by ":", so either character there fails every worker
-    if ":" in log_basedir or "=" in log_basedir:
-        logger.warning(
-            "log dir %s contains ':' or '='; keeping the default volara log dir",
-            log_basedir,
-        )
-    else:
-        set_log_basedir(log_basedir)
+    set_log_basedir(volara_log_dir(seg_dataset_prefix))
 
     affs = open_ds(affs_dataset)
 
@@ -102,7 +83,7 @@ def watershed_segmentation(config):
             else Coordinate([max(1, s // 8) for s in block_size])
         )
     else:
-        block_size = Coordinate(affs.shape[1:])
+        block_size = total_roi.shape / affs.voxel_size
         ctx = Coordinate([0] * affs.roi.dims)
 
     frag_params = {
@@ -130,7 +111,6 @@ def watershed_segmentation(config):
         "roi_shape": list(total_roi.shape),
         "block_shape": list(block_size),
         "context": list(ctx),
-        "bootstrapper_version": version("bootstrapper"),
     }
 
     affinities = Raw(store=affs_dataset)
@@ -168,6 +148,9 @@ def watershed_segmentation(config):
         filter_fragments=filter_fragments,
         remove_debris=remove_debris,
     )
+    warning = inputs_differ(frags_ds_name, run_params)
+    if warning:
+        logger.warning(warning)
     run_volara_task(frags_task, blockwise)
     dump_params(frags_ds_name, {**run_params, **frag_params})
 

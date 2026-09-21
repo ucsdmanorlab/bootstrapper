@@ -7,7 +7,6 @@ logger.setLevel(logging.INFO)
 
 def mutex_watershed_segmentation(config):
     import os
-    from importlib.metadata import version
     from pathlib import Path
 
     from funlib.geometry import Coordinate
@@ -19,8 +18,8 @@ def mutex_watershed_segmentation(config):
     from volara.lut import LUT
 
     from .blockwise.extract_frags import ExtractFrags
-    from .naming import build_name, dump_params, dump_lut_params
-    from ..blockwise import run_volara_task
+    from .naming import build_name, dump_params, dump_lut_params, inputs_differ
+    from ..blockwise import run_volara_task, volara_log_dir
 
     affs_dataset = config["affs_dataset"]
     fragments_dataset_prefix = config["fragments_dataset"]
@@ -56,31 +55,19 @@ def mutex_watershed_segmentation(config):
         raise ValueError("Affinities neighborhood must be provided")
     if bias is None:
         raise ValueError("Affinities bias must be provided")
-    assert len(neighborhood) == len(
-        bias
-    ), "Number of biases must match number of affinities channels"
+    if len(neighborhood) != len(bias):
+        raise ValueError(
+            f"{len(bias)} biases for {len(neighborhood)} neighborhood offsets: give one per offset"
+        )
 
-    # per-volume volara logs and done-block caches (CWD-relative by default,
-    # which collides across volumes and concurrent runs)
-    if ".zarr" in seg_dataset_prefix:
-        container = seg_dataset_prefix.rsplit(".zarr", 1)[0] + ".zarr"
-        log_basedir = os.path.join(
-            os.path.dirname(container), f"{Path(container).stem}_volara_logs"
-        )
-    else:
-        # no ".zarr" container to name the logs after
-        log_basedir = f"{seg_dataset_prefix}_volara_logs"
-    # daisy ships this path to every worker in DAISY_CONTEXT as "key=value"
-    # pairs joined by ":", so either character there fails every worker
-    if ":" in log_basedir or "=" in log_basedir:
-        logger.warning(
-            "log dir %s contains ':' or '='; keeping the default volara log dir",
-            log_basedir,
-        )
-    else:
-        set_log_basedir(log_basedir)
+    set_log_basedir(volara_log_dir(seg_dataset_prefix))
 
     affs = open_ds(affs_dataset)
+    if affs.shape[0] != len(neighborhood):
+        raise ValueError(
+            f"{affs_dataset} has {affs.shape[0]} affinity channels but the neighborhood "
+            f"has {len(neighborhood)} offsets: use a neighborhood with one offset per channel"
+        )
 
     if roi_offset is not None:
         roi = (roi_offset, roi_shape)
@@ -97,7 +84,7 @@ def mutex_watershed_segmentation(config):
             else Coordinate([max(1, s // 8) for s in block_size])
         )
     else:
-        block_size = affs.shape[1:]
+        block_size = Coordinate(roi[1]) / affs.voxel_size
         ctx = Coordinate([0] * affs.roi.dims)
 
     # dataset names: frags from fragment params; lut/seg add the global mws
@@ -130,7 +117,6 @@ def mutex_watershed_segmentation(config):
         "roi_shape": list(roi[1]),
         "block_shape": list(block_size),
         "context": list(ctx),
-        "bootstrapper_version": version("bootstrapper"),
     }
 
     affinities = Affs(store=affs_dataset, neighborhood=neighborhood)
@@ -168,6 +154,9 @@ def mutex_watershed_segmentation(config):
         randomized_strides=randomized_strides,
         min_seed_distance=min_seed_distance,
     )
+    warning = inputs_differ(frags_ds_name, run_params)
+    if warning:
+        logger.warning(warning)
     run_volara_task(extract_frags, blockwise)
     dump_params(frags_ds_name, {**run_params, **frag_params})
 
