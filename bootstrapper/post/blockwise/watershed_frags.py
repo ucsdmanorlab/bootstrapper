@@ -203,12 +203,8 @@ class WatershedFrags(BlockwiseTask):
         return fragments_data
 
     def watershed_in_block(self, block, affs, frags, rag_provider, mask=None):
-        affs_data = affs.to_ndarray(block.read_roi, fill_value=0)
-        if affs.dtype == np.uint8:
-            max_affinity_value = 255.0
-            affs_data = affs_data.astype(np.float64)
-        else:
-            max_affinity_value = 1.0
+        affs_data = affs.to_ndarray(block.read_roi, fill_value=0)[:3].astype(np.float32)
+        max_affinity_value = 255.0 if affs.dtype == np.uint8 else 1.0
         if affs_data.max() < 1e-3:
             return
         affs_data /= max_affinity_value
