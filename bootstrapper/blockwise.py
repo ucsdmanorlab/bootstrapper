@@ -36,7 +36,7 @@ def check_task_states(task_states):
         if ts.failed_count > 0 or ts.orphaned_count > 0
     ]
     if errors:
-        raise RuntimeError("; ".join(errors))
+        raise RuntimeError("; ".join(errors) + f"; worker logs in {daisy.logging.get_log_basedir()}")
 
 
 def _serve(tasks, stop_event):

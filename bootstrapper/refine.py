@@ -73,7 +73,7 @@ def _run_blockwise(name, in_ds, out_ds, process_block, num_workers,
     try:
         run_blockwise([task])
     except RuntimeError as e:
-        raise click.ClickException(f"{name}: {e} (see daisy_logs/)")
+        raise click.ClickException(f"{name}: {e}")
 
 
 def _scan_tiles(in_ds, tile=4096):
