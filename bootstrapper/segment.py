@@ -132,9 +132,16 @@ def get_seg_config(config_file, method, **kwargs):
             config["lut_dir"] = os.path.join(out_dir, f"luts_{method}")
 
         if "db" not in config:
-            db_file = os.path.join(out_dir, f"rag_{method}.db")
+            from .post.naming import build_name
+
+            db_file = os.path.join(out_dir, f"rag_{method}_{build_name(params)}.db")
             config["db"] = {"db_file": db_file}
             click.echo(f"No database in config: using SQLite at {db_file}")
+        if "db_file" in config["db"] and config.get("num_workers", 1) > 10:
+            click.echo(
+                f"WARNING: SQLite locks with {config['num_workers']} workers; "
+                "use 10 or fewer, or a PostgreSQL [db]"
+            )
 
     return config | params
 
