@@ -90,7 +90,7 @@ class EmptyDataset(training.IterableDataset):
         return iter([])
 
 
-@pytest.mark.parametrize("devices,expected", [(None, "auto"), ([0], [0])])
+@pytest.mark.parametrize("devices,expected", [(None, 1), ([0], [0])])
 def test_fit_passes_devices_to_trainer(tmp_path, monkeypatch, devices, expected):
     monkeypatch.setattr(training.pl, "Trainer", FakeTrainer)
 
@@ -106,6 +106,29 @@ def test_fit_passes_devices_to_trainer(tmp_path, monkeypatch, devices, expected)
     )
 
     assert FakeTrainer.kwargs["devices"] == expected
+
+
+class RecordingLoader:
+    kwargs = {}
+
+    def __init__(self, dataset, **kwargs):
+        RecordingLoader.kwargs = kwargs
+
+
+@pytest.mark.parametrize("affinity", [True, False])
+@pytest.mark.parametrize("cpus,workers", [(96, 32), (8, 4), (1, 1)])
+def test_fit_takes_half_the_cpus_as_data_workers_up_to_32(tmp_path, monkeypatch, affinity, cpus, workers):
+    monkeypatch.setattr(training.pl, "Trainer", FakeTrainer)
+    monkeypatch.setattr(training, "DataLoader", RecordingLoader)
+    monkeypatch.setattr(training.os, "cpu_count", lambda: cpus if not affinity else 1000)
+    if affinity:
+        monkeypatch.setattr(training.os, "sched_getaffinity", lambda pid: set(range(cpus)), raising=False)
+    else:
+        monkeypatch.delattr(training.os, "sched_getaffinity", raising=False)
+
+    training.fit(object(), EmptyDataset(), str(tmp_path), 10, 5, object())
+
+    assert RecordingLoader.kwargs["num_workers"] == workers
 
 
 @pytest.mark.parametrize("model_name", MODEL_NAMES)
@@ -456,3 +479,12 @@ def test_every_output_window_is_labelled(trainer, model, sparse_sample):
         for _ in range(5):
             labelled = pipeline.request_batch(request)[UNLABELLED].data.mean()
             assert labelled > 0.05, f"an output window is {labelled:.0%} labelled"
+
+
+@pytest.mark.parametrize("model_name", REAL_DATA)
+def test_model_script_leaves_the_data_workers_to_fit(model_name):
+    script = os.path.join(MODEL_DIR, model_name, "train.py")
+    calls = [n for n in ast.walk(ast.parse(open(script).read(), script))
+             if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "fit"]
+
+    assert calls and all("num_workers" not in [k.arg for k in c.keywords] for c in calls)

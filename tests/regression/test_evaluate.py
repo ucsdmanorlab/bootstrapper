@@ -362,6 +362,16 @@ def test_each_volume_is_evaluated_with_its_own_gt_into_its_own_file(tmp_path):
         assert "voi" in results[f"{tmp_path}/{v}.zarr/segs/s"]["metrics"]
 
 
+def test_no_segmentation_under_the_prefix_is_refused_with_the_step_to_run(tmp_path):
+    (tmp_path / "ev.toml").write_text(f'[evaluate]\nseg_datasets_prefix = "{tmp_path}/o.zarr/segs"\n')
+
+    result = CliRunner().invoke(cli, ["evaluate", str(tmp_path / "ev.toml")])
+
+    assert result.exit_code != 0
+    assert f"no segmentations under {tmp_path}/o.zarr/segs; run the segment step first" in result.output
+    assert not list(tmp_path.glob("*.json"))
+
+
 def test_a_mask_on_another_grid_is_refused_by_name(tmp_path):
     seg = write(f"{tmp_path}/o.zarr/seg", np.ones((4, 10, 10), np.uint64))
     mask = write(

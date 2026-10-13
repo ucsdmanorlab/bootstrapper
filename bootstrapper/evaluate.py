@@ -129,6 +129,10 @@ def run_evaluation(config, config_file, mode="pred", suffix=True, volume=None, *
         seg_datasets = [ds.rstrip("/") for ds in config["seg_datasets"]]
     else:
         seg_datasets = get_seg_datasets(config["seg_datasets_prefix"])
+        if not seg_datasets:
+            raise click.ClickException(
+                f"no segmentations under {config['seg_datasets_prefix']}; run the segment step first"
+            )
     seg_stats = {}
 
     for seg_ds in seg_datasets:

@@ -1,5 +1,3 @@
-import os
-
 import click
 import numpy as np
 import daisy
@@ -78,10 +76,7 @@ def training_mask(volume, out_array):
 def write_training_mask(volume, out_array):
     """Write a volume's training mask at out_array. "labels": labels > 0 grown mask_dilation
     voxels (in xy with 2d_labels). "everywhere": ones over the labels, or ones on the labelled
-    sections with 2d_labels. A mask made from the same keys stays as it is."""
-    made_from = {k: volume.get(k) for k in ("labels", "training_mask", "mask_dilation", "2d_labels")}
-    if os.path.exists(out_array) and zarr.open(out_array, "r").attrs.get("bs_training_mask") == made_from:
-        return
+    sections with 2d_labels."""
     mode, dilation, xy = volume["training_mask"], volume.get("mask_dilation", 0), volume.get("2d_labels", False)
     print(f"Writing the training mask to {out_array}")
     labels = open_ds(volume["labels"])
@@ -103,7 +98,6 @@ def write_training_mask(volume, out_array):
             lo, hi = max(z0 - halo, 0), min(z0 + step + halo, src.shape[0])
             grown = ndimage.binary_dilation(np.stack([src[z] > 0 for z in range(lo, hi)]), structure, dilation)
             dst[z0 : z0 + step] = grown[z0 - lo :][:step]
-    dst.attrs["bs_training_mask"] = made_from
 
 
 @click.command()

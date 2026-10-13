@@ -219,7 +219,6 @@ def train(
         max_iterations,
         save_checkpoints_every,
         snapshot_callback,
-        num_workers=8,
         devices=devices,
     )
 

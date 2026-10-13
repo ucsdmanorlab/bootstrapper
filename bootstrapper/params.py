@@ -28,7 +28,7 @@ KEYS = {
         "max_iterations": Key(30001, "Training stops after this many iterations; 30001 saves a last checkpoint at 30000."),
         "save_checkpoints_every": Key(5000, "Iterations between checkpoints."),
         "save_snapshots_every": Key(1000, "Iterations between snapshots: training batches you can view."),
-        "devices": Key("auto", "GPUs for training: auto, or a list such as [0]."),
+        "devices": Key(1, "GPUs for training: a count such as 1, or a list such as [0]."),
         "sampling": Key("labels", 'Volumes drawn by labelled voxels; or "equal", "inv" or [3, 1].', off=True),
     },
     "predict.*": {

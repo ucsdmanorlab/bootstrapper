@@ -304,7 +304,7 @@ def test_bs_prepare_writes_the_tails_again_and_keeps_your_lines(tmp_path, prepar
     assert mask[mask.roi].sum() == 2 * (20 * 20 + 4 * 20)
     assert net_config.read_text().endswith("}\n\n")
     again = CliRunner().invoke(prepare, ["round_01"])
-    assert again.output == "round_01 is current.\n"
+    assert again.output.endswith("training_mask.zarr/apical\nround_01 is current.\n")
     assert {f: f.read_text() for f in round_dir.glob("*.toml")} == after
     flags = CliRunner().invoke(prepare, ["round_01", "--gt", "labels"])
     assert flags.stderr == "Error: round_01 is a round already. Edit its files, then run: bs prepare round_01\n"
@@ -332,6 +332,31 @@ def test_predict_covers_the_target_mask_box_and_refine_masks_to_it(tmp_path):
     assert result.exit_code == 0, result.output
     masked = open_ds(f"{seg}_fill_holes_masked")
     assert masked[masked.roi].sum() == 7 * 4 * 32 * 32
+
+
+def test_bs_prepare_writes_the_training_mask_from_the_labels_as_they_are_now(tmp_path, prepared):
+    """A labels edit at the same path keys nothing new; the mask follows the labels all the same."""
+    round_dir = tmp_path / "round_01"
+    volumes = round_dir / "volumes.toml"
+    volumes.write_text(volumes.read_text().replace("mask_dilation = 10", "mask_dilation = 1"))
+    CliRunner().invoke(prepare, ["round_01"], catch_exceptions=False)
+    labels = open_ds(f"{tmp_path}/apical.zarr/labels", "r+")
+    edited = labels[labels.roi]
+    edited[5] = 0
+    edited[2, 40:50, 5:15] = 3
+    labels[labels.roi] = edited
+
+    result = CliRunner().invoke(prepare, ["round_01"], catch_exceptions=False)
+
+    assert result.exit_code == 0, result.output
+    fg = edited > 0
+    grown = fg | np.any([np.roll(fg, s, a) for a in (1, 2) for s in (1, -1)], 0)
+    mask = open_ds(f"{round_dir}/training_mask.zarr/apical")
+    assert np.array_equal(mask[mask.roi], grown)
+
+
+def test_a_fresh_train_step_trains_on_one_gpu(tmp_path, prepared):
+    assert step(tmp_path, "01_train_2d_mtlsd.toml").keys["devices"] == 1
 
 
 def test_the_train_step_trains_a_fresh_setup_on_a_mask_in_the_round(tmp_path, prepared):

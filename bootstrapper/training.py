@@ -110,10 +110,15 @@ def fit(
     max_iterations,
     save_checkpoints_every,
     snapshot_callback,
-    num_workers=8,
+    num_workers=None,
     devices=None,
 ):
     pl.seed_everything(42, workers=True)
+
+    # the data workers set the rate: 8 workers give 6 iterations/s, 32 give 22 (2d_mtlsd, RTX 4090)
+    if num_workers is None:
+        cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count()
+        num_workers = max(1, min(cpus // 2, 32))
 
     # prepare dataloader
     dataloader = DataLoader(
@@ -139,7 +144,7 @@ def fit(
 
     # indices are positions within the inherited CUDA_VISIBLE_DEVICES set
     trainer = pl.Trainer(
-        devices="auto" if devices is None else devices,
+        devices=1 if devices is None else devices,
         max_steps=max_iterations,
         max_epochs=1,
         use_distributed_sampler=False,
