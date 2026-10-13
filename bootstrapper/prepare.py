@@ -9,7 +9,7 @@ import zarr
 from .catalog import check_round, default_chain, describe, parse_chain, valid_chains
 from .configs import BS_DIR, EVAL_ERROR_THRESHOLDS, checkpoint_iteration, copy_model_scripts, find_checkpoints
 from .data.convert import convert
-from .data.mask import mask as make_mask
+from .data.mask import training_mask
 from .post.naming import mws_segmentation_name
 from .segment import DEFAULTS as SEG_DEFAULTS
 from .styles import cli_echo, cli_prompt, cli_confirm
@@ -104,6 +104,11 @@ def write_round(round_dir, volumes, chain, num_gpus):
 
     write("volumes.toml", {"volumes": volumes})
     voxel_size = trained[0].get("voxel_size") or [int(v) for v in zarr.open(trained[0]["raw"], "r").attrs["voxel_size"]]
+    samples = []
+    for name, v in volumes.items():
+        if "labels" in v:
+            mask = training_mask(v, os.path.join(round_dir, "training_mask.zarr", name))
+            samples.append({"raw": v["raw"], "labels": v["labels"], **({"mask": mask} if mask else {})})
 
     done, outputs = [], {name: {"raw": v["raw"]} for name, v in volumes.items()}  # (model, iteration) so far; each volume's latest arrays by name
     n = 1
@@ -117,7 +122,7 @@ def write_round(round_dir, volumes, chain, num_gpus):
             copy_model_scripts(model.name, setup_dir, cli_edit=False)
             train = {"setup_dir": setup_dir, "voxel_size": voxel_size, "max_iterations": 30001,
                      "save_checkpoints_every": 5000, "save_snapshots_every": 1000, "devices": "auto",
-                     "samples": [{"raw": v["raw"], "labels": v["labels"], **({"mask": training_mask(v)} if v.get("training_mask") == "labels" else {})} for v in trained]}
+                     "samples": samples}
             write(f"{n:02d}_train_{model.name}.toml", {"train": {model.name: train}})
             n += 1
             checkpoint = os.path.join(setup_dir, f"model_checkpoint_{train['max_iterations'] - 1}.ckpt")
@@ -155,15 +160,6 @@ def write_round(round_dir, volumes, chain, num_gpus):
     if evaluate:
         write(f"{n:02d}_evaluate.toml", {"evaluate": evaluate})
     return written
-
-
-def training_mask(volume):
-    """labels > 0, beside the outputs."""
-    outputs = volume.get("outputs", volume["raw"].rsplit(".zarr", 1)[0] + ".zarr")
-    path = os.path.join(outputs, "masks", "labels_mask")
-    if not os.path.exists(path):
-        click.get_current_context().invoke(make_mask, in_array=volume["labels"], out_array=path, mode="labels")
-    return path
 
 
 @click.command()

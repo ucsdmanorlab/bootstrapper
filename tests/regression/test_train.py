@@ -1,7 +1,8 @@
 """Training must use only the granted GPUs and say so when it runs on the CPU; -s is the step,
 and a model script names both dirs when the setup_dir is not its own. bs train refuses a sample
-whose labels reach past the raw or whose mask reaches past the labels. The shipped trainers
-deform within sections, keep raw on labels and train on labels."""
+whose labels reach past the raw or whose mask reaches past the labels, and names the bs prepare
+command when the setup or a mask it makes is missing. The shipped trainers deform within
+sections, keep raw on labels and train on labels."""
 
 import ast
 import importlib
@@ -51,6 +52,7 @@ def write_config(tmp_path, arrays=None, **extra):
     arrays = arrays or {"raw": ((0, 0, 0), (4, 4, 4)), "labels": ((0, 0, 0), (4, 4, 4))}
     setup_dir = tmp_path / "setup_01"
     setup_dir.mkdir()
+    (setup_dir / "train.py").touch()
     sample = {
         name: write(tmp_path / "data.zarr" / name, np.zeros(shape, np.uint8), offset)
         for name, (offset, shape) in arrays.items()
@@ -146,6 +148,40 @@ def test_missing_labels_is_refused_by_path(tmp_path):
         setup_train(config_file)
 
     assert absent in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "setup,mask,message",
+    [
+        (
+            "2d_mtlsd",
+            "data.zarr/labels",
+            "{0}/2d_mtlsd has no train.py; bs prepare -o {0} copies the model scripts there",
+        ),
+        (
+            "setup_01",
+            "training_mask.zarr/v",
+            "training mask {0}/training_mask.zarr/v does not exist; bs prepare -o {0} makes it",
+        ),
+        (
+            "setup_01",
+            "data.zarr/absent",
+            "training mask {0}/data.zarr/absent does not exist",
+        ),
+    ],
+)
+def test_a_missing_setup_or_mask_is_refused_with_its_fix(
+    tmp_path, setup, mask, message
+):
+    config_file = write_config(tmp_path, setup_dir=str(tmp_path / setup))
+    config = toml.load(config_file)
+    config["train"]["setup_01"]["samples"][0]["mask"] = str(tmp_path / mask)
+    open(config_file, "w").write(toml.dumps(config))
+
+    with pytest.raises(click.ClickException) as error:
+        setup_train(config_file)
+
+    assert error.value.message == message.format(tmp_path)
 
 
 BIG = ((0, 0, 0), (8, 192, 192))

@@ -16,6 +16,9 @@ def setup_train(config_file, step=None, **kwargs):
         names = ", ".join(s.name for s in steps)
         raise click.ClickException(f"{config_file} has several train steps ({names}); pass --step")
     config = dict(steps[0].keys)
+    remake = f"bs prepare -o {os.path.dirname(os.path.abspath(config_file))}"
+    if not os.path.exists(os.path.join(config["setup_dir"], "train.py")):
+        raise click.ClickException(f"{config['setup_dir']} has no train.py; {remake} copies the model scripts there")
 
     # get training samples (synthetic *_from_* setups have none)
     samples = config.get("samples", [])
@@ -59,7 +62,8 @@ def setup_train(config_file, step=None, **kwargs):
         # check mask, find all contained arrays if just a prefix and not None
         if mask is not None:
             if not os.path.exists(mask):
-                raise ValueError(f"Mask dataset path {mask} does not exist")
+                fix = f"; {remake} makes it" if "/training_mask.zarr/" in mask else ""
+                raise click.ClickException(f"training mask {mask} does not exist{fix}")
             elif ".zarray" not in os.listdir(mask):
                 # recursively search for all arrays matching the prefix
                 mask_datasets = [

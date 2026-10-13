@@ -1,5 +1,6 @@
-"""bs prepare asks about the data, then writes volumes.toml, numbered step files and a
-checkpoint-free setup with no __pycache__; every file loads."""
+"""bs prepare asks about the data, then writes volumes.toml, numbered step files, a
+checkpoint-free setup with no __pycache__, and the training masks in the round, never in the
+data container; every file loads."""
 
 import glob
 import os
@@ -8,11 +9,12 @@ import numpy as np
 import pytest
 import toml
 from click.testing import CliRunner
-from funlib.persistence import prepare_ds
+from funlib.persistence import open_ds, prepare_ds
 
 from bootstrapper import configs
+from bootstrapper.catalog import parse_chain
 from bootstrapper.config import load
-from bootstrapper.prepare import prepare
+from bootstrapper.prepare import prepare, write_round
 
 FILES = [
     "01_train_2d_mtlsd.toml",
@@ -24,25 +26,28 @@ FILES = [
 ]
 
 
+def write(path, data, chunk_shape=None):
+    ds = prepare_ds(
+        str(path),
+        shape=data.shape,
+        offset=(0, 0, 0),
+        voxel_size=(50, 8, 8),
+        axis_names=["z", "y", "x"],
+        units=["nm", "nm", "nm"],
+        dtype=data.dtype,
+        chunk_shape=chunk_shape,
+    )
+    ds[ds.roi] = data
+    return str(path)
+
+
 def run_prepare(tmp_path, models=""):
     """One volume, sparse labels on two sections, background beside each object."""
     labels = np.zeros((8, 64, 64), np.uint64)
     labels[2, 10:30, 10:30] = 1
     labels[5, 30:50, 30:50] = 2
-    for name, data in [
-        ("raw", np.full(labels.shape, 100, np.uint8)),
-        ("labels", labels),
-    ]:
-        ds = prepare_ds(
-            f"{tmp_path}/apical.zarr/{name}",
-            shape=labels.shape,
-            offset=(0, 0, 0),
-            voxel_size=(50, 8, 8),
-            axis_names=["z", "y", "x"],
-            units=["nm", "nm", "nm"],
-            dtype=data.dtype,
-        )
-        ds[ds.roi] = data
+    write(tmp_path / "apical.zarr" / "raw", np.full(labels.shape, 100, np.uint8))
+    write(tmp_path / "apical.zarr" / "labels", labels)
     answers = [
         f"{tmp_path}/apical.zarr/raw",
         f"{tmp_path}/apical.zarr/labels",
@@ -98,16 +103,64 @@ def test_the_volume_facts_are_recorded(tmp_path, dialogue):
     }
 
 
-def test_the_train_step_trains_a_fresh_setup_on_a_labels_mask(tmp_path, dialogue):
+def test_the_train_step_trains_a_fresh_setup_on_a_mask_in_the_round(tmp_path, dialogue):
     train = step(tmp_path, "01_train_2d_mtlsd.toml")
 
     assert train.keys["setup_dir"] == f"{tmp_path}/round_01/2d_mtlsd"
-    assert (
-        train.keys["samples"][0]["mask"] == f"{tmp_path}/apical.zarr/masks/labels_mask"
-    )
-    assert os.path.isdir(f"{tmp_path}/apical.zarr/masks/labels_mask")
+    mask = f"{tmp_path}/round_01/training_mask.zarr/apical"
+    assert train.keys["samples"][0]["mask"] == mask
+    assert os.path.isdir(mask)
+    assert sorted(os.listdir(f"{tmp_path}/apical.zarr")) == ["labels", "raw"]
     assert os.path.exists(f"{tmp_path}/round_01/2d_mtlsd/train.py")
     assert not glob.glob(f"{tmp_path}/round_01/2d_mtlsd/model_checkpoint_*")
+
+
+def test_each_labelling_trains_on_its_own_mask(tmp_path):
+    """Sparse labels train on labels > 0, grown mask_dilation voxels (in xy with 2D labels);
+    dense labels on ones, or on the labelled sections with 2D labels; labels dense within a
+    mask on that mask. The data container stays as it was."""
+    labels = np.zeros((8, 16, 16), np.uint64)
+    labels[2, 8, 8], labels[5, 4, 4] = 1, 2
+    fg = labels > 0
+    sections, within = np.zeros_like(fg), np.zeros_like(fg)
+    sections[[2, 5]] = True
+    within[:, :8] = True
+    data = {
+        "raw": write(tmp_path / "data.zarr" / "raw", np.zeros(labels.shape, np.uint8)),
+        "labels": write(tmp_path / "data.zarr" / "labels", labels, (2, 16, 16)),
+    }
+    own = write(tmp_path / "data.zarr" / "within", within.astype(np.uint8))
+
+    def grown(*axes):
+        return fg | np.any([np.roll(fg, s, a) for a in axes for s in (1, -1)], 0)
+
+    cases = {
+        "sparse": ({"training_mask": "labels"}, fg),
+        "sparse-grown": (
+            {"training_mask": "labels", "mask_dilation": 1},
+            grown(0, 1, 2),
+        ),
+        "sparse-2d-grown": (
+            {"training_mask": "labels", "mask_dilation": 1, "2d_labels": True},
+            grown(1, 2),
+        ),
+        "dense": ({"training_mask": "everywhere"}, np.ones_like(fg)),
+        "dense-2d": ({"training_mask": "everywhere", "2d_labels": True}, sections),
+        "within": ({"training_mask": own}, within),
+    }
+    container = sorted(glob.glob(f"{tmp_path}/data.zarr/**", recursive=True))
+
+    volumes = {name: data | keys for name, (keys, _) in cases.items()}
+    (tmp_path / "round_01").mkdir()
+    write_round(f"{tmp_path}/round_01", volumes, parse_chain("3M"), 1)
+
+    samples = step(tmp_path, "01_train_3d_mtlsd.toml").keys["samples"]
+    for (name, (_, expected)), sample in zip(cases.items(), samples):
+        # no mask: the trainer takes labels > 0
+        mask = open_ds(sample["mask"]) if "mask" in sample else None
+        trained_on = mask[mask.roi] if mask else fg
+        assert np.array_equal(trained_on, expected), name
+    assert sorted(glob.glob(f"{tmp_path}/data.zarr/**", recursive=True)) == container
 
 
 def test_the_second_predict_step_reads_the_first_ones_output(tmp_path, dialogue):

@@ -1,8 +1,10 @@
 import click
 import numpy as np
 import daisy
+import zarr
 from funlib.persistence import open_ds, prepare_ds
 from functools import partial
+from scipy import ndimage
 import logging
 
 from bootstrapper.blockwise import run_blockwise
@@ -59,6 +61,39 @@ def make_obj_mask(in_ds, out_ds, block):
         raise
 
     return 0
+
+
+def training_mask(volume, out_array):
+    """Write the mask a volume trains on, as its training_mask says. "labels": labels > 0,
+    grown mask_dilation voxels (in xy with 2d_labels). "everywhere": ones over the labels,
+    or ones on the labelled sections with 2d_labels. Any other value is a mask's path.
+    Returns the mask path, or None when the trainer's own labels > 0 serves."""
+    mode, dilation, xy = volume["training_mask"], volume.get("mask_dilation", 0), volume.get("2d_labels", False)
+    if mode not in ("labels", "everywhere"):
+        return mode
+    if mode == "labels" and not dilation:
+        return None
+    print(f"Writing the training mask to {out_array}")
+    labels = open_ds(volume["labels"])
+    prepare_ds(out_array, shape=labels.shape, offset=labels.offset, voxel_size=labels.voxel_size,
+               axis_names=labels.axis_names, units=labels.units, chunk_shape=labels.chunk_shape,
+               dtype=np.uint8, mode="w", fill_value=int(mode == "everywhere" and not xy))
+    src, dst = zarr.open(volume["labels"], "r"), zarr.open(out_array, "r+")
+    if mode == "everywhere" and xy:
+        for z in range(src.shape[0]):
+            if src[z].any():
+                dst[z] = 1
+    elif mode == "labels":
+        structure = ndimage.generate_binary_structure(3, 1)
+        if xy:
+            structure[[0, 2]] = False
+        halo = 0 if xy else dilation
+        step = max(dst.chunks[0], 2 * halo)
+        for z0 in range(0, src.shape[0], step):
+            lo, hi = max(z0 - halo, 0), min(z0 + step + halo, src.shape[0])
+            grown = ndimage.binary_dilation(np.stack([src[z] > 0 for z in range(lo, hi)]), structure, dilation)
+            dst[z0 : z0 + step] = grown[z0 - lo :][:step]
+    return out_array
 
 
 @click.command()
