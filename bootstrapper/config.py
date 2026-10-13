@@ -22,7 +22,7 @@ KEYS = {
                 "num_workers", "roi_offset", "roi_shape"},
     "refine": {"in_array", "num_workers"},
     "evaluate": {"seg_datasets_prefix", "seg_datasets", "mask_dataset", "out_result", "out_dir",
-                 "num_workers", "thresholds", "roi_offset", "roi_shape"},
+                 "thresholds", "roi_offset", "roi_shape"},
 }
 
 

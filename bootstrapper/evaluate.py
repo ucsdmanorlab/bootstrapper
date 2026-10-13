@@ -1,7 +1,6 @@
 import click
 import toml
 import glob
-import multiprocessing
 import os
 import logging
 import json
@@ -71,12 +70,6 @@ def run_gt_evaluation(config, seg_ds):
     return stats
 
 
-def _compute_errors(kwargs):
-    from .eval.compute_errors import compute_errors
-
-    compute_errors(**kwargs)
-
-
 def run_pred_evaluation(config, seg_ds):
     from .eval.compute_errors import compute_errors, compute_stats
 
@@ -93,7 +86,7 @@ def run_pred_evaluation(config, seg_ds):
     out_map_dataset = os.path.join(out_group, "error_map")
     out_mask_dataset = os.path.join(out_group, "error_mask")
 
-    kwargs = dict(
+    compute_errors(
         seg_dataset=seg_ds,
         pred_dataset=pred_dataset,
         mask_dataset=mask_dataset,
@@ -101,18 +94,8 @@ def run_pred_evaluation(config, seg_ds):
         out_mask_dataset=out_mask_dataset,
         thresholds=thresholds,
         return_arrays=False,
-        num_workers=config.get("num_workers", 1),
         **params,
     )
-    if kwargs["num_workers"] > 1:
-        # a second forked scan in one process deadlocks: one fresh process per scan
-        proc = multiprocessing.get_context("spawn").Process(target=_compute_errors, args=(kwargs,))
-        proc.start()
-        proc.join()
-        if proc.exitcode:
-            raise click.ClickException(f"error map for {seg_ds} failed (exit code {proc.exitcode})")
-    else:
-        compute_errors(**kwargs)
 
     stats = {
         "seg_ds": seg_ds,

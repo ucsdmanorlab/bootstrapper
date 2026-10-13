@@ -213,7 +213,7 @@ def test_lsd_error_mask_floor(thresholds, kept):
     assert AddLSDErrors._create_mask(None, error_map, tuple(thresholds)).sum() == kept
 
 
-def test_error_maps_agree_across_workers_and_go_under_out_dir(tmp_path):
+def test_error_maps_go_under_out_dir(tmp_path):
     shape = (24, 320, 320)
     rng = np.random.default_rng(1)
     seg = np.zeros(shape, np.uint64)
@@ -242,28 +242,21 @@ def test_error_maps_agree_across_workers_and_go_under_out_dir(tmp_path):
         )
         ds[ds.roi] = data
 
-    maps = []
-    for workers in (1, 2):
-        config = {
-            "pred": {
-                "pred_dataset": f"{tmp_path}/v.zarr/3d_affs",
-                "thresholds": [0.1, 1.0],
-                "params": {"aff_neighborhood": NEIGHBORHOOD},
-            },
-            "out_dir": f"{tmp_path}/errs_{workers}.zarr",
-            "num_workers": workers,
-            "mask_dataset": f"{tmp_path}/v.zarr/mask",
-        }
-        stats = run_pred_evaluation(config, f"{tmp_path}/v.zarr/seg")
-        assert stats["mask_ds"] == f"{tmp_path}/v.zarr/mask"
-        assert (
-            stats["error_map_ds"]
-            == f"{tmp_path}/errs_{workers}.zarr/seg__vs__3d_affs/error_map"
-        )
-        maps.append(open_ds(stats["error_map_ds"])[:])
+    config = {
+        "pred": {
+            "pred_dataset": f"{tmp_path}/v.zarr/3d_affs",
+            "thresholds": [0.1, 1.0],
+            "params": {"aff_neighborhood": NEIGHBORHOOD},
+        },
+        "out_dir": f"{tmp_path}/errs.zarr",
+        "mask_dataset": f"{tmp_path}/v.zarr/mask",
+    }
+    stats = run_pred_evaluation(config, f"{tmp_path}/v.zarr/seg")
+    assert stats["mask_ds"] == f"{tmp_path}/v.zarr/mask"
+    assert stats["error_map_ds"] == f"{tmp_path}/errs.zarr/seg__vs__3d_affs/error_map"
 
-    assert np.array_equal(maps[0], maps[1])
-    assert maps[0][10:14, 100:200, 100:200].mean() > 3 * maps[0].mean()
+    error_map = open_ds(stats["error_map_ds"])[:]
+    assert error_map[10:14, 100:200, 100:200].mean() > 3 * error_map.mean()
 
 
 def test_isolated_skeleton_nodes_are_dropped(tmp_path):
