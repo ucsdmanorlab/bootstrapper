@@ -4,14 +4,16 @@ on: [push, pull_request]
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - {python: "3.12", tests: "not smoke and not postgres"}
           - {python: "3.13", tests: "not smoke and not postgres"}
+          - {python: "3.14", tests: "not smoke and not postgres"}
           - {python: "3.12", tests: "smoke and not postgres"}
+          - {python: "3.12", tests: "not smoke and not postgres", os: macos-latest}
     env:
       CUDA_VISIBLE_DEVICES: ""  # the suite is verified with an empty grant
     steps:
@@ -21,7 +23,10 @@ jobs:
           python-version: ${{ matrix.python }}
           activate-environment: true
       - run: uvx ruff@0.16.3 check --select F821,E9 .
-      - run: sudo apt-get update && sudo apt-get install -y libboost-dev  # funlib.segment builds from source
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libboost-dev  # funlib.segment builds from source
+      - if: runner.os == 'macOS'
+        run: brew install boost && echo "CPATH=$(brew --prefix)/include" >> "$GITHUB_ENV"
       - name: Install the lock with CPU torch
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
@@ -32,4 +37,5 @@ jobs:
       - name: Install the full lock
         if: startsWith(github.ref, 'refs/tags/')
         run: uv sync --locked --all-extras
+      - run: bs utils download-ckpts -m 3Af2M,3Af2L  # prepare tests need the shipped checkpoints
       - run: python -m pytest -m "${{ matrix.tests }}"
