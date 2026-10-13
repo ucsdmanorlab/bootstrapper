@@ -1,0 +1,35 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {python: "3.12", tests: "not smoke and not postgres"}
+          - {python: "3.13", tests: "not smoke and not postgres"}
+          - {python: "3.12", tests: "smoke and not postgres"}
+    env:
+      CUDA_VISIBLE_DEVICES: ""  # the suite is verified with an empty grant
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: ${{ matrix.python }}
+          activate-environment: true
+      - run: uvx ruff@0.16.3 check --select F821,E9 .
+      - run: sudo apt-get update && sudo apt-get install -y libboost-dev  # funlib.segment builds from source
+      - name: Install the lock with CPU torch
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          uv export --locked --all-extras --no-hashes --no-emit-project -o lock.txt
+          grep -vE '^(nvidia-|cuda-|triton=)' lock.txt > cpu.txt
+          uv pip install --torch-backend cpu -r cpu.txt
+          uv pip install --no-deps -e .
+      - name: Install the full lock
+        if: startsWith(github.ref, 'refs/tags/')
+        run: uv sync --locked --all-extras
+      - run: python -m pytest -m "${{ matrix.tests }}"
