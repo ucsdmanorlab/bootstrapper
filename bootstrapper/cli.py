@@ -17,7 +17,7 @@ from . import (
     utils,
 )
 
-from .config import load, runs, OPS
+from .config import load, runs, refuse_unknown, OPS
 from .refine import MORPH_OPS
 from .styles import cli_echo
 
@@ -126,6 +126,12 @@ def run_refine(ctx, step):
     ops = step.keys.get("ops", {})
     if not ops:
         raise click.ClickException(f"[{step.label}] has no ops; ops are {', '.join(OPS)}")
+    for op, keys in ops.items():
+        command = refine.commands["morph" if op.replace("-", "_") in MORPH_OPS else op]
+        names = {p.name for p in command.params} - {"in_array", "op"}
+        if "dry_run" in keys and "dry_run" in names:
+            raise click.ClickException(f"[{step.label}.{op}] has no key 'dry_run'; a chain has no dry run, so run bs refine {op} --dry-run")
+        refuse_unknown(f"[{step.label}.{op}]", keys, names - {"dry_run"})
     for _, config in runs(step):
         array = config.get("in_array")
         if array is None:

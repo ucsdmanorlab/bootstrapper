@@ -1,6 +1,7 @@
 """Config files are kind tables. [volumes.<name>] describes data; [train.<name>],
 [predict.<name>], [segment], [segment.<name>], [refine] and [evaluate] are steps. A file
 holds one step or a whole round; a step is named only when a kind has several."""
+import difflib
 import os
 import tomllib
 from dataclasses import dataclass, field
@@ -12,6 +13,7 @@ STEP_TABLES = {"params", "db", "pred", "gt", "samples"}
 OPS = ("size-filter", "outlier-filter", "z-filter", "remap", "fill-holes", "dilate",
        "erode", "opening", "closing", "mask")
 OLD_PARAMS = {"ws_params", "mws_params", "cc_params"}
+POSTGRES = {"db_name", "db_host", "db_user", "db_password"}
 KEYS = {
     "predict": {"setup_dir", "checkpoint", "input_datasets", "output_datasets_prefix",
                 "chain_str", "num_workers", "num_gpus", "roi_offset", "roi_shape"},
@@ -47,11 +49,15 @@ def load(path):
     doc.pop("round", None)
     doc.pop("run", None)
 
+    old = next((k for k in doc if k in OLD_PARAMS), None)
+    rename = f"rename [{old}] to [segment.params]"
     if any(not isinstance(v, dict) for v in doc.values()):
         raise click.ClickException(
-            f"{path}: keys at the top level; put them under [segment], [evaluate], [train.<name>] "
-            "or [predict.<name>], and a [<method>_params] table under [segment.params]"
+            f"{path}: keys at the top level; wrap them in [segment] (or [evaluate], [train.<name>], "
+            "[predict.<name>])" + (f", and {rename}" if old else "")
         )
+    if old:
+        raise click.ClickException(f"{path}: {rename}")
 
     steps = []
     for kind, table in doc.items():
@@ -109,12 +115,29 @@ def _step(kind, name, table, volumes, path):
     if kind == "refine":
         keys["ops"] = {k: keys.pop(k) for k in list(keys) if k in OPS}
     if kind != "train":
-        unknown = [k for k in keys if k not in KEYS[kind] and k not in STEP_TABLES and k != "ops"]
-        if unknown:
-            k = unknown[0]
-            ops = f"; ops are {', '.join(OPS)}" if kind == "refine" else ""
-            if isinstance(keys[k], dict):
-                vols_known = f"volumes are {', '.join(volumes)}" if volumes else "no volumes are defined"
-                raise click.ClickException(f"{path}: [{label}.{k}] is neither a table of [{label}] nor a volume; {vols_known}{ops}")
-            raise click.ClickException(f"{path}: [{label}] has no key {k!r}; keys are {', '.join(sorted(KEYS[kind]))}{ops}")
+        _check(path, label, kind, keys, volumes)
+        for vol, t in vols.items():
+            _check(path, f"{label}.{vol}", kind, t, volumes)
     return Step(kind, name, keys, vols)
+
+
+def _check(path, label, kind, keys, volumes):
+    ops = f"; ops are {', '.join(OPS)}" if kind == "refine" else ""
+    tables = [k for k, v in keys.items() if isinstance(v, dict) and k not in STEP_TABLES and k != "ops"]
+    if tables:
+        vols_known = f"volumes are {', '.join(volumes)}" if volumes else "no volumes are defined"
+        raise click.ClickException(f"{path}: [{label}.{tables[0]}] is neither a table of [{label}] nor a volume; {vols_known}{ops}")
+    refuse_unknown(f"{path}: [{label}]", [k for k, v in keys.items() if not isinstance(v, dict)], KEYS[kind], ops)
+    db = keys.get("db", {})
+    if "db_port" in db:
+        raise click.ClickException(f"{path}: [{label}.db] has no key 'db_port'; volara has no port setting, so set PGPORT in the environment")
+    refuse_unknown(f"{path}: [{label}.db]", db, {"db_file"} if "db_file" in db else POSTGRES)
+
+
+def refuse_unknown(where, keys, valid, hint=""):
+    """Refuse the first key not in valid, naming the nearest valid key or listing them."""
+    for k in keys:
+        if k not in valid:
+            near = difflib.get_close_matches(k, valid, 1, 0.8)
+            fix = f"did you mean {near[0]!r}?" if near else f"keys are {', '.join(sorted(valid))}{hint}"
+            raise click.ClickException(f"{where} has no key {k!r}; {fix}")

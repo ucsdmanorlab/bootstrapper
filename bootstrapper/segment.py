@@ -1,6 +1,6 @@
 import click
 
-from .config import steps_of, runs
+from .config import steps_of, runs, refuse_unknown
 import logging
 import os
 from pprint import pprint
@@ -87,11 +87,9 @@ def get_method_params(method, params):
 
     for p_str in params:
         p, v = p_str.split("=")
-        if p in DEFAULTS[method]:
-            ret[p] = parse_params(v)
-        else:
-            raise ValueError(f"Invalid {method} parameter {p}")
+        ret[p] = parse_params(v)
 
+    refuse_unknown(f"-p for {method}", ret, DEFAULTS[method])
     return ret
 
 
@@ -99,6 +97,7 @@ def get_seg_config(config, method, **kwargs):
     config = dict(config)
     config.pop("method", None)
     method_params = config.pop("params", {})
+    refuse_unknown(f"[segment.params] for {method}", method_params, DEFAULTS[method])
 
     # override config values with provided kwargs, except method specific params
     for key, value in kwargs.items():

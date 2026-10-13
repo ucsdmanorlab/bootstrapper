@@ -1,9 +1,24 @@
-"""Config files are kind tables; the loader keeps each step's tables and refuses the rest by name."""
+"""Config files are kind tables; the loader keeps each step's tables and refuses the rest by
+name. Every table refuses an unknown key with the nearest valid name or the list."""
+
+import glob
 
 import click
+import numpy as np
 import pytest
+from click.testing import CliRunner
+from funlib.persistence import prepare_ds
 
+from bootstrapper.cli import cli
 from bootstrapper.config import load
+
+SEGMENT = """
+[segment]
+affs_dataset = "/a/v.zarr/3d_affs"
+fragments_dataset = "/a/o.zarr/frags"
+seg_dataset_prefix = "/a/o.zarr/segs"
+method = "mws"
+"""
 
 
 @pytest.fixture
@@ -96,11 +111,6 @@ method = "cc"
     "text,needles",
     [
         pytest.param(
-            'affs_dataset = "/a"\nblockwise = true\n[mws_params]\nbias = [-0.5]\n',
-            ["top level", "[segment]", "[segment.params]"],
-            id="flat pre-1.0 file",
-        ),
-        pytest.param(
             'setup_dir = "/s"\nmax_iterations = 3\n[[samples]]\nraw = "/r"\n',
             ["[train.<name>]"],
             id="flat train file",
@@ -136,3 +146,167 @@ def test_a_bad_file_is_refused_by_name(write, text, needles):
 
     for needle in needles:
         assert needle in str(error.value)
+
+
+@pytest.fixture
+def labels(tmp_path):
+    """Two objects of 4x32x16 voxels in t.zarr/labels."""
+    path = str(tmp_path / "t.zarr" / "labels")
+    ds = prepare_ds(
+        path,
+        shape=(4, 32, 32),
+        offset=(0, 0, 0),
+        voxel_size=(50, 8, 8),
+        axis_names=["z", "y", "x"],
+        units=["nm", "nm", "nm"],
+        dtype=np.uint64,
+    )
+    data = np.ones((4, 32, 32), np.uint64)
+    data[:, :, 16:] = 2
+    ds[ds.roi] = data
+    return path
+
+
+@pytest.mark.parametrize(
+    "text,message",
+    [
+        pytest.param(
+            '[volumes.spine]\nraw = "/v/spine.zarr/raw/s0"\n[segment]\nmethod = "mws"\n'
+            "[segment.spine]\nblokwise = true\n",
+            "[segment.spine] has no key 'blokwise'; did you mean 'blockwise'?",
+            id="typo in a volume table",
+        ),
+        pytest.param(
+            SEGMENT + "num_workers = 20\nblockwise = true\n"
+            '[segment.db]\ndb_name = "x"\ndb_host = "localhost"\ndb_user = "vijay"\ndb_password = ""\n'
+            'db_port = 5433\nnodes_table = "nodes"\nedges_table = "edges"\n'
+            "[segment.params]\nglobal_bias = [1.0, -0.5]\n",
+            "[segment.db] has no key 'db_port'; volara has no port setting, so set PGPORT in the environment",
+            id="db port",
+        ),
+        pytest.param(
+            'affs_dataset = "/a/v.zarr/3d_affs"\nfragments_dataset = "/a/o.zarr/frags"\n'
+            'seg_dataset_prefix = "/a/o.zarr/segs"\nblockwise = true\n'
+            "[mws_params]\nbias = [-0.5, -0.5, -0.5]\n",
+            "keys at the top level; wrap them in [segment] (or [evaluate], [train.<name>], "
+            "[predict.<name>]), and rename [mws_params] to [segment.params]",
+            id="flat pre-1.0 file",
+        ),
+        pytest.param(
+            "[mws_params]\nbias = [-0.5]\n",
+            "rename [mws_params] to [segment.params]",
+            id="old params table at the top",
+        ),
+    ],
+)
+def test_the_loader_refuses_an_unknown_key_with_the_fix(write, text, message):
+    path = write(text)
+
+    with pytest.raises(click.ClickException) as error:
+        load(path)
+
+    assert str(error.value) == f"{path}: {message}"
+
+
+@pytest.mark.parametrize(
+    "params,args,message",
+    [
+        pytest.param(
+            "seed_eps = 0.5\nremove_debris = 32\n",
+            [],
+            "[segment.params] for mws has no key 'seed_eps'; keys are aff_neighborhood, bias, "
+            "filter_fragments, global_bias, min_seed_distance, noise_eps, randomized_strides, "
+            "remove_debris, sigma, strides",
+            id="a ws key under mws",
+        ),
+        pytest.param(
+            "remove_debri = 32\n",
+            [],
+            "[segment.params] for mws has no key 'remove_debri'; did you mean 'remove_debris'?",
+            id="typo in params",
+        ),
+        pytest.param(
+            "remove_debris = 32\n",
+            ["-p", "remove_debri=32"],
+            "-p for mws has no key 'remove_debri'; did you mean 'remove_debris'?",
+            id="typo in -p",
+        ),
+    ],
+)
+def test_segment_refuses_an_unknown_param_before_it_runs(write, params, args, message):
+    path = write(SEGMENT + "[segment.params]\n" + params)
+
+    result = CliRunner().invoke(cli, ["segment", path, *args])
+
+    assert result.exit_code == 1
+    assert f"Error: {message}" in result.stderr.splitlines()
+    assert "SQLite" not in result.output
+
+
+@pytest.mark.parametrize(
+    "ops,message",
+    [
+        pytest.param(
+            "[refine.size-filter]\nmin_size = 8\ndry_run = true\nnum_workers = 1\n"
+            "[refine.fill-holes]\nxy = true\nnum_workers = 1\n",
+            "[refine.size-filter] has no key 'dry_run'; a chain has no dry run, "
+            "so run bs refine size-filter --dry-run",
+            id="dry_run on a filter",
+        ),
+        pytest.param(
+            "[refine.size-filter]\nmin_sz = 8\nnum_workers = 1\n",
+            "[refine.size-filter] has no key 'min_sz'; did you mean 'min_size'?",
+            id="typo in an op",
+        ),
+    ],
+)
+def test_a_refine_chain_refuses_an_unknown_op_key_before_any_op_runs(
+    write, labels, ops, message
+):
+    path = write(f'[refine]\nin_array = "{labels}"\n' + ops)
+
+    result = CliRunner().invoke(cli, ["run", path])
+
+    assert result.exit_code == 1
+    assert f"Error: {message}" in result.stderr.splitlines()
+    assert "objects" not in result.output
+    assert glob.glob(f"{labels}_*") == []
+
+
+def test_a_valid_kind_table_file_still_loads(write):
+    segment, refine = load(
+        write("""
+[volumes.spine]
+raw = "/v/spine.zarr/raw/s0"
+[segment]
+method = "mws"
+blockwise = true
+[segment.params]
+remove_debris = 32
+[segment.db]
+db_name = "x"
+db_host = "localhost"
+db_user = "vijay"
+db_password = ""
+[segment.spine]
+num_workers = 4
+[segment.spine.db]
+db_file = "/o/rag.db"
+[refine]
+in_array = "/o.zarr/segs"
+[refine.size-filter]
+min_size = 8
+out_array = "/o.zarr/big"
+[refine.fill-holes]
+xy = true
+""")
+    )
+
+    assert segment.keys["db"]["db_host"] == "localhost"
+    assert segment.volumes == {
+        "spine": {"num_workers": 4, "db": {"db_file": "/o/rag.db"}}
+    }
+    assert refine.keys["ops"] == {
+        "size-filter": {"min_size": 8, "out_array": "/o.zarr/big"},
+        "fill-holes": {"xy": True},
+    }
