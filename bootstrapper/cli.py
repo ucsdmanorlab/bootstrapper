@@ -127,7 +127,7 @@ def run_refine(ctx, step):
     if not ops:
         raise click.ClickException(f"[{step.label}] has no ops; ops are {', '.join(OPS)}")
     for op, keys in ops.items():
-        command = refine.commands["morph" if op.replace("-", "_") in MORPH_OPS else op]
+        command = refine.commands["morph" if op in MORPH_OPS else op]
         names = {p.name for p in command.params} - {"in_array", "op"}
         if "dry_run" in keys and "dry_run" in names:
             raise click.ClickException(f"[{step.label}.{op}] has no key 'dry_run'; a chain has no dry run, so run bs refine {op} --dry-run")
@@ -138,8 +138,8 @@ def run_refine(ctx, step):
             raise click.ClickException(f"[{step.label}] needs in_array")
         for op, keys in ops.items():
             keys = dict(keys)
-            if op.replace("-", "_") in MORPH_OPS:
-                keys["op"] = op.replace("-", "_")
+            if op in MORPH_OPS:
+                keys["op"] = op
                 op = "morph"
             array = ctx.invoke(refine.commands[op], in_array=array, **keys)
 

@@ -347,105 +347,80 @@ def mask(in_array, mask_array, out_array, num_workers):
 
 
 # ---------------------------------------------------------------------------
-# morph: dilation / erosion / opening / closing / fill_holes
+# morph: dilation / erosion / opening / closing / fill-holes
 # ---------------------------------------------------------------------------
 
-MORPH_OPS = ("dilate", "erode", "opening", "closing", "fill_holes")
+MORPH_OPS = ("dilate", "erode", "opening", "closing", "fill-holes")
 
 
-def _fill_holes(data, threshold=0.95):
-    """Fill background enclosed by one label.
+def _fill_holes(data, max_area=0, exclude=()):
+    """Every region enclosed by one object takes that object's id.
 
-    3D: fastmorph; it can absorb an object enclosed by another label.
-    2D: every object survives. A background component whose contacts are >= threshold
-    one label takes that label; then components with no path to the outside (fastmorph's
-    hole groups) take the single label around the group, background voxels only.
+    Enclosed: no face-connected path through other voxels to the object's bounding-box edge, so a
+    diagonal contact is no opening. Background is always filled; the objects in a region go too when
+    it has at most max_area voxels and holds no excluded id. Small regions go first, so a nest ends
+    with its outermost object.
     """
-    import fastmorph
+    from scipy import ndimage
 
-    if data.ndim == 3:
-        small, fwd = fastremap.renumber(data, in_place=False)
-        filled, _ = fastmorph.fill_holes_v2(small, fix_borders=False, merge_threshold=threshold)
-        return fastremap.remap(filled.astype(data.dtype), {v: k for k, v in fwd.items()},
-                               preserve_missing_labels=True, in_place=True)
-
-    import cc3d
-    from scipy.sparse import coo_matrix
-    from scipy.sparse.csgraph import connected_components
-
+    face = ndimage.generate_binary_structure(data.ndim, 1)
+    small, fwd = fastremap.renumber(data, in_place=False)
+    ids = {v: k for k, v in fwd.items()}
+    regions = []
+    for i, box in enumerate(ndimage.find_objects(small), 1):
+        rest, _ = ndimage.label(small[box] != i, face)
+        edge = np.unique(np.concatenate([np.take(rest, [0, -1], a).ravel() for a in range(rest.ndim)]))
+        for j, hbox in enumerate(ndimage.find_objects(rest), 1):
+            if j not in edge:
+                hole = rest[hbox] == j
+                where = tuple(slice(b.start + h.start, b.start + h.stop) for b, h in zip(box, hbox))
+                regions.append((hole.sum(), where, hole, ids[i]))
     out = data.copy()
-    for grouped in (False, True):
-        lab = out + 1  # background is a component too
-        comps, n = cc3d.connected_components(lab, connectivity=4, return_N=True)
-        label = np.zeros(n + 1, np.int64)
-        label[comps] = lab
-        border = np.zeros(n + 1, bool)
-        border[np.concatenate([comps[0], comps[-1], comps[:, 0], comps[:, -1]])] = True
-        contacts = cc3d.contacts(comps, connectivity=4, surface_area=True)
-        if not contacts:
-            break
-        a, b = np.array(list(contacts), dtype=np.int64).T
-        area = np.fromiter(contacts.values(), np.float64, len(contacts))
-        if not grouped:  # each enclosed background component decides on its own
-            hole = (label == 1) & ~border
-            unit = np.arange(n + 1)
-        else:  # fastmorph's hole groups: everything with no path to the outside
-            outside = (label == 1) & border
-            edge = border.copy()
-            edge[np.concatenate([a[outside[b]], b[outside[a]]])] = True
-            inner = ~edge[a] & ~edge[b]
-            graph = coo_matrix((np.ones(inner.sum()), (a[inner], b[inner])), shape=(n + 1, n + 1))
-            _, unit = connected_components(graph, directed=False)
-            hole = ~edge
-        swap = hole[b]  # hole side first; drop pairs that are both holes or both not
-        u, v = np.where(swap, b, a), np.where(swap, a, b)
-        keep = hole[u] & ~hole[v]
-        if not keep.any():
-            continue
-        key, inv = np.unique(np.stack([unit[u[keep]], label[v[keep]]], 1), axis=0, return_inverse=True)
-        share = np.bincount(inv, weights=area[keep])
-        total = np.bincount(key[:, 0], weights=share)
-        order = np.lexsort((-share, key[:, 0]))
-        first = np.r_[True, key[order][1:, 0] != key[order][:-1, 0]]
-        owner, best, top = key[order][first, 0], key[order][first, 1], share[order][first]
-        fill = owner[top / total[owner] >= threshold]
-        if not len(fill):
-            continue
-        new = np.zeros(unit.max() + 1, np.int64)
-        new[fill] = best[top / total[owner] >= threshold] - 1
-        target = (new[unit] * (hole & (label == 1)))[comps]
-        out = np.where(target > 0, target.astype(out.dtype), out)
+    for area, where, hole, host in sorted(regions, key=lambda r: r[0]):
+        view = out[where]
+        if area > max_area or np.isin(view[hole], exclude).any():
+            hole &= view == 0
+        view[hole] = host
     return out
 
 
-def _apply_morph(data, op, iterations):
+def _apply_morph(data, op, iterations, max_area=0, exclude=()):
     import fastmorph
+    from scipy import ndimage
 
     if op == "dilate":
-        return fastmorph.dilate(data, iterations=iterations)
+        out = fastmorph.dilate(data, iterations=iterations)
+        grown = (out != data) & np.isin(out, exclude)  # excluded ids keep their extent
+        out[grown] = data[grown]
+        return out
     if op == "erode":
         return fastmorph.erode(data, iterations=iterations)
     if op == "opening": 
         return fastmorph.dilate(fastmorph.erode(data, iterations=iterations),
                                 iterations=iterations)
-    if op == "closing":
-        return fastmorph.erode(fastmorph.dilate(data, iterations=iterations),
-                               iterations=iterations)
-    if op == "fill_holes":
-        return _fill_holes(data)
+    if op == "closing":  # close the foreground, not each label, so label contacts do not erode
+        fg = data > 0
+        cross = ndimage.generate_binary_structure(data.ndim, 1)
+        gap = ndimage.binary_closing(fg, cross, iterations, border_value=0) & ~fg
+        nearest = ndimage.distance_transform_edt(~fg, return_distances=False, return_indices=True)
+        out = data.copy()
+        out[gap] = data[tuple(i[gap] for i in nearest)]
+        return out
+    if op == "fill-holes":
+        return _fill_holes(data, max_area, exclude)
     raise ValueError(op)
 
 
-def _morph_block(in_ds, out_ds, op, iterations, xy, block):
+def _morph_block(in_ds, out_ds, op, iterations, max_area, exclude, xy, block):
     read_roi = block.read_roi.intersect(in_ds.roi)
     data = in_ds.to_ndarray(read_roi)
 
     if xy:
         out = np.empty_like(data)
         for z in range(data.shape[0]):
-            out[z] = _apply_morph(data[z], op, iterations)
+            out[z] = _apply_morph(data[z], op, iterations, max_area, exclude)
     else:
-        out = _apply_morph(data, op, iterations)
+        out = _apply_morph(data, op, iterations, max_area, exclude)
 
     arr = Array(out, read_roi.offset, out_ds.voxel_size)
     out_ds[block.write_roi] = arr.to_ndarray(block.write_roi)
@@ -456,21 +431,28 @@ def _morph_block(in_ds, out_ds, op, iterations, xy, block):
 @click.option("--in-array", "-i", type=click.Path(exists=True), required=True)
 @click.option("--out-array", "-o", type=click.Path())
 @click.option("--op", type=click.Choice(MORPH_OPS), required=True,
-              help="Morphological operation. fill_holes with --xy keeps every object and "
-              "fills the gap around a nested one; in 3D it can absorb an enclosed object")
+              help="Morphological operation. fill-holes gives every region enclosed by one "
+              "object that object's id: background always, enclosed objects up to --max-area")
 @click.option("--iterations", "-n", type=int, default=1,
               help="Iterations for dilate/erode/opening/closing")
+@click.option("--max-area", type=int, default=0,
+              help="fill-holes: absorb the objects of an enclosed region of at most this many "
+              "voxels (px with --xy), e.g. 84000; 0 keeps every object")
+@click.option("--exclude-ids",
+              help="Label ids that dilate never grows and fill-holes never absorbs, e.g. 1,4,8 "
+              "(in a config file: exclude_ids = [1, 4, 8])")
 @click.option("--xy", is_flag=True, default=False,
               help="Apply per z-section (2D) instead of 3D")
 @click.option("--context", "-c", type=int, default=64,
               help="Halo in voxels covering the op's reach (xy only with --xy, "
               "else xy and z); >= iterations for dilate/erode, "
-              ">= 2*iterations for opening/closing, >= largest hole for fill_holes")
+              ">= 2*iterations for opening/closing, >= largest hole for fill-holes")
 @click.option("--block-size", "-b", type=int, default=2048,
               help="XY write-block size in voxels (snapped to a chunk multiple; "
               "z tiles by the chunk)")
 @click.option("--num-workers", "-w", type=int, default=20)
-def morph(in_array, out_array, op, iterations, xy, context, block_size, num_workers):
+def morph(in_array, out_array, op, iterations, max_area, exclude_ids, xy, context, block_size,
+          num_workers):
     """Apply a morphological operation to a labelled volume, blockwise.
 
     Operations are label-preserving (multilabel). With --xy the operation runs on
@@ -479,14 +461,20 @@ def morph(in_array, out_array, op, iterations, xy, context, block_size, num_work
     seams; it is clipped at the true volume edge.
     """
     in_ds = open_ds(in_array)
-    out_array = out_array or _default_out(in_array, op)
+    # "1,4,8" from the command line, [1, 4, 8] from a config file
+    ids = exclude_ids.split(",") if isinstance(exclude_ids, str) else exclude_ids or []
+    try:
+        exclude = np.array([int(i) for i in ids], in_ds.dtype)
+    except ValueError:
+        raise click.ClickException(f"--exclude-ids {exclude_ids!r}: give label ids, e.g. 1,4,8")
+    out_array = out_array or _default_out(in_array, op.replace("-", "_"))
     print(f"Writing to {out_array}")
     out_ds = _prepare_like(in_ds, out_array)
     _run_blockwise(
         f"Morph-{op}",
         in_ds,
         out_ds,
-        partial(_morph_block, in_ds, out_ds, op, iterations, xy),
+        partial(_morph_block, in_ds, out_ds, op, iterations, max_area, exclude, xy),
         num_workers,
         block_xy=block_size,
         context=context,
