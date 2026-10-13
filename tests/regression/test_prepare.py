@@ -511,26 +511,27 @@ def test_a_dry_run_prints_what_each_step_reads_and_writes(tmp_path):
     run_prepare(tmp_path, "3M")
     d = f"{tmp_path}/round_01"
     level = f"{d}/apical.zarr/3d_mtlsd/30000"
-    seg = step(tmp_path, "04_refine.toml").volumes["apical"]["in_array"]
+    seg = step(tmp_path, "04_refine.toml").volumes["apical"]["in_array"].removeprefix(f"{d}/")
+    c, rel = f"{tmp_path}/apical.zarr", "apical.zarr/3d_mtlsd/30000"
 
     result = CliRunner().invoke(cli, ["run", "round_01", "--dry-run"])
 
     assert result.output == (
-        f"round_01: 5 steps on 1 volume. Paths are in {tmp_path}/apical.zarr unless absolute.\n"
+        "round_01: 5 steps on 1 volume. Paths are in round_01 unless absolute.\n"
         "01 train.3d_mtlsd\n"
-        f"   reads  raw, labels, {d}/training_mask.zarr/apical\n"
-        f"   writes {d}/3d_mtlsd\n"
+        f"   reads  {c}/raw, {c}/labels, training_mask.zarr/apical\n"
+        "   writes 3d_mtlsd\n"
         "02 predict.3d_mtlsd on apical\n"
-        f"   reads  raw, {d}/3d_mtlsd/model_checkpoint_30000.ckpt from 01\n"
-        f"   writes {d}/apical.zarr/3d_mtlsd\n"
+        f"   reads  {c}/raw, 3d_mtlsd/model_checkpoint_30000.ckpt from 01\n"
+        "   writes apical.zarr/3d_mtlsd\n"
         "03 segment on apical\n"
-        f"   reads  {level}/3d_affs from 02\n"
-        f"   writes {level}/fragments_mws, {level}/luts_mws, {level}/segmentations_mws\n"
+        f"   reads  {rel}/3d_affs from 02\n"
+        f"   writes {rel}/fragments_mws, {rel}/luts_mws, {rel}/segmentations_mws\n"
         "04 refine on apical: fill-holes\n"
         f"   reads  {seg} from 03\n"
         f"   writes {seg}_*\n"
         "05 evaluate on apical\n"
-        f"   reads  {level}/segmentations_mws from 03, labels, {level}/3d_affs from 02\n"
+        f"   reads  {rel}/segmentations_mws from 03, {c}/labels, {rel}/3d_affs from 02\n"
         "Every input exists or comes from an earlier step. Nothing ran.\n"
     )
     result = CliRunner().invoke(cli, ["run", "round_01", "--from", "03"])

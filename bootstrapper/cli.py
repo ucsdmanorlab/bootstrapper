@@ -211,15 +211,14 @@ def _was(old, new):
 def plan(path, todo, volumes):
     """The dry-run lines: what each step reads and writes. Refuses a read that is not there and
     that no earlier step writes."""
-    containers = {v.keys["raw"].rsplit(".zarr", 1)[0] + ".zarr/" for v in volumes.values()}
-    base = containers.pop() if len(containers) == 1 else ""
-    lines = [f"{path}: {_count(len(todo), 'step')}" + (f" on {_count(len(volumes), 'volume')}" if volumes else "")
-             + "." + (f" Paths are in {base[:-1]} unless absolute." if base else "")]
-    written = []  # (path prefix, step number) of what earlier steps write
+    base = os.path.abspath(path) + "/" if os.path.isdir(path) else ""
+    shown = []  # every path printed, to say whether any is relative to the round
+    lines, written = [], []  # written: (path prefix, step number) of what earlier steps write
     for n, f, s in todo:
         for vol, config in runs(s):
             reads = []
-            for r in (p for key in READS[s.kind] for p in paths(config, key)):
+            read = [p for key in READS[s.kind] for p in paths(config, key)]
+            for r in read:
                 src = max(((len(w), m) for w, m in written if (r + "/").startswith(w)), default=None)
                 if src:
                     reads.append(f"{r.removeprefix(base)} from {src[1]}")
@@ -232,11 +231,14 @@ def plan(path, todo, volumes):
                                                "nothing there, and no earlier step writes it. Nothing ran.")
             writes = [p + "_*" if s.kind == "refine" else p for key in WRITES[s.kind] for p in paths(config, key)]
             written += [(w[:-1] if w.endswith("*") else w + "/", n) for w in writes]
-            ops = f": {', '.join(s.keys['ops'])}" if s.kind == "refine" else ""
+            shown += read + writes
+            ops = f": {', '.join(volume_ops(s, config))}" if s.kind == "refine" else ""
             lines += [f"{n} {s.label}{' on ' + vol if vol else ''}{ops}",
                       *([f"   reads  {', '.join(reads)}"] if reads else []),
                       *([f"   writes {', '.join(w.removeprefix(base) for w in writes)}"] if writes else [])]
-    return lines + ["Every input exists or comes from an earlier step. Nothing ran."]
+    head = (f"{path}: {_count(len(todo), 'step')}" + (f" on {_count(len(volumes), 'volume')}" if volumes else "")
+            + "." + (f" Paths are in {path.rstrip('/')} unless absolute." if base and any(p.startswith(base) for p in shown) else ""))
+    return [head, *lines, "Every input exists or comes from an earlier step. Nothing ran."]
 
 
 def write_receipt(path, notes, volumes, steps):
@@ -259,6 +261,11 @@ def _count(n, word):
     return f"{n} {word}{'s' * (n != 1)}"
 
 
+def volume_ops(step, config):
+    """The ops a volume runs: the mask op only with a mask, as a volume without a target mask has none."""
+    return [op for op in step.keys["ops"] if op != "mask" or "mask_array" in config["ops"][op]]
+
+
 def run_refine(ctx, step):
     """Run a refine step's ops in order on each volume; each op's output feeds the next. A
     volume's op table, such as [run.refine.<volume>.mask], merges over the step's."""
@@ -274,12 +281,14 @@ def run_refine(ctx, step):
             if "dry_run" in keys and "dry_run" in names:
                 raise click.ClickException(f"[{step.label}.{op}] has no key 'dry_run'; a chain has no dry run, so run bs refine {op} --dry-run")
             refuse_unknown(f"[{step.label}.{op}]", keys, names - {"dry_run"})
+    if "mask" in ops and not any("mask_array" in config["ops"]["mask"] for _, config in configs):
+        raise click.ClickException(f"[{step.label}.mask] needs mask_array, the mask to keep the labels inside")
     for _, config in configs:
         array = config.get("in_array")
         if array is None:
             raise click.ClickException(f"[{step.label}] needs in_array")
         defaults = {"num_workers": config["num_workers"]} if "num_workers" in config else {}
-        for op in ops:
+        for op in volume_ops(step, config):
             keys = defaults | config["ops"][op]
             if op in MORPH_OPS:
                 keys["op"] = op

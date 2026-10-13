@@ -334,7 +334,7 @@ def ask_volumes(round_dir, flags, terminal):
     return volumes
 
 
-def summary(name, d):
+def summary(name, d, taken=()):
     """dw09-zarr: raw/s1, sparsely labelled gt_boundaries/s1 (3D; other objects around them), ground truth gt_boundaries/s1"""
     keys, container = d.keys, discover.container(d.keys["raw"])
 
@@ -352,7 +352,7 @@ def summary(name, d):
     if glob.has_magic(keys["raw"]):
         names = []
         for match in sorted(glob.glob(keys["raw"])):
-            names.append(volume_name(match, names))
+            names.append(volume_name(match, {*taken, *names}))
         name = f"{len(names)} volumes ({', '.join(names)})"
     return f"{name}: {', '.join(parts)}"
 
@@ -430,7 +430,7 @@ def add_volume(path, flags, terminal):
     name = d.name or volume_name(d.keys["raw"], ())
     if name in taken:
         raise click.ClickException(f"{path} has a volume named {name} already. Give this one another name, such as --name {name}-2")
-    cli_echo(f"  {summary(name, d)}", STYLE)
+    cli_echo(f"  {summary(name, d, taken)}", STYLE)
     with open(beside, "a") as f:
         f.write(file_text("", {"volumes": {name: d.keys}}).split("\n", 1)[1])
     cli_echo(f"added {name} to {beside}", STYLE)

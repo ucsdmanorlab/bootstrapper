@@ -50,6 +50,8 @@ def get_devices(num_gpus):
     """The devices this process may use, as CUDA_VISIBLE_DEVICES tokens.
 
     Tokens are passed through as written, so UUID and MIG forms survive."""
+    if num_gpus == 0:
+        return []
     visible = os.environ.get("CUDA_VISIBLE_DEVICES")
 
     if visible is None:
