@@ -183,6 +183,25 @@ def test_run_refuses_an_unknown_step_by_name(round_dir, option, step, needles):
         assert needle in result.stderr
 
 
+def test_a_dry_run_of_your_own_file_derives_nothing(tmp_path, affs):
+    """A file without a run tail is yours: bs prepare did not write it, so its step names
+    need not be models."""
+    (tmp_path / "model_checkpoint_5000.ckpt").touch()
+    checkpoint = f"{tmp_path}/model_checkpoint_5000"  # predict adds .ckpt
+    config = tmp_path / "predict.toml"
+    config.write_text(
+        f'[predict.setup_01]\nsetup_dir = "{tmp_path}"\ncheckpoint = "{checkpoint}"\n'
+        f'input_datasets = ["{affs}"]\noutput_datasets_prefix = "{tmp_path}/o.zarr/p"\n'
+    )
+
+    result = CliRunner().invoke(cli, ["run", str(config), "--dry-run"])
+
+    assert result.output.splitlines()[1:3] == [
+        "01 predict.setup_01",
+        f"   reads  {affs}, {checkpoint}",
+    ]
+
+
 def test_run_refuses_a_directory_without_numbered_files(tmp_path):
     (tmp_path / "empty").mkdir()
 

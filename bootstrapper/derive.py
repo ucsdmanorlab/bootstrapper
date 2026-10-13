@@ -9,7 +9,7 @@ import zarr
 from funlib.persistence import open_ds
 
 from .catalog import MODELS, check_round
-from .config import Step, runs, unset, with_tail
+from .config import Step, ops_beside, runs, unset, with_tail
 from .configs import MODEL_DIR, checkpoint_iteration, find_checkpoints
 from .data.mask import training_mask
 from .post.naming import mws_segmentation_name
@@ -78,7 +78,7 @@ def derive(volumes, steps, root):
                        "pred": {"pred_dataset": c["affs_dataset"], "params": {"aff_neighborhood": c["params"]["aff_neighborhood"]}}}
                    for n, c in segments.items() if "gt" in volumes[n].keys}
         vols = {n: unset(keys, step.keys, step.volumes.get(n, {})) for n, keys in per.items()}
-        tails.append(unset(own, step.keys) | {n: _ops_beside(keys) for n, keys in vols.items() if keys})
+        tails.append(unset(own, step.keys) | {n: ops_beside(keys) for n, keys in vols.items() if keys})
     return tails
 
 
@@ -86,11 +86,6 @@ def _over(step, own, per):
     """The step over its derived keys, and each volume's config."""
     run = with_tail(step, Step(step.kind, step.name, own, per))
     return run, {n: config for n, config in runs(run) if n}
-
-
-def _ops_beside(keys):
-    """A refine volume's ops as tables beside its in_array, as the file holds them."""
-    return {k: v for k, v in keys.items() if k != "ops"} | keys.get("ops", {})
 
 
 def _model(step):

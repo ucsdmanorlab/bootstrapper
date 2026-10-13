@@ -1,7 +1,10 @@
 import os
+import platform
+import re
 import sys
 import time
 import traceback
+from importlib.metadata import version
 
 import click
 
@@ -16,9 +19,12 @@ from . import (
     utils,
 )
 
-from .config import load_round, runs, refuse_unknown, OPS
+from .config import READS, WRITES, OPS, load_round, load_volumes, ops_beside, paths, prepared_round, refuse_unknown, runs
+from .configs import MODEL_DIR
+from .prepare import stale
 from .refine import MORPH_OPS
 from .styles import cli_echo
+from .write import file_text
 
 
 class CommandGroup(click.Group):
@@ -87,31 +93,130 @@ cli.add_command(utils)
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--only", multiple=True, help="Run only these steps: a kind, kind.name, or a file prefix in a directory")
 @click.option("--from", "from_", help="Run from this step to the end")
+@click.option("--dry-run", is_flag=True, help="Check every path and print what each step reads and writes; run nothing")
 @click.pass_context
-def run(ctx, path, only, from_):
-    """Run the steps of a config file in file order, or the numbered files of a directory."""
-    todo = [(f, s) for f, steps in load_round(path) for s in steps]
+def run(ctx, path, only, from_, dry_run):
+    """Run the steps of a config file in file order, or the numbered files of a directory. Each
+    run writes a receipt into runs/: the keys each step read, which bs run repeats."""
+    steps = [(f, s) for f, file_steps in load_round(path) for s in file_steps]
+    todo = [(f"{n:02d}", f, s) for n, (f, s) in enumerate(steps, 1)]
 
     def match(sel, f, s):
         return sel in (s.kind, s.label) or os.path.basename(f).startswith(sel)
 
     if from_:
-        first = next((i for i, (f, s) in enumerate(todo) if match(from_, f, s)), None)
+        first = next((i for i, (_, f, s) in enumerate(todo) if match(from_, f, s)), None)
         if first is None:
-            raise click.ClickException(f"--from {from_}: no such step; steps are " + ", ".join(s.label for _, s in todo))
+            raise click.ClickException(f"--from {from_}: no such step; steps are " + ", ".join(s.label for _, s in steps))
         todo = todo[first:]
     if only:
-        todo = [(f, s) for f, s in todo if any(match(o, f, s) for o in only)]
+        todo = [(n, f, s) for n, f, s in todo if any(match(o, f, s) for o in only)]
         if not todo:
             raise click.ClickException(f"--only {' '.join(only)}: no such step")
 
-    for f, s in todo:
+    refuse_stale(path)
+    volumes = load_volumes(todo[0][1]) if todo else {}
+    lines = plan(path, todo, volumes)
+    if dry_run:
+        click.echo("\n".join(lines))
+        return
+
+    root = os.path.abspath(path if os.path.isdir(path) else os.path.dirname(path))
+    receipt = os.path.join(root, "" if os.path.basename(root) == "runs" else "runs", time.strftime("%Y%m%d-%H%M%S.toml"))
+    typed = f"bs run {path}" + "".join(f" --only {o}" for o in only) + (f" --from {from_}" if from_ else "")
+    notes = [f"{typed}, {time.strftime('%Y-%m-%d %H:%M:%S')}, bootstrapper {version('bootstrapper')}, on {platform.node()}"]
+    ran = []
+    for _, f, s in todo:
         cli_echo(f"Running {s.label} from {f}", s.kind)
-        if s.kind == "refine":
-            run_refine(ctx, s)
-        else:
-            command = {"train": train, "predict": predict, "segment": segment, "evaluate": evaluate}[s.kind]
-            ctx.invoke(command, config_file=f, step=None if s.name == s.kind else s.name)
+        name, start = f"{os.path.basename(f)} [{s.label}]", time.time()
+        try:
+            if s.kind == "refine":
+                run_refine(ctx, s)
+            else:
+                command = {"train": train, "predict": predict, "segment": segment, "evaluate": evaluate}[s.kind]
+                ctx.invoke(command, config_file=f, step=None if s.name == s.kind else s.name)
+        except Exception as e:
+            error = e.message if isinstance(e, click.ClickException) else f"{type(e).__name__}: {e}"
+            write_receipt(receipt, [*notes, f"{name}: failed after {_took(start)}: {error}"], volumes, [*ran, s])
+            raise
+        notes.append(f"{name}: done, {_took(start)}")
+        ran.append(s)
+        write_receipt(receipt, notes, volumes, ran)
+
+
+def refuse_stale(path):
+    """Refuse a round whose run tails differ from the ones bs prepare derives now."""
+    root = prepared_round(path)
+    changed = stale(root) if root else []
+    if not changed:
+        return
+    lines = [f"  {os.path.basename(f)} [{table}] {k}: {_was(a, b)}"
+             for f, _, _, keys in changed for table, ks in keys.items() for k, (a, b) in ks.items()]
+    more = [f"  and {len(lines) - 3} more"] if len(lines) > 3 else []
+    n = len(changed)
+    raise click.ClickException("\n".join([
+        f"{root}: {n} run tail{'s are' if n > 1 else ' is'} out of date with the keys above {'them' if n > 1 else 'it'}. Nothing ran.",
+        *lines[:3], *more, f"Run: bs prepare {root}"]))
+
+
+def _was(old, new):
+    """'old is now new', without the parts between / and -- that both share at either end."""
+    text = ("none" if v is None else ", ".join(map(str, v)) if isinstance(v, list) else str(v) for v in (old, new))
+    a, b = (re.split(r"(?=/|--)", t) for t in text)
+    i = len(os.path.commonprefix([a, b]))
+    j = len(os.path.commonprefix([a[i:][::-1], b[i:][::-1]]))
+    return " is now ".join("..." * (i > 0) + "".join(p[i:len(p) - j]) + "..." * (j > 0) for p in (a, b))
+
+
+def plan(path, todo, volumes):
+    """The dry-run lines: what each step reads and writes. Refuses a read that is not there and
+    that no earlier step writes."""
+    containers = {v.keys["raw"].rsplit(".zarr", 1)[0] + ".zarr/" for v in volumes.values()}
+    base = containers.pop() if len(containers) == 1 else ""
+    lines = [f"{path}: {_count(len(todo), 'step')}" + (f" on {_count(len(volumes), 'volume')}" if volumes else "")
+             + "." + (f" Paths are in {base[:-1]} unless absolute." if base else "")]
+    written = []  # (path prefix, step number) of what earlier steps write
+    for n, f, s in todo:
+        for vol, config in runs(s):
+            reads = []
+            for r in (p for key in READS[s.kind] for p in paths(config, key)):
+                src = max(((len(w), m) for w, m in written if (r + "/").startswith(w)), default=None)
+                if src:
+                    reads.append(f"{r.removeprefix(base)} from {src[1]}")
+                elif r.startswith(MODEL_DIR):
+                    reads.append(f"{os.path.basename(r)} (shipped)")
+                elif os.path.exists(r) or os.path.exists(r + ".ckpt"):  # predict adds .ckpt to a checkpoint
+                    reads.append(r.removeprefix(base))
+                else:
+                    raise click.ClickException(f"{os.path.basename(f)} [{s.label}]{' ' + vol if vol else ''} reads {r}: "
+                                               "nothing there, and no earlier step writes it. Nothing ran.")
+            writes = [p + "_*" if s.kind == "refine" else p for key in WRITES[s.kind] for p in paths(config, key)]
+            written += [(w[:-1] if w.endswith("*") else w + "/", n) for w in writes]
+            ops = f": {', '.join(s.keys['ops'])}" if s.kind == "refine" else ""
+            lines += [f"{n} {s.label}{' on ' + vol if vol else ''}{ops}",
+                      *([f"   reads  {', '.join(reads)}"] if reads else []),
+                      *([f"   writes {', '.join(w.removeprefix(base) for w in writes)}"] if writes else [])]
+    return lines + ["Every input exists or comes from an earlier step. Nothing ran."]
+
+
+def write_receipt(path, notes, volumes, steps):
+    """A round file of the steps that ran, each with the keys it read, below one note per step."""
+    doc = {"volumes": {n: v.keys for n, v in volumes.items()}} if volumes else {}
+    for s in steps:
+        table = ops_beside(s.keys) | {v: ops_beside(keys) for v, keys in s.volumes.items()}
+        doc.setdefault(s.kind, {}).update(table if s.name == s.kind else {s.name: table})
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(file_text("\n# ".join([*notes, "The keys below are the ones each step read. bs run on this file repeats the steps."]), doc))
+
+
+def _took(start):
+    seconds = time.time() - start
+    return f"{seconds / 60:.0f} min" if seconds >= 60 else f"{seconds:.0f} s"
+
+
+def _count(n, word):
+    return f"{n} {word}{'s' * (n != 1)}"
 
 
 def run_refine(ctx, step):

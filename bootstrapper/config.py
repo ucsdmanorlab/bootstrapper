@@ -33,6 +33,20 @@ KEYS = {
     "evaluate": {"seg_datasets_prefix", "seg_datasets", "mask_dataset", "out_result", "out_dir",
                  "thresholds", "roi_offset", "roi_shape"},
 }
+READS = {  # the keys that name what a step reads
+    "train": ("raw", "labels", "mask"),
+    "predict": ("input_datasets", "checkpoint"),
+    "segment": ("affs_dataset", "mask_dataset", "seeds_dataset"),
+    "refine": ("in_array", "mask_array"),
+    "evaluate": ("seg_datasets_prefix", "seg_datasets", "labels_dataset", "pred_dataset", "mask_dataset"),
+}
+WRITES = {  # the keys that name where a step writes; refine writes beside its in_array
+    "train": ("setup_dir",),
+    "predict": ("output_datasets_prefix",),
+    "segment": ("fragments_dataset", "lut_dir", "seg_dataset_prefix"),
+    "refine": ("in_array",),
+    "evaluate": ("out_result", "out_dir"),
+}
 
 
 @dataclass
@@ -98,6 +112,16 @@ def load_round(path, tail=True):
     if not files:
         raise click.ClickException(f"{path}: no numbered .toml files")
     return [(f, load(f, tail)) for f in files]
+
+
+def prepared_round(path):
+    """The round that path runs in, if bs prepare wrote it (a file holds a run tail); None for
+    files of your own. A step file whose volumes sit in volumes.toml beside it runs in that
+    folder's round."""
+    beside = os.path.join(os.path.dirname(os.path.abspath(path)), "volumes.toml")
+    if os.path.isfile(path) and "volumes" not in _toml(path) and os.path.exists(beside):
+        path = os.path.dirname(beside)
+    return path if any("run" in _toml(f) for f, _ in load_round(path, tail=False)) else None
 
 
 def load_volumes(path):
@@ -182,6 +206,23 @@ def runs(step):
     if not step.volumes:
         return [(None, dict(step.keys))]
     return [(vol, _merge(step.keys, keys)) for vol, keys in step.volumes.items()]
+
+
+def paths(config, key):
+    """The paths under key in config, its tables and its arrays of tables."""
+    for k, v in config.items():
+        if isinstance(v, dict):
+            yield from paths(v, key)
+        elif isinstance(v, list) and v and isinstance(v[0], dict):
+            for row in v:
+                yield from paths(row, key)
+        elif k == key:
+            yield from v if isinstance(v, list) else [v]
+
+
+def ops_beside(keys):
+    """A refine table's ops beside its keys, as a file holds them."""
+    return {k: v for k, v in keys.items() if k != "ops"} | keys.get("ops", {})
 
 
 def _merge(a, b):

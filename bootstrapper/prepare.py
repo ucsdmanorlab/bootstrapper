@@ -111,15 +111,13 @@ def write_round(round_dir, volumes, chain):
     return written
 
 
-def refresh(path):
-    """Write the run tail of each file of the round at path from the volumes and the keys
-    above it. Then copy the model scripts that are missing, and write the training masks.
-    Returns (file, {table: keys}) for each file whose tail changed."""
+def stale(path):
+    """(file, its text, its new run tail, {table: {key: (old, new)}}) for each file of the round
+    at path whose run tail differs from the one derived from the volumes and the keys above it."""
     root = os.path.abspath(path if os.path.isdir(path) else os.path.dirname(path))
     files = load_round(path, tail=False)
-    volumes = load_volumes(files[0][0])
-    tails = iter(derive(volumes, [s for _, steps in files for s in steps], root))
-    changed = []
+    tails = iter(derive(load_volumes(files[0][0]), [s for _, steps in files for s in steps], root))
+    out = []
     for f, steps in files:
         run = {}
         for s, table in zip(steps, tails):
@@ -130,29 +128,40 @@ def refresh(path):
         with open(f) as fh:
             text = fh.read()
         if keys := _changed(tomllib.loads(text).get("run", {}), run):
-            changed.append((f, keys))
-            with open(f, "w") as fh:
-                fh.write(splice(text, tail_text(os.path.abspath(path), run) if run else ""))
-    for _, steps in load_round(path):
+            out.append((f, text, run, keys))
+    return out
+
+
+def refresh(path):
+    """Write the run tails that stale finds. Then copy the model scripts that are missing, and
+    write the training masks. Returns (file, {table: {key: (old, new)}}) for each file whose
+    tail changed."""
+    root = os.path.abspath(path if os.path.isdir(path) else os.path.dirname(path))
+    changed = stale(path)
+    for f, text, run, _ in changed:
+        with open(f, "w") as fh:
+            fh.write(splice(text, tail_text(os.path.abspath(path), run) if run else ""))
+    files = load_round(path)
+    for _, steps in files:
         for s in steps:
             if s.kind == "train" and not os.path.exists(os.path.join(s.keys["setup_dir"], "train.py")):
                 copy_model_scripts(s.name, s.keys["setup_dir"], cli_edit=False)
-    for name, v in volumes.items():
+    for name, v in load_volumes(files[0][0]).items():
         out = os.path.join(root, "training_mask.zarr", name)
         if "labels" in v.keys and training_mask(v.keys, out) == out:
             write_training_mask(v.keys, out)
-    return changed
+    return [(f, keys) for f, _, _, keys in changed]
 
 
 def _changed(old, new, table="run"):
-    """The keys whose values differ between two run tails, by table."""
+    """The keys whose values differ between two run tails, with both values, by table."""
     keys = {}
     for k in [*new, *(k for k in old if k not in new)]:
         a, b = old.get(k), new.get(k)
         if isinstance(a, dict) or isinstance(b, dict):
             keys |= _changed(a if isinstance(a, dict) else {}, b if isinstance(b, dict) else {}, f"{table}.{k}")
         elif a != b:
-            keys.setdefault(table, []).append(k)
+            keys.setdefault(table, {})[k] = (a, b)
     return keys
 
 

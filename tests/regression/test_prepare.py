@@ -1,7 +1,8 @@
 """bs prepare asks about the data, then writes volumes.toml, numbered step files, a
 checkpoint-free setup with no __pycache__, and the training masks in the round, never in the
 data container; every file loads, and every param in it says what it does. Each file holds
-your keys above a run tail of derived keys, which bs prepare PATH writes again from them."""
+your keys above a run tail of derived keys, which bs prepare PATH writes again from them.
+bs run refuses a stale tail, checks every path before any step, and keeps a receipt."""
 
 import glob
 import os
@@ -325,3 +326,88 @@ def test_model_copy_leaves_out_pycache(tmp_path, monkeypatch):
     configs.copy_model_scripts("m", str(tmp_path / "setup"), cli_edit=False)
 
     assert os.listdir(tmp_path / "setup") == ["train.py"]
+
+
+def test_bs_run_refuses_a_stale_run_tail_until_bs_prepare(tmp_path, dialogue):
+    """A bias edit renames the segmentation that refine reads. Nothing runs until bs prepare
+    writes the tail again."""
+    segment = tmp_path / "round_01" / "04_segment.toml"
+    segment.write_text(segment.read_text().replace("bias = [-0.4", "bias = [-0.3", 1))
+
+    result = CliRunner().invoke(cli, ["run", "round_01"])
+
+    assert result.exit_code == 1
+    assert result.stderr == (
+        "Error: round_01: 1 run tail is out of date with the keys above it. Nothing ran.\n"
+        "  05_refine.toml [run.refine.apical] in_array: "
+        "...--b-0.4_-0.4_-0.4_-0.7_-0.7_-0.7_-0.7_-0.7_-0.7... is now "
+        "...--b-0.3_-0.4_-0.4_-0.7_-0.7_-0.7_-0.7_-0.7_-0.7...\n"
+        "Run: bs prepare round_01\n"
+    )
+    CliRunner().invoke(prepare, ["round_01"], catch_exceptions=False)
+    dry_run = CliRunner().invoke(cli, ["run", "round_01", "--dry-run"]).output
+    assert " (shipped)\n" in dry_run, dry_run  # predict downloads it when missing
+
+    train = tmp_path / "round_01" / "01_train_2d_mtlsd.toml"
+    train.write_text(train.read_text().replace("= 30001", "= 20001", 1))
+    lines = CliRunner().invoke(cli, ["run", "round_01"]).stderr.splitlines()
+    assert lines[0].endswith(
+        ": 5 run tails are out of date with the keys above them. Nothing ran."
+    )
+    assert lines[4:] == ["  and 7 more", "Run: bs prepare round_01"]
+
+
+def test_a_dry_run_prints_what_each_step_reads_and_writes(tmp_path):
+    """Each read exists or comes from an earlier step; a missing one stops the run before any
+    step."""
+    run_prepare(tmp_path, "3M")
+    d, level = f"{tmp_path}/round_01", "3d_mtlsd/30000"
+    seg = step(tmp_path, "04_refine.toml").volumes["apical"]["in_array"]
+    seg = seg.removeprefix(f"{tmp_path}/apical.zarr/")
+
+    result = CliRunner().invoke(cli, ["run", "round_01", "--dry-run"])
+
+    assert result.output == (
+        f"round_01: 5 steps on 1 volume. Paths are in {tmp_path}/apical.zarr unless absolute.\n"
+        "01 train.3d_mtlsd\n"
+        f"   reads  raw, labels, {d}/training_mask.zarr/apical\n"
+        f"   writes {d}/3d_mtlsd\n"
+        "02 predict.3d_mtlsd on apical\n"
+        f"   reads  raw, {d}/3d_mtlsd/model_checkpoint_30000.ckpt from 01\n"
+        "   writes 3d_mtlsd\n"
+        "03 segment on apical\n"
+        f"   reads  {level}/3d_affs from 02\n"
+        f"   writes {level}/fragments_mws, {level}/luts_mws, {level}/segmentations_mws\n"
+        "04 refine on apical: fill-holes\n"
+        f"   reads  {seg} from 03\n"
+        f"   writes {seg}_*\n"
+        "05 evaluate on apical\n"
+        f"   reads  {level}/segmentations_mws from 03, labels, {level}/3d_affs from 02\n"
+        "Every input exists or comes from an earlier step. Nothing ran.\n"
+    )
+    result = CliRunner().invoke(cli, ["run", "round_01", "--from", "03"])
+    assert result.stderr == (
+        f"Error: 03_segment.toml [segment] apical reads {tmp_path}/apical.zarr/{level}/3d_affs: "
+        "nothing there, and no earlier step writes it. Nothing ran.\n"
+    )
+    assert not os.path.exists(f"{d}/runs")
+
+
+def test_a_receipt_holds_the_keys_each_step_read_and_dry_runs_clean(tmp_path, dialogue):
+    refine = step(tmp_path, "05_refine.toml")
+    write(refine.volumes["apical"]["in_array"], np.full((8, 64, 64), 7, np.uint64))
+    path = tmp_path / "round_01" / "05_refine.toml"
+    path.write_text("[refine]\nnum_workers = 1\n" + path.read_text())
+
+    result = CliRunner().invoke(
+        cli, ["run", "round_01", "--only", "05"], catch_exceptions=False
+    )
+
+    assert result.exit_code == 0, result.output
+    (receipt,) = glob.glob(f"{tmp_path}/round_01/runs/*.toml")
+    first, status = open(receipt).read().splitlines()[:2]
+    assert first.startswith("# bs run round_01 --only 05, ")
+    assert re.fullmatch(r"# 05_refine.toml \[refine\]: done, \d+ s", status)
+    assert load(receipt) == [step(tmp_path, "05_refine.toml")]
+    dry_run = CliRunner().invoke(cli, ["run", receipt, "--dry-run"]).output
+    assert dry_run.endswith("comes from an earlier step. Nothing ran.\n"), dry_run

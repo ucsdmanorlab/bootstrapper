@@ -2,6 +2,8 @@
 name. Every table refuses an unknown key with the nearest valid name or the list."""
 
 import glob
+import os
+import re
 
 import click
 import numpy as np
@@ -398,6 +400,11 @@ def test_a_refine_chain_refuses_an_unknown_op_key_before_any_op_runs(
     assert f"Error: {message}" in result.stderr.splitlines()
     assert "objects" not in result.output
     assert glob.glob(f"{labels}_*") == []
+    (receipt,) = glob.glob(f"{os.path.dirname(path)}/runs/*.toml")
+    assert re.search(
+        rf"x.toml \[refine\]: failed after \d+ s: {re.escape(message)}\n",
+        open(receipt).read(),
+    )
 
 
 def test_a_valid_kind_table_file_still_loads(write):
