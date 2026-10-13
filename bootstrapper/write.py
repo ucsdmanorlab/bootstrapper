@@ -1,17 +1,41 @@
 """The TOML text of a config file. A key of params.KEYS carries what it does, and its off
-keys and tables show commented out."""
+keys and tables show commented out. The run tail goes below a banner, and bs prepare
+replaces only it."""
 import json
 import re
 
-from .params import KEYS
+from .params import KEYS, TAIL
 
 COLUMN, WIDTH = 35, 100  # an inline comment starts at COLUMN; one that runs past WIDTH goes above
+BANNER = "# Below: the run tail. bs prepare writes it from the volumes and the keys above."
+HEADER = re.compile(r"\s*\[\[?([^\],]+)\]\]?\s*(#.*)?$")
 
 
 def file_text(title, doc):
     out = [f"# {title}"]
     _table([], doc, out)
     return "\n".join(out) + "\n"
+
+
+def tail_text(round_path, run):
+    """The banner, then the [run.*] tables of run."""
+    out = []
+    _table(["run"], run, out)
+    return "\n".join([BANNER, f"# Edit the keys above, not these; then run: bs prepare {round_path}", *out[1:]]) + "\n"
+
+
+def splice(text, tail):
+    """text with tail in place of its run tail. Every line outside the banner and the [run.*]
+    tables stays as it is."""
+    keep, in_tail = [], False
+    for line in text.splitlines(keepends=True):
+        header = HEADER.match(line)
+        if header or line.startswith(BANNER):
+            in_tail = not header or header[1].strip().startswith("run.")
+        if not in_tail:
+            keep.append(line)
+    head = "".join(keep).rstrip("\n") + "\n"
+    return f"{head}\n{tail}" if tail else head
 
 
 def _table(path, doc, out):
@@ -23,7 +47,7 @@ def _table(path, doc, out):
     if keys or spec or not doc:
         out += ["", f"{'# ' * off}[{_dotted(path)}]"]
     for k, v in keys.items():
-        out += _line(k, v, spec[k].help if k in spec else "")
+        out += _line(k, v, spec[k].help if k in spec else TAIL.get(k, ""))
     for k, key in spec.items():
         if k not in keys and (key.off or off):
             out += _line(k, key.value, key.help, off=True)

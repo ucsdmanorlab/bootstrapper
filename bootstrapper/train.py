@@ -16,7 +16,7 @@ def setup_train(config_file, step=None, **kwargs):
         names = ", ".join(s.name for s in steps)
         raise click.ClickException(f"{config_file} has several train steps ({names}); pass --step")
     config = dict(steps[0].keys)
-    remake = f"bs prepare -o {os.path.dirname(os.path.abspath(config_file))}"
+    remake = f"bs prepare {os.path.dirname(os.path.abspath(config_file))}"
     if not os.path.exists(os.path.join(config["setup_dir"], "train.py")):
         raise click.ClickException(f"{config['setup_dir']} has no train.py; {remake} copies the model scripts there")
 

@@ -19,7 +19,7 @@ KEYS = {
         "training_mask": Key(None, 'Sparsely labelled: "labels"; densely labelled: "everywhere"; densely labelled within a mask: its path.'),
         "2d_labels": Key(None, "true: the labels sit on single sections."),
         "mask_dilation": Key(None, "Trains on this many voxels of background around each object."),
-        "target_mask": Key(None, "Segment and evaluate only inside this mask."),
+        "target_mask": Key(None, "Segment, refine and evaluate only inside this mask; predict covers its box."),
         "gt": Key(None, "Ground truth for evaluate."),
         "outputs": Key(None, "Where outputs go. Default: the raw's container."),
         "voxel_size": Key(None, "Voxel size in nm, z y x."),
@@ -59,6 +59,18 @@ KEYS = {
     "evaluate": {
         "thresholds": Key(EVAL_ERROR_THRESHOLDS["affs"], "The error mask keeps affinity errors between these two values."),
     },
+}
+
+TAIL = {  # what a derived key of the run tail holds
+    "setup_dir": "The model scripts and checkpoints.",
+    "voxel_size": "Voxel size in nm, z y x, from the raw.",
+    "checkpoint": "The last checkpoint of the train step, or the shipped one.",
+    "input_datasets": "The raw, or what the predict step before gives.",
+    "roi_offset": "With roi_shape, the target mask's box in nm: predict covers only it.",
+    "aff_neighborhood": "The affinity offsets in the model's net_config.json.",
+    "mask_dataset": "The target mask.",
+    "mask_array": "The target mask.",
+    "in_array": "The segmentation that the segment step writes with its params.",
 }
 
 

@@ -1,22 +1,23 @@
-"""bs prepare: ask about the data, then write the round directory."""
-import json
+"""bs prepare: ask about the data, then write the round directory; on a round, write its
+run tails again."""
+import glob
 import os
+import tomllib
 
 import click
 import zarr
 
 from .catalog import check_round, default_chain, describe, parse_chain, valid_chains
-from .configs import BS_DIR, checkpoint_iteration, copy_model_scripts, find_checkpoints
+from .config import load_round, load_volumes
+from .configs import copy_model_scripts
 from .data.convert import convert
-from .data.mask import training_mask
+from .data.mask import training_mask, write_training_mask
+from .derive import derive
 from .params import defaults
-from .post.naming import mws_segmentation_name
-from .segment import DEFAULTS as SEG_DEFAULTS
 from .styles import cli_echo, cli_prompt, cli_confirm
-from .write import file_text
+from .write import file_text, splice, tail_text
 
 STYLE = "prepare"
-SHIPPED_ITERATION = 25000
 
 
 def ask_volume(round_dir):
@@ -80,91 +81,95 @@ def ask_models(volumes):
         return chain
 
 
-def net_config(setup_dir):
-    with open(os.path.join(setup_dir, "net_config.json")) as f:
-        return json.load(f)
-
-
 def write_round(round_dir, volumes, chain):
-    trained = [v for v in volumes.values() if "labels" in v]
-    if not trained:
+    """Write volumes.toml and one numbered file of your keys per step, then their run tails."""
+    if not any("labels" in v for v in volumes.values()):
         raise click.ClickException("no volume has labels; nothing to train")
+    files = [("volumes.toml", "Volumes of this round. Every step reads its arrays from here.", {"volumes": volumes})]
+    for model in chain:
+        io = f"{' and '.join(model.inputs)} in, {' and '.join(model.outputs)} out"
+        if not model.shipped:
+            files.append((f"train_{model.name}", f"Train {model.name} ({model.short}) on every volume with labels: {io}.",
+                          {"train": {model.name: defaults("train.*")}}))
+        files.append((f"predict_{model.name}", f"Predict {model.name} ({model.short}) on every volume: {io}.",
+                      {"predict": {model.name: defaults("predict.*")}}))
+    files.append(("segment", f"Segment the 3D affinities of {chain[-1].name} into objects.",
+                  {"segment": defaults("segment") | {"params": defaults("segment.params")}}))
+    masked = {"mask": {}} if all("target_mask" in v for v in volumes.values()) else {}
+    files.append(("refine", "Refine the segmentation. The ops run in file order; each output feeds the next.",
+                  {"refine": {"fill-holes": defaults("refine.fill-holes")} | masked}))
+    if any("gt" in v for v in volumes.values()):
+        files.append(("evaluate", "Compare the segmentations with the ground truth, and the affinities with the segmentations.",
+                      {"evaluate": defaults("evaluate")}))
     written = []
-
-    def write(name, title, doc):
-        path = os.path.join(round_dir, name)
+    for n, (name, title, doc) in enumerate(files):
+        path = os.path.join(round_dir, f"{n:02d}_{name}.toml" if n else name)
         with open(path, "w") as f:
             f.write(file_text(title, doc))
         written.append(path)
-
-    write("volumes.toml", "Volumes of this round. Every step reads its arrays from here.", {"volumes": volumes})
-    voxel_size = trained[0].get("voxel_size") or [int(v) for v in zarr.open(trained[0]["raw"], "r").attrs["voxel_size"]]
-    samples = []
-    for name, v in volumes.items():
-        if "labels" in v:
-            mask = training_mask(v, os.path.join(round_dir, "training_mask.zarr", name))
-            samples.append({"raw": v["raw"], "labels": v["labels"], **({"mask": mask} if mask else {})})
-
-    done, outputs = [], {name: {"raw": v["raw"]} for name, v in volumes.items()}  # (model, iteration) so far; each volume's latest arrays by name
-    n = 1
-    for model in chain:
-        io = f"{' and '.join(model.inputs)} in, {' and '.join(model.outputs)} out"
-        if model.shipped:
-            setup_dir = os.path.join(BS_DIR, "models", model.name)
-            found = find_checkpoints(setup_dir)
-            checkpoint = found[max(found)] if found else os.path.join(setup_dir, f"model_checkpoint_{SHIPPED_ITERATION}")
-        else:
-            setup_dir = os.path.join(round_dir, model.name)
-            copy_model_scripts(model.name, setup_dir, cli_edit=False)
-            train = defaults("train.*") | {"setup_dir": setup_dir, "voxel_size": voxel_size, "samples": samples}
-            write(f"{n:02d}_train_{model.name}.toml", f"Train {model.name} ({model.short}) on every volume with labels: {io}.",
-                  {"train": {model.name: train}})
-            n += 1
-            checkpoint = os.path.join(setup_dir, f"model_checkpoint_{train['max_iterations'] - 1}.ckpt")
-        iteration = checkpoint_iteration(checkpoint)
-        chain_str = "--from--".join(f"{s}_{it}" for s, it in done)
-        predict = defaults("predict.*") | {"setup_dir": setup_dir, "checkpoint": checkpoint}
-        for name, v in volumes.items():
-            prefix = os.path.join(v.get("outputs", v["raw"].rsplit(".zarr", 1)[0] + ".zarr"), model.name)
-            level = f"{iteration}--from--{chain_str}" if chain_str else str(iteration)
-            predict[name] = {"input_datasets": [outputs[name][x] for x in model.inputs], "output_datasets_prefix": prefix, "chain_str": chain_str}
-            outputs[name] = {o: os.path.join(prefix, level, o) for o in model.outputs}
-        write(f"{n:02d}_predict_{model.name}.toml", f"Predict {model.name} ({model.short}) on every volume: {io}.",
-              {"predict": {model.name: predict}})
-        n += 1
-        done.append((model.name, iteration))
-
-    neighborhood = net_config(setup_dir)["outputs"]["3d_affs"]["neighborhood"]
-    params = defaults("segment.params") | {"aff_neighborhood": neighborhood}
-    segment = defaults("segment") | {"params": params}
-    refine, evaluate = {"fill-holes": defaults("refine.fill-holes")}, {}
-    for name, v in volumes.items():
-        affs = outputs[name]["3d_affs"]
-        level = os.path.dirname(affs)
-        segment[name] = {"affs_dataset": affs, "fragments_dataset": os.path.join(level, "fragments_mws"),
-                         "lut_dir": os.path.join(level, "luts_mws"), "seg_dataset_prefix": os.path.join(level, "segmentations_mws"),
-                         **({"mask_dataset": v["target_mask"]} if "target_mask" in v else {})}
-        refine[name] = {"in_array": os.path.join(level, "segmentations_mws", mws_segmentation_name(SEG_DEFAULTS["mws"] | params))}
-        if "gt" in v:
-            evaluate[name] = {"seg_datasets_prefix": os.path.join(level, "segmentations_mws"),
-                              **({"mask_dataset": v["target_mask"]} if "target_mask" in v else {}),
-                              "gt": {"labels_dataset": v["gt"]},
-                              "pred": {"pred_dataset": affs, "params": {"aff_neighborhood": neighborhood}}}
-    write(f"{n:02d}_segment.toml", f"Segment the 3D affinities of {chain[-1].name} into objects.", {"segment": segment})
-    write(f"{n + 1:02d}_refine.toml", "Refine the segmentation. The ops run in file order; each output feeds the next.", {"refine": refine})
-    n += 2
-    if evaluate:
-        write(f"{n:02d}_evaluate.toml", "Compare the segmentations with the ground truth, and the affinities with the segmentations.",
-              {"evaluate": defaults("evaluate") | evaluate})
+    refresh(round_dir)
     return written
 
 
+def refresh(path):
+    """Write the run tail of each file of the round at path from the volumes and the keys
+    above it. Then copy the model scripts that are missing, and write the training masks.
+    Returns (file, {table: keys}) for each file whose tail changed."""
+    root = os.path.abspath(path if os.path.isdir(path) else os.path.dirname(path))
+    files = load_round(path, tail=False)
+    volumes = load_volumes(files[0][0])
+    tails = iter(derive(volumes, [s for _, steps in files for s in steps], root))
+    changed = []
+    for f, steps in files:
+        run = {}
+        for s, table in zip(steps, tails):
+            if table and s.name == s.kind:
+                run[s.kind] = table
+            elif table:
+                run.setdefault(s.kind, {})[s.name] = table
+        with open(f) as fh:
+            text = fh.read()
+        if keys := _changed(tomllib.loads(text).get("run", {}), run):
+            changed.append((f, keys))
+            with open(f, "w") as fh:
+                fh.write(splice(text, tail_text(os.path.abspath(path), run) if run else ""))
+    for _, steps in load_round(path):
+        for s in steps:
+            if s.kind == "train" and not os.path.exists(os.path.join(s.keys["setup_dir"], "train.py")):
+                copy_model_scripts(s.name, s.keys["setup_dir"], cli_edit=False)
+    for name, v in volumes.items():
+        out = os.path.join(root, "training_mask.zarr", name)
+        if "labels" in v.keys and training_mask(v.keys, out) == out:
+            write_training_mask(v.keys, out)
+    return changed
+
+
+def _changed(old, new, table="run"):
+    """The keys whose values differ between two run tails, by table."""
+    keys = {}
+    for k in [*new, *(k for k in old if k not in new)]:
+        a, b = old.get(k), new.get(k)
+        if isinstance(a, dict) or isinstance(b, dict):
+            keys |= _changed(a if isinstance(a, dict) else {}, b if isinstance(b, dict) else {}, f"{table}.{k}")
+        elif a != b:
+            keys.setdefault(table, []).append(k)
+    return keys
+
+
 @click.command()
-@click.option("--out", "-o", "round_dir", type=click.Path(), help="Round directory to create (asked if not given)")
-def prepare(round_dir):
-    """Ask about your data and what you want, then write the round directory:
-    volumes.toml, numbered step files, and the setup to train."""
-    round_dir = os.path.abspath(round_dir or cli_prompt("Round directory", STYLE, default=os.path.join(os.getcwd(), "round_01")))
+@click.argument("path", type=click.Path())
+def prepare(path):
+    """Ask about your data and what you want, then write the round directory PATH:
+    volumes.toml, numbered step files, and the setup to train. On a round, write the run
+    tail of each file again from your edits, such as: bs prepare round_01"""
+    if os.path.isfile(path) or glob.glob(os.path.join(path, "[0-9]*.toml")):
+        for f, keys in refresh(path):
+            tables = [f"[{table}] {', '.join(k)}" for table, k in keys.items()]
+            more = f" and {len(tables) - 3} more tables" if len(tables) > 3 else ""
+            cli_echo(f"refreshed {os.path.basename(f)}: {'; '.join(tables[:3])}{more}", STYLE)
+        cli_echo(f"{path} is current.", STYLE, "success")
+        return
+    round_dir = os.path.abspath(path)
     os.makedirs(round_dir, exist_ok=True)
     volumes = {}
     while True:
@@ -176,6 +181,6 @@ def prepare(round_dir):
     chain = ask_models(volumes)
     written = write_round(round_dir, volumes, chain)
     click.echo()
-    for path in written:
-        cli_echo(f"wrote {path}", STYLE)
-    cli_echo(f"Edit a file to change a parameter. Then: bs run {round_dir}", STYLE, "success")
+    for f in written:
+        cli_echo(f"wrote {f}", STYLE)
+    cli_echo(f"Edit a file to change a parameter, then: bs prepare {round_dir}. To run the round: bs run {round_dir}", STYLE, "success")

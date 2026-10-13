@@ -1,6 +1,7 @@
 """Config files are kind tables. [volumes.<name>] describes data; [train.<name>],
 [predict.<name>], [segment], [segment.<name>], [refine] and [evaluate] are steps. A file
-holds one step or a whole round; a step is named only when a kind has several."""
+holds one step or a whole round; a step is named only when a kind has several. Below your
+keys, a run tail of [run.<step>] tables holds the keys bs prepare derives."""
 import difflib
 import glob
 import os
@@ -56,12 +57,14 @@ class Step:
         return self.kind if self.name == self.kind else f"{self.kind}.{self.name}"
 
 
-def load(path):
+def load(path, tail=True):
+    """The steps of a file, each over its run tail; with tail=False, your keys alone."""
     doc = _toml(path)
     volumes = load_volumes(path)
     doc.pop("volumes", None)
     doc.pop("round", None)
-    doc.pop("run", None)
+    run = doc.pop("run", {})
+    run = run if tail else {}
 
     old = next((k for k in doc if k in OLD_PARAMS), None)
     rename = f"rename [{old}] to [segment.params]"
@@ -78,13 +81,23 @@ def load(path):
         if kind not in KINDS:
             raise click.ClickException(f"{path}: unknown table [{kind}]; tables are volumes, {', '.join(KINDS)}")
         if _is_step(kind, table, volumes):
-            steps.append(_step(kind, kind, table, volumes, path))
+            steps.append(_step(kind, kind, table, volumes, path, run.get(kind)))
         else:
             for name, sub in table.items():
                 if name in volumes:
                     raise click.ClickException(f"{path}: [{kind}.{name}] is a step named like the volume {name!r}")
-                steps.append(_step(kind, name, sub, volumes, path))
+                steps.append(_step(kind, name, sub, volumes, path, run.get(kind, {}).get(name)))
     return steps
+
+
+def load_round(path, tail=True):
+    """(file, steps) in run order: the numbered files of a folder, or one file."""
+    if not os.path.isdir(path):
+        return [(path, load(path, tail))]
+    files = sorted(glob.glob(os.path.join(path, "[0-9]*.toml")))
+    if not files:
+        raise click.ClickException(f"{path}: no numbered .toml files")
+    return [(f, load(f, tail)) for f in files]
 
 
 def load_volumes(path):
@@ -165,14 +178,35 @@ def steps_of(path, kind, name=None):
 
 def runs(step):
     """One flat config per volume table, else one for the step itself. A volume's
-    params and db tables merge key by key over the step's."""
+    tables, such as params and db, merge key by key over the step's."""
     if not step.volumes:
         return [(None, dict(step.keys))]
     return [(vol, _merge(step.keys, keys)) for vol, keys in step.volumes.items()]
 
 
-def _merge(step, vol):
-    return step | vol | {k: step[k] | vol[k] for k in ("params", "db") if k in step and k in vol}
+def _merge(a, b):
+    """b over a; a table in both merges key by key."""
+    return a | b | {k: _merge(a[k], b[k]) for k in a.keys() & b.keys() if isinstance(a[k], dict) and isinstance(b[k], dict)}
+
+
+def with_tail(step, tail):
+    """The step over its run tail. Your per-volume table sets a key first, then the step, then the tail."""
+    vols = {v: _merge(unset(tail.volumes.get(v, {}), step.keys), step.volumes.get(v, {})) for v in step.volumes | tail.volumes}
+    return Step(step.kind, step.name, _merge(tail.keys, step.keys), vols)
+
+
+def unset(table, *above):
+    """The keys of table that no table above sets; a table in both keeps the keys only it has."""
+    out = {}
+    for k, v in table.items():
+        set_above = [a[k] for a in above if k in a]
+        if isinstance(v, dict) and all(isinstance(a, dict) for a in set_above):
+            v = unset(v, *set_above)
+        elif set_above:
+            continue
+        if v != {}:
+            out[k] = v
+    return out
 
 
 def _own(kind, name):
@@ -187,7 +221,7 @@ def _is_step(kind, table, volumes):
     return all(_own(kind, k) or k in volumes for k in table)
 
 
-def _step(kind, name, table, volumes, path):
+def _step(kind, name, table, volumes, path, tail=None):
     label = kind if name == kind else f"{kind}.{name}"
     keys = dict(table)
     old = OLD_PARAMS & set(keys)
@@ -196,11 +230,15 @@ def _step(kind, name, table, volumes, path):
     vols = {k: keys.pop(k) for k in list(keys) if k in volumes}
     if kind == "refine":
         keys["ops"] = {k: keys.pop(k) for k in list(keys) if k in OPS}
+        for t in vols.values():
+            if ops := {k: t.pop(k) for k in list(t) if k in OPS}:
+                t["ops"] = ops
     if kind != "train":
         _check(path, label, kind, keys, volumes)
         for vol, t in vols.items():
             _check(path, f"{label}.{vol}", kind, t, volumes)
-    return Step(kind, name, keys, vols)
+    step = Step(kind, name, keys, vols)
+    return with_tail(step, _step(kind, name, tail, volumes, path)) if tail else step
 
 
 def _check(path, label, kind, keys, volumes):

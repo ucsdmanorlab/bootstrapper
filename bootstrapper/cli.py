@@ -1,4 +1,3 @@
-import glob
 import os
 import sys
 import time
@@ -17,7 +16,7 @@ from . import (
     utils,
 )
 
-from .config import load, runs, refuse_unknown, OPS
+from .config import load_round, runs, refuse_unknown, OPS
 from .refine import MORPH_OPS
 from .styles import cli_echo
 
@@ -91,13 +90,7 @@ cli.add_command(utils)
 @click.pass_context
 def run(ctx, path, only, from_):
     """Run the steps of a config file in file order, or the numbered files of a directory."""
-    if os.path.isdir(path):
-        files = sorted(glob.glob(os.path.join(path, "[0-9]*.toml")))
-        if not files:
-            raise click.ClickException(f"{path}: no numbered .toml files")
-    else:
-        files = [path]
-    todo = [(f, s) for f in files for s in load(f)]
+    todo = [(f, s) for f, steps in load_round(path) for s in steps]
 
     def match(sel, f, s):
         return sel in (s.kind, s.label) or os.path.basename(f).startswith(sel)
@@ -122,23 +115,27 @@ def run(ctx, path, only, from_):
 
 
 def run_refine(ctx, step):
-    """Run a refine step's ops in order; each op's output feeds the next."""
+    """Run a refine step's ops in order on each volume; each op's output feeds the next. A
+    volume's op table, such as [run.refine.<volume>.mask], merges over the step's."""
     ops = step.keys.get("ops", {})
     if not ops:
         raise click.ClickException(f"[{step.label}] has no ops; ops are {', '.join(OPS)}")
-    for op, keys in ops.items():
-        command = refine.commands["morph" if op in MORPH_OPS else op]
-        names = {p.name for p in command.params} - {"in_array", "op"}
-        if "dry_run" in keys and "dry_run" in names:
-            raise click.ClickException(f"[{step.label}.{op}] has no key 'dry_run'; a chain has no dry run, so run bs refine {op} --dry-run")
-        refuse_unknown(f"[{step.label}.{op}]", keys, names - {"dry_run"})
-    for _, config in runs(step):
+    configs = runs(step)
+    for _, config in configs:
+        for op in ops:
+            keys = config["ops"][op]
+            command = refine.commands["morph" if op in MORPH_OPS else op]
+            names = {p.name for p in command.params} - {"in_array", "op"}
+            if "dry_run" in keys and "dry_run" in names:
+                raise click.ClickException(f"[{step.label}.{op}] has no key 'dry_run'; a chain has no dry run, so run bs refine {op} --dry-run")
+            refuse_unknown(f"[{step.label}.{op}]", keys, names - {"dry_run"})
+    for _, config in configs:
         array = config.get("in_array")
         if array is None:
             raise click.ClickException(f"[{step.label}] needs in_array")
         defaults = {"num_workers": config["num_workers"]} if "num_workers" in config else {}
-        for op, keys in ops.items():
-            keys = defaults | keys
+        for op in ops:
+            keys = defaults | config["ops"][op]
             if op in MORPH_OPS:
                 keys["op"] = op
                 op = "morph"

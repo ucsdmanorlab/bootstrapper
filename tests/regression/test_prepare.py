@@ -1,6 +1,7 @@
 """bs prepare asks about the data, then writes volumes.toml, numbered step files, a
 checkpoint-free setup with no __pycache__, and the training masks in the round, never in the
-data container; every file loads, and every param in it says what it does."""
+data container; every file loads, and every param in it says what it does. Each file holds
+your keys above a run tail of derived keys, which bs prepare PATH writes again from them."""
 
 import glob
 import os
@@ -14,8 +15,9 @@ from funlib.persistence import open_ds, prepare_ds
 
 from bootstrapper import configs
 from bootstrapper.catalog import parse_chain
-from bootstrapper.config import load
-from bootstrapper.params import KEYS
+from bootstrapper.cli import cli
+from bootstrapper.config import load, runs
+from bootstrapper.params import KEYS, defaults
 from bootstrapper.prepare import prepare, write_round
 
 FILES = [
@@ -28,11 +30,11 @@ FILES = [
 ]
 
 
-def write(path, data, chunk_shape=None):
+def write(path, data, chunk_shape=None, offset=(0, 0, 0)):
     ds = prepare_ds(
         str(path),
         shape=data.shape,
-        offset=(0, 0, 0),
+        offset=offset,
         voxel_size=(50, 8, 8),
         axis_names=["z", "y", "x"],
         units=["nm", "nm", "nm"],
@@ -43,7 +45,7 @@ def write(path, data, chunk_shape=None):
     return str(path)
 
 
-def run_prepare(tmp_path, models=""):
+def run_prepare(tmp_path, models="", mask=""):
     """One volume, sparse labels on two sections, background beside each object."""
     labels = np.zeros((8, 64, 64), np.uint64)
     labels[2, 10:30, 10:30] = 1
@@ -56,7 +58,7 @@ def run_prepare(tmp_path, models=""):
         "n",  # not every object is labelled
         "",  # labels on single sections: the default, guessed from the labels
         "n",  # untraced space next to an object is background
-        "",  # no mask
+        mask,  # "": no target mask
         f"{tmp_path}/apical.zarr/labels",  # ground truth
         "n",  # no other volume
         models,  # "": the default chain for 2D labels
@@ -64,7 +66,7 @@ def run_prepare(tmp_path, models=""):
 
     return CliRunner().invoke(
         prepare,
-        ["-o", f"{tmp_path}/round_01"],
+        [f"{tmp_path}/round_01"],
         input="\n".join(answers) + "\n",
         catch_exceptions=False,
     )
@@ -119,6 +121,94 @@ def test_the_volume_facts_are_recorded(tmp_path, dialogue):
         "mask_dilation": 10,
         "gt": f"{tmp_path}/apical.zarr/labels",
     }
+
+
+def test_your_keys_sit_above_the_run_tail(tmp_path, dialogue):
+    """The head holds the params; every derived key sits in a [run.*] table below them."""
+    heads = {
+        "01_train_2d_mtlsd.toml": {"train": {"2d_mtlsd": defaults("train.*")}},
+        "02_predict_2d_mtlsd.toml": {"predict": {"2d_mtlsd": defaults("predict.*")}},
+        "03_predict_3d_affs_from_2d_mtlsd.toml": {
+            "predict": {"3d_affs_from_2d_mtlsd": defaults("predict.*")}
+        },
+        "04_segment.toml": {
+            "segment": defaults("segment") | {"params": defaults("segment.params")}
+        },
+        "05_refine.toml": {"refine": {"fill-holes": defaults("refine.fill-holes")}},
+        "06_evaluate.toml": {"evaluate": defaults("evaluate")},
+    }
+    for name, head in heads.items():
+        doc = toml.load(tmp_path / "round_01" / name)
+        assert doc.pop("run"), name
+        assert doc == head, name
+
+
+def test_bs_prepare_writes_the_tails_again_and_keeps_your_lines(tmp_path, dialogue):
+    """A key you set leaves the tail, and what follows from it follows; the checkpoint follows
+    max_iterations and the training mask its keys. Your lines stay byte for byte, an edited
+    setup stays, and a second run changes nothing."""
+    round_dir = tmp_path / "round_01"
+    edits = {
+        "01_train_2d_mtlsd.toml": ("= 30001", "= 20001  # mine"),
+        "03_predict_3d_affs_from_2d_mtlsd.toml": (
+            "]\n",
+            ']\ncheckpoint = "/m/model_checkpoint_5000.ckpt"\n',
+        ),
+        "volumes.toml": ("mask_dilation = 10", "mask_dilation = 1"),
+    }
+    for name, (old, new) in edits.items():
+        path = round_dir / name
+        path.write_text(path.read_text().replace(old, new, 1))
+    net_config = round_dir / "2d_mtlsd" / "net_config.json"
+    net_config.write_text(net_config.read_text() + "\n")
+    before = {f: f.read_text() for f in round_dir.glob("*.toml")}
+
+    # a relative path, from tmp_path
+    result = CliRunner().invoke(prepare, ["round_01"], catch_exceptions=False)
+
+    assert result.exit_code == 0, result.output
+    refreshed = "refreshed 02_predict_2d_mtlsd.toml: [run.predict.2d_mtlsd] checkpoint"
+    assert f"{refreshed}\n" in result.output
+    after = {f: f.read_text() for f in round_dir.glob("*.toml")}
+    for f, text in before.items():
+        assert after[f].startswith(text.split("\n# Below: the run tail.")[0]), f
+    predict = round_dir / "02_predict_2d_mtlsd.toml"
+    assert after[predict] == before[predict].replace("_30000.ckpt", "_20000.ckpt")
+    third = toml.load(round_dir / "03_predict_3d_affs_from_2d_mtlsd.toml")
+    assert "checkpoint" not in third["run"]["predict"]["3d_affs_from_2d_mtlsd"]
+    affs = step(tmp_path, "04_segment.toml").volumes["apical"]["affs_dataset"]
+    assert affs.endswith("/5000--from--2d_mtlsd_20000/3d_affs")
+    mask = open_ds(f"{round_dir}/training_mask.zarr/apical")
+    # each square of 20 x 20 grown 1 voxel in xy
+    assert mask[mask.roi].sum() == 2 * (20 * 20 + 4 * 20)
+    assert net_config.read_text().endswith("}\n\n")
+    again = CliRunner().invoke(prepare, ["round_01"])
+    assert again.output == "round_01 is current.\n"
+    assert {f: f.read_text() for f in round_dir.glob("*.toml")} == after
+
+
+def test_predict_covers_the_target_mask_box_and_refine_masks_to_it(tmp_path):
+    """The box is cut to the raw. Segment, refine and evaluate read the mask itself."""
+    mask = np.ones((8, 32, 48), np.uint8)
+    mask = write(tmp_path / "apical.zarr" / "mask", mask, offset=(200, 256, 256))
+    run_prepare(tmp_path, mask=mask)
+
+    for name in ("02_predict_2d_mtlsd.toml", "03_predict_3d_affs_from_2d_mtlsd.toml"):
+        apical = step(tmp_path, name).volumes["apical"]
+        assert apical["roi_offset"] == apical["roi_shape"] == [200, 256, 256]
+    assert step(tmp_path, "04_segment.toml").volumes["apical"]["mask_dataset"] == mask
+    assert step(tmp_path, "06_evaluate.toml").volumes["apical"]["mask_dataset"] == mask
+    [(_, refine)] = runs(step(tmp_path, "05_refine.toml"))
+    assert refine["ops"] == {"fill-holes": {"xy": True}, "mask": {"mask_array": mask}}
+
+    seg = write(refine["in_array"], np.full((8, 64, 64), 7, np.uint64))
+    path = tmp_path / "round_01" / "05_refine.toml"
+    path.write_text("[refine]\nnum_workers = 1\n" + path.read_text())
+    result = CliRunner().invoke(cli, ["run", str(path)], catch_exceptions=False)
+
+    assert result.exit_code == 0, result.output
+    masked = open_ds(f"{seg}_fill_holes_masked")
+    assert masked[masked.roi].sum() == 7 * 4 * 32 * 32
 
 
 def test_the_train_step_trains_a_fresh_setup_on_a_mask_in_the_round(tmp_path, dialogue):

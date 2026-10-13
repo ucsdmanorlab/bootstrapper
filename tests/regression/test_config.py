@@ -138,6 +138,38 @@ db_name = "spine"
     assert config["db"] == {"db_host": "h", "db_name": "spine"}
 
 
+def test_your_volume_table_then_the_step_then_the_run_tail_sets_a_key(write):
+    [(volume, config)] = runs(
+        load(
+            write("""
+[volumes.v]
+raw = "/v/v.zarr/raw"
+[predict.m]
+checkpoint = "/mine/model_checkpoint_5.ckpt"
+[predict.m.v]
+chain_str = "mine"
+[run.predict.m]
+setup_dir = "/s"
+checkpoint = "/s/model_checkpoint_9.ckpt"
+[run.predict.m.v]
+chain_str = ""
+checkpoint = "/s/model_checkpoint_8.ckpt"
+input_datasets = ["/v/v.zarr/raw"]
+""")
+        )[0]
+    )
+
+    assert (volume, config) == (
+        "v",
+        {
+            "setup_dir": "/s",
+            "checkpoint": "/mine/model_checkpoint_5.ckpt",
+            "chain_str": "mine",
+            "input_datasets": ["/v/v.zarr/raw"],
+        },
+    )
+
+
 @pytest.mark.parametrize(
     "text,needles",
     [

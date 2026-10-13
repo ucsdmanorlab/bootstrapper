@@ -156,12 +156,12 @@ def test_missing_labels_is_refused_by_path(tmp_path):
         (
             "2d_mtlsd",
             "data.zarr/labels",
-            "{0}/2d_mtlsd has no train.py; bs prepare -o {0} copies the model scripts there",
+            "{0}/2d_mtlsd has no train.py; bs prepare {0} copies the model scripts there",
         ),
         (
             "setup_01",
             "training_mask.zarr/v",
-            "training mask {0}/training_mask.zarr/v does not exist; bs prepare -o {0} makes it",
+            "training mask {0}/training_mask.zarr/v does not exist; bs prepare {0} makes it",
         ),
         (
             "setup_01",
