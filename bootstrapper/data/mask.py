@@ -14,9 +14,8 @@ logger = logging.getLogger(__name__)
 def make_raw_mask(in_ds, out_ds, block):
     import numpy as np
     from funlib.persistence import Array
-    from skimage.morphology import binary_closing, disk
-
-    logger.info(f"Processing raw mask for block: {block}")
+    from scipy.ndimage import binary_dilation, binary_erosion
+    from skimage.morphology import disk
 
     in_data = in_ds.to_ndarray(block.read_roi, fill_value=0)
 
@@ -24,8 +23,11 @@ def make_raw_mask(in_ds, out_ds, block):
         [np.zeros_like(disk(10)), disk(10), np.zeros_like(disk(10))], axis=0
     )
 
-    out_data = binary_closing(in_data, footprint)
-    out_data = binary_closing(out_data, footprint)
+    out_data = in_data
+    for _ in range(2):  # closing that keeps the block edge, as skimage's did
+        out_data = binary_erosion(
+            binary_dilation(out_data, footprint), footprint, border_value=1
+        )
     out_data = (out_data).astype(np.uint8)
 
     try:
