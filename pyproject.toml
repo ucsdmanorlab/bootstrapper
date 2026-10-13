@@ -56,7 +56,7 @@ dependencies = [
 
 [project.optional-dependencies]
 waterz = [
-    "waterz @ git+https://github.com/ZettaAI/waterz@a52bafa5dd2e912c593b72f4b7fabc83e6d55ef4",
+    "waterz==0.10.0rc1",
     "funlib.segment @ git+https://github.com/funkelab/funlib.segment@cdf607f0bde3b27f16cec39b9874e266be80bda9",
 ]
 

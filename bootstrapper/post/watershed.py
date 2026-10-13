@@ -49,8 +49,7 @@ def watershed_segmentation(config):
     if merge_function not in WATERZ_MERGE_FUNCTIONS:
         raise ValueError(
             f"Unknown merge_function '{merge_function}'. Valid values: "
-            f"{sorted(WATERZ_MERGE_FUNCTIONS)}. The ZettaAI waterz build only "
-            "ships a working 'mean' scorer."
+            f"{sorted(WATERZ_MERGE_FUNCTIONS)}."
         )
     waterz_merge_function = WATERZ_MERGE_FUNCTIONS[merge_function]
 

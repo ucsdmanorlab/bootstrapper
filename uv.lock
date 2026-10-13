@@ -306,7 +306,7 @@ requires-dist = [
     { name = "torch" },
     { name = "tqdm" },
     { name = "volara", specifier = "<1.0.3" },
-    { name = "waterz", marker = "extra == 'waterz'", git = "https://github.com/ZettaAI/waterz?rev=a52bafa5dd2e912c593b72f4b7fabc83e6d55ef4" },
+    { name = "waterz", marker = "extra == 'waterz'", specifier = "==0.10.0rc1" },
     { name = "zarr", specifier = "<3" },
 ]
 provides-extras = ["waterz"]
@@ -3279,25 +3279,34 @@ wheels = [
 
 [[package]]
 name = "waterz"
-version = "0.1.dev123+ga52bafa5d"
-source = { git = "https://github.com/ZettaAI/waterz?rev=a52bafa5dd2e912c593b72f4b7fabc83e6d55ef4#a52bafa5dd2e912c593b72f4b7fabc83e6d55ef4" }
+version = "0.10.0rc1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "witty", extra = ["cython"] },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/d9/c6/1840fa4085a9819a06e5fbd757f1cda8cad7f4b2df1477fd18bf1b62f4c9/waterz-0.10.0rc1.tar.gz", hash = "sha256:f82a3f6e5723f709fe47d74e5529a7f017edf026f7b73117198c9dfcbad0e6ca", size = 39650, upload-time = "2026-10-01T08:23:39.247Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/95/6e/702922559f7c2e52eb27367cf6f5a23fccfa8c68a0d7a200dff3c9d450fc/waterz-0.10.0rc1-cp311-abi3-macosx_10_9_x86_64.whl", hash = "sha256:bdc6a3acf2d441ce3c85d874d683ef9d03e790c3f5cba0d1781af4ccc9a64ff3", size = 421025, upload-time = "2026-10-01T08:23:32.836Z" },
+    { url = "https://files.pythonhosted.org/packages/84/5f/6e09b4fcfeef699ef55d7f68688c20497d6b3d190a92c88f3a7395d88a0d/waterz-0.10.0rc1-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:8b5413f4828f41e648af6aaf9226d773c6b0109579f7a3f2f852e8754f235f96", size = 407643, upload-time = "2026-10-01T08:23:34.267Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/3d/3d819fbe4508952f442b4c595f6b484235a1cd4168c3d44ec7af97eca69e/waterz-0.10.0rc1-cp311-abi3-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ff883968418113f1980dc1f26ef07fb81bf03545c2bf1dab7fde6d0b226690be", size = 439587, upload-time = "2026-10-01T08:23:35.477Z" },
+    { url = "https://files.pythonhosted.org/packages/84/76/5075aa7cfb48154f9444ce131552e0f6d6677e81de7dc1d46a3589d08e63/waterz-0.10.0rc1-cp311-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:510351f97be111308826cf6aadd65cc9bffd3917a62e5bde688382aced7325cd", size = 463668, upload-time = "2026-10-01T08:23:36.716Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/78/7fadf9015ae565d8ed71cab6d15663c778d13c4468aef46c51f49593561a/waterz-0.10.0rc1-cp311-abi3-win_amd64.whl", hash = "sha256:d4cffcf21b7ef1306fbabafcb071cf6b289dea65dc1048341ac2c15a2a2efea6", size = 508215, upload-time = "2026-10-01T08:23:37.886Z" },
+]
 
 [[package]]
 name = "witty"
-version = "0.3.2"
+version = "0.3.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cython" },
     { name = "nanobind" },
     { name = "setuptools" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ff/a3/211a17423c88445308156f50186696bbab6442dce14e41dd3a97bd88a33f/witty-0.3.2.tar.gz", hash = "sha256:e0a3b1a84fc4429d8b8ab6031c9d2c171b30ef2e64d80dbe89a02b12e3442fa3", size = 12564, upload-time = "2026-07-26T11:41:30.184Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c9/99/a614e1f75d7b2f7ef4090b6909d7521586ccef5ca2b5bf591a81afdbb527/witty-0.3.4.tar.gz", hash = "sha256:505e15e33a336ef20482481750ca511846cf3f13c9a6858237ff8516c800e0f0", size = 13311, upload-time = "2026-09-30T15:06:15.722Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dc/06/3d97145eedc8e8905d2482ff34b2086808fafe7528fcaa9d46bdfb95d6ee/witty-0.3.2-py3-none-any.whl", hash = "sha256:1de2e8d4353134d26413f221c584d68b978830d6788434266ff03e05ae33dab4", size = 8972, upload-time = "2026-07-26T11:41:29.085Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/64/40b6717c5b5ed05f731162f1ae074c1f92447f5daf192640a0d77b7704ef/witty-0.3.4-py3-none-any.whl", hash = "sha256:005202a9bf69571b644cd68ffadf02da8db461faf5769181f1e26dabd04e8c98", size = 9232, upload-time = "2026-09-30T15:06:14.663Z" },
 ]
 
 [package.optional-dependencies]

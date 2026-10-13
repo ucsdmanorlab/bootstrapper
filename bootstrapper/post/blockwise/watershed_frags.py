@@ -157,8 +157,8 @@ class WatershedFrags(BlockwiseTask):
 
     def epsilon_agglomerate_fragments(self, affs_data, fragments_data):
         # quick initial waterz merge of the watershed fragments up to a low
-        # threshold (lsd uses hist_quant_25 here, but the ZettaAI/waterz build
-        # only ships a working "mean" scorer, so we use that).
+        # threshold. lsd uses hist_quant_25 here; this stays on mean because
+        # the fragments' name does not record the scorer.
         import waterz
 
         affs = affs_data[:3].astype(np.float32)

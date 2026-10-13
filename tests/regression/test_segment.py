@@ -1,16 +1,19 @@
 """Segmentation: ws and mws are one volara implementation (ticket 09) with a SQLite database
 beside the output by default; outputs are named per variant, logged beside their container,
-checked against their inputs, and fragments are filtered."""
+checked against their inputs, and fragments are filtered. Edge scores come from upstream waterz."""
 
 import glob
 import os
+import sys
 
 import numpy as np
 import pytest
 import toml
 import zarr
 from click.testing import CliRunner
-from funlib.persistence import prepare_ds
+from daisy import Block
+from funlib.geometry import Roi
+from funlib.persistence import Array, prepare_ds
 from volara.datasets import Affs, Labels, Raw
 from volara.dbs import SQLite
 
@@ -18,6 +21,10 @@ from bootstrapper.blockwise import volara_log_dir
 from bootstrapper.cli import cli
 from bootstrapper.post.blockwise.extract_frags import ExtractFrags
 from bootstrapper.post.blockwise.watershed_frags import WatershedFrags
+from bootstrapper.post.blockwise.waterz_agglom import (
+    WATERZ_MERGE_FUNCTIONS,
+    WaterzAgglom,
+)
 from bootstrapper.post.naming import build_name, dump_params, fmt, inputs_differ
 from bootstrapper.segment import DEFAULTS, get_seg_config, run_segmentation
 
@@ -323,3 +330,59 @@ def test_connected_components_records_its_inputs(tmp_path, affs, bs):
     ]
     assert {"affs_dataset", "mask_dataset", "roi_offset", "roi_shape"} <= set(params)
     assert "bootstrapper_version" not in params
+
+
+def two_objects():
+    """Objects 1 and 2 touch at one voxel pair; elsewhere fragment 0 lies between them.
+
+    Every affinity is 0.9, except 0.1 across the one contact of 1 and 2.
+    """
+    frags = np.zeros((1, 8, 9), np.uint64)
+    frags[:, :, :4] = 1
+    frags[:, :, 5:] = 2
+    frags[:, 0, 4] = 1
+    affs = np.full((3, 1, 8, 9), 0.9, np.float32)
+    affs[2, 0, 0, 5] = 0.1
+    return affs, frags
+
+
+def score_of_the_edge_between_1_and_2(tmp_path, merge_function):
+    affs, frags = two_objects()
+    roi = Roi((0, 0, 0), frags.shape)
+    db = SQLite(path=tmp_path / "rag.db", edge_attrs={"merge_score": "float"})
+    rag = db.open("w")
+    graph = rag[roi]
+    graph.add_node(1, position=(0, 4, 2))
+    graph.add_node(2, position=(0, 4, 6))
+    rag.write_graph(graph, roi)
+
+    task = WaterzAgglom(
+        db=db,
+        affs_data=Raw(store="unused"),
+        frags_data=Labels(store="unused"),
+        block_size=frags.shape,
+        context=(0, 0, 0),
+        merge_function=WATERZ_MERGE_FUNCTIONS[merge_function],
+    )
+    affs, frags = Array(affs, voxel_size=(1, 1, 1)), Array(frags, voxel_size=(1, 1, 1))
+    task.agglomerate_in_block(Block(roi, roi, roi), affs, frags, db.open("r+"))
+
+    return db.open("r").read_graph(roi).edges[1, 2]["merge_score"]
+
+
+def test_two_objects_join_at_their_own_boundary_not_through_fragment_0(tmp_path):
+    """The ZettaAI waterz build added region graph edges to fragment 0 (masked, filtered and
+    debris voxels), so two objects joined through it at 0.2 and every default threshold (0.2
+    to 0.5) merged them. Upstream waterz skips fragment 0."""
+    score = score_of_the_edge_between_1_and_2(tmp_path, "mean")
+
+    assert score == pytest.approx(1 - 0.1, abs=0.01)
+
+
+def test_a_quantile_scorer_runs_with_no_compiler(tmp_path, monkeypatch):
+    # a scorer that is not prebuilt needs witty to compile; with witty hidden, it raises
+    monkeypatch.setitem(sys.modules, "witty", None)
+
+    score = score_of_the_edge_between_1_and_2(tmp_path, "hist_quant_50")
+
+    assert score == pytest.approx(1 - 0.1, abs=0.01)
