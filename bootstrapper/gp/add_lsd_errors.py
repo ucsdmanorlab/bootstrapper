@@ -132,6 +132,10 @@ class AddLSDErrors(BatchFilter):
         else:
             raise RuntimeError("Unkown mode %s" % self.mode)
 
+        # the extractor needs the context in whole downsampled voxels
+        step = self.voxel_size * self.downsample
+        self.context = tuple(int(np.ceil(c / s)) * s for c, s in zip(self.context, step))
+
     def prepare(self, request):
         deps = BatchRequest()
         if self.seg_descriptor in request:

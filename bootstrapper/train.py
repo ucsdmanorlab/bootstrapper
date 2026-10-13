@@ -8,8 +8,6 @@ import click
 from .config import steps_of
 import logging
 
-logging.basicConfig(level=logging.INFO)
-
 
 def setup_train(config_file, step=None, **kwargs):
     steps = steps_of(config_file, "train", step)
@@ -133,7 +131,7 @@ def run_training(config_file, step=None, **kwargs):
     help="Save checkpoints every n iterations",
 )
 @click.option(
-    "--save-snapshots-every", "-s", type=int, help="Save snapshots every n iterations"
+    "--save-snapshots-every", type=int, help="Save snapshots every n iterations"
 )
 @click.option(
     "--voxel-size", "-v", type=str, help="Voxel size (space-separated integers)"

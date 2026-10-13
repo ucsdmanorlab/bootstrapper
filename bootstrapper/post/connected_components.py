@@ -5,11 +5,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def cc_blockwise(config):
-    raise NotImplementedError("Blockwise connected components not implemented yet")
-
-
-def cc_affs(config):
+def cc_segmentation(config):
     import os
 
     import numpy as np
@@ -124,13 +120,3 @@ def cc_affs(config):
     )
     seg[roi] = fragments_data
     dump_params(seg_ds_name, {**run_params, **seg_params})
-
-
-def cc_segmentation(config):
-    # blockwise or not
-    blockwise = config.get("blockwise", False)
-
-    if blockwise:
-        cc_blockwise(config)
-    else:
-        cc_affs(config)

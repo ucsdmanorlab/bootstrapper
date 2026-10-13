@@ -8,8 +8,6 @@ import logging
 from bootstrapper.blockwise import run_blockwise
 from bootstrapper.data.paths import mask_dataset_path
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 

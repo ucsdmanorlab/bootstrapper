@@ -230,7 +230,11 @@ if __name__ == "__main__":
     with open(config_file, "r") as f:
         config = toml.load(f)
 
-    assert config["setup_dir"] in setup_dir, "model directories do not match"
+    if os.path.realpath(config["setup_dir"]) != setup_dir:
+        sys.exit(
+            f"{config_file}: setup_dir is {config['setup_dir']}, but this train.py "
+            f"is in {setup_dir}; fix setup_dir or run {config['setup_dir']}/train.py"
+        )
     config["setup_dir"] = setup_dir
 
     train(**config)

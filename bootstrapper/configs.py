@@ -57,7 +57,7 @@ def find_checkpoints(setup_dir):
 def copy_model_scripts(model_name, setup_dir, style="train", cli_edit=True):
     src = os.path.abspath(os.path.join(BS_DIR, "models", model_name))
     cli_echo(f"Copying {src} to {setup_dir}..", style)
-    copytree(src, setup_dir, dirs_exist_ok=True, ignore=ignore_patterns("model_checkpoint_*"))
+    copytree(src, setup_dir, dirs_exist_ok=True, ignore=ignore_patterns("model_checkpoint_*", "__pycache__"))
 
     # edit net config ?
     net_config_path = os.path.join(setup_dir, "net_config.json")

@@ -1,4 +1,5 @@
-"""bbox and convert --crop cut labels to the box around every nonzero voxel."""
+"""bbox and convert --crop cut labels to the box around every nonzero voxel, and refuse a
+volume that has none."""
 
 import numpy as np
 import tifffile
@@ -65,3 +66,28 @@ def test_convert_crops_labels(tmp_path):
     out_ds = open_ds(out_array)
     assert out_ds.shape == (3, 6, 7)
     assert tuple(out_ds.offset) == (80, 24, 32)
+
+
+def test_bbox_refuses_a_volume_with_no_foreground(tmp_path):
+    in_array = str(tmp_path / "in.zarr" / "labels")
+    out_array = str(tmp_path / "out.zarr" / "labels")
+    ds = prepare_ds(in_array, shape=(4, 8, 8), voxel_size=(40, 8, 8), dtype=np.uint8)
+    ds[ds.roi] = 0
+
+    result = CliRunner().invoke(bbox, ["-i", in_array, "-o", out_array])
+
+    assert result.exit_code == 1
+    assert f"{in_array}: every voxel is 0" in result.output
+    assert not (tmp_path / "out.zarr").exists()
+
+
+def test_convert_crop_refuses_a_volume_with_no_foreground(tmp_path):
+    in_path = str(tmp_path / "labels.tif")
+    tifffile.imwrite(in_path, np.zeros((10, 20, 20), dtype=np.uint8))
+
+    args = ["-i", in_path, "-o", str(tmp_path / "out.zarr" / "labels"), "--crop"]
+    result = CliRunner().invoke(convert, args)
+
+    assert result.exit_code == 1
+    assert f"{in_path}: every voxel is 0" in result.output
+    assert not (tmp_path / "out.zarr").exists()

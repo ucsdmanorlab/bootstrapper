@@ -1,15 +1,24 @@
-"""Training must use only the granted GPUs, and say so when it runs on the CPU."""
+"""Training must use only the granted GPUs and say so when it runs on the CPU; -s is the step,
+and a model script names both dirs when the setup_dir is not its own."""
 
 import ast
+import importlib
+import logging
 import os
+import runpy
+import sys
 
 import pytest
 import toml
 import zarr
+from click.testing import CliRunner
 
 import bootstrapper.training as training
 from bootstrapper.configs import MODEL_DIR, MODEL_NAMES
 from bootstrapper.train import setup_train
+
+# bootstrapper/__init__.py rebinds the name "train" to the command
+train_module = importlib.import_module("bootstrapper.train")
 
 
 def write_config(tmp_path, **extra):
@@ -134,3 +143,36 @@ def test_cpu_training_warns_with_the_reason(monkeypatch, grant, why):
         monkeypatch.setenv("CUDA_VISIBLE_DEVICES", grant)
 
     assert why in training.device_warning()
+
+
+def test_train_s_is_the_step(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        train_module, "run_training", lambda config, step, **kw: seen.update(step=step)
+    )
+    config = tmp_path / "train.toml"
+    config.write_text("")
+
+    result = CliRunner().invoke(train_module.train, [str(config), "-s", "apical"])
+
+    assert result.exit_code == 0, result.output
+    assert seen["step"] == "apical"
+
+
+@pytest.mark.parametrize("model_name", MODEL_NAMES)
+def test_a_model_script_names_both_dirs_when_setup_dir_differs(
+    model_name, tmp_path, monkeypatch
+):
+    script = os.path.join(MODEL_DIR, model_name, "train.py")
+    setup_dir = os.path.realpath(os.path.dirname(script))
+    config = tmp_path / "train.toml"
+    config.write_text('setup_dir = "/elsewhere"\n')
+    monkeypatch.setattr(sys, "argv", ["train.py", str(config)])
+    monkeypatch.syspath_prepend(setup_dir)
+    monkeypatch.delitem(sys.modules, "model", raising=False)
+    monkeypatch.setattr(logging.getLogger(), "level", logging.getLogger().level)
+
+    with pytest.raises(SystemExit) as stop:
+        runpy.run_path(script, run_name="__main__")
+
+    assert "/elsewhere" in str(stop.value) and setup_dir in str(stop.value)

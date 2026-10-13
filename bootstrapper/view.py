@@ -1,14 +1,10 @@
 import click
 import neuroglancer
 import numpy as np
-import os
 import sys
 import zarr
 import subprocess
 import logging
-
-# Set up logging
-logging.getLogger().setLevel(logging.INFO)
 
 
 @click.command()
@@ -141,7 +137,7 @@ def view_snapshot(zarr_path, bind):
         zarr_path = zarr_path[:-1]
 
     f = zarr.open(zarr_path)    
-    datasets = [i for i in os.listdir(zarr_path) if "." not in i]
+    datasets = list(f.array_keys())
 
     # Determine if the data is 3D based on the first dataset
     try:

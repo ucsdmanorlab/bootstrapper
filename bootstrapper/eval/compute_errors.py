@@ -6,19 +6,7 @@ import gunpowder as gp
 from funlib.persistence import prepare_ds, open_ds
 from funlib.geometry import Coordinate, Roi
 
-from bootstrapper.gp import AddLSDErrors, AddAffErrors, calc_max_padding
-
-logging.getLogger().setLevel(logging.INFO)
-
-class PrintArray(gp.BatchFilter):
-
-    def __init__(self, array_key):
-        self.array_key = array_key
-
-    def process(self, batch, request):
-        print(
-            f"{self.array_key}: {batch[self.array_key].data.dtype}, {batch[self.array_key].data.shape}, np min, max, mean, median: {np.min(batch[self.array_key].data)}, {np.max(batch[self.array_key].data)}, {np.mean(batch[self.array_key].data)}, {np.median(batch[self.array_key].data)}"
-        )
+from bootstrapper.gp import AddLSDErrors, AddAffErrors
 
 
 def compute_errors(
@@ -90,16 +78,17 @@ def compute_errors(
         roi = Roi(roi_offset, roi_shape).intersect(roi)
 
     # io shapes #TODO: include block_shape and context options
-    output_shape = Coordinate(pred_ds.chunk_shape[1:]) #Coordinate((8, 256, 256))
-    input_shape = Coordinate(pred_ds.chunk_shape[1:]) + Coordinate([4, 100, 100]) #Coordinate((12, 384, 384))
     voxel_size = pred_ds.voxel_size
+    # a prediction chunk clipped to the ROI; lsd downsample 2 needs even blocks
+    output_shape = Coordinate(
+        min(c, r) // 2 * 2 for c, r in zip(pred_ds.chunk_shape[1:], roi.shape / voxel_size)
+    )
+    input_shape = output_shape + Coordinate([4, 100, 100])
 
     input_size = Coordinate(input_shape) * voxel_size
     output_size = Coordinate(output_shape) * voxel_size
-    context = calc_max_padding(output_size, voxel_size, 100)
 
     logging.info(f"input_shape: {input_shape}, output_shape: {output_shape}, voxel_size: {voxel_size}")
-    # context = (input_size - output_size) / 2
 
     total_output_roi = roi
 
@@ -143,7 +132,7 @@ def compute_errors(
 
     pipeline = sources + gp.MergeProvider()
 
-    pipeline += gp.Pad(seg, context)
+    pipeline += gp.Pad(seg, None)
     pipeline += gp.Pad(pred, None)
     if mask is not None:
         pipeline += gp.Pad(mask, None)

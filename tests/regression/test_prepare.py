@@ -1,5 +1,5 @@
 """bs prepare asks about the data, then writes volumes.toml, numbered step files and a
-checkpoint-free setup; every file loads."""
+checkpoint-free setup with no __pycache__; every file loads."""
 
 import glob
 import os
@@ -10,6 +10,7 @@ import toml
 from click.testing import CliRunner
 from funlib.persistence import prepare_ds
 
+from bootstrapper import configs
 from bootstrapper.config import load
 from bootstrapper.prepare import prepare
 
@@ -134,3 +135,15 @@ def test_segment_refine_and_evaluate_follow_the_affs(tmp_path, dialogue):
         == f"{tmp_path}/apical.zarr/labels"
     )
     assert evaluate.volumes["apical"]["pred"]["thresholds"] == [0.1, 1.0]
+
+
+def test_model_copy_leaves_out_pycache(tmp_path, monkeypatch):
+    src = tmp_path / "bs" / "models" / "m"
+    (src / "__pycache__").mkdir(parents=True)
+    (src / "train.py").write_text("")
+    (src / "__pycache__" / "train.cpython-312.pyc").write_text("")
+    monkeypatch.setattr(configs, "BS_DIR", str(tmp_path / "bs"))
+
+    configs.copy_model_scripts("m", str(tmp_path / "setup"), cli_edit=False)
+
+    assert os.listdir(tmp_path / "setup") == ["train.py"]

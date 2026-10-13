@@ -9,7 +9,6 @@ import logging
 
 from bootstrapper.blockwise import run_blockwise
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 

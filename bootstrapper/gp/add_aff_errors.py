@@ -43,26 +43,6 @@ class AddAffErrors(BatchFilter):
             ]
         )
 
-    # def setup(self):
-    #     spec = self.spec[self.segmentation].copy()
-    #     spec.dtype = np.float32
-
-    #     mask_spec = spec.copy()
-    #     mask_spec.dtype = np.uint8
-
-    #     self.voxel_size = spec.voxel_size
-    #     self.provides(self.seg_affs, spec)
-
-    #     if self.error_map in self.array_specs:
-    #         self.provides(self.error_map, self.array_specs[self.error_map].copy())
-    #     else:
-    #         self.provides(self.error_map, spec)
-
-    #     if self.error_mask in self.array_specs:
-    #         self.provides(self.error_mask, self.array_specs[self.error_mask].copy())
-    #     else:
-    #         self.provides(self.error_mask, mask_spec)
-
     def setup(self):
 
         voxel_size = self.spec[self.segmentation].voxel_size

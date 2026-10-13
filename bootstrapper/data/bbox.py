@@ -5,7 +5,6 @@ from scipy.ndimage import find_objects
 from funlib.persistence import open_ds, prepare_ds
 import click
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -43,10 +42,12 @@ def bbox(in_array, out_array, padding):
     arr = in_ds[in_ds.roi]
 
     logger.info("Finding bounding box")
-    slices = find_objects((arr > 0).astype(np.uint8))[0]
+    slices = find_objects((arr > 0).astype(np.uint8))
+    if not slices:
+        raise click.ClickException(f"{in_array}: every voxel is 0, so there is nothing to crop; check the path")
     slices = [
         slice(max(0, s.start - padding), min(s.stop + padding, arr.shape[i]))
-        for i, s in enumerate(slices)
+        for i, s in enumerate(slices[0])
     ]
     slices = tuple(slices)
 

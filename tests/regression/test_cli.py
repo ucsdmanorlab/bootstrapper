@@ -1,7 +1,9 @@
-"""The command line: one spelling rule, one-line errors with the traceback in a log file,
-and bs run of a file or a round directory."""
+"""The command line: one spelling rule, quiet imports, one-line errors with the traceback in a
+log file, and bs run of a file or a round directory."""
 
 import glob
+import importlib
+import logging
 import os
 import time
 
@@ -22,11 +24,20 @@ def commands(cmd, path="bs"):
 
 
 def test_spellings_follow_one_rule():
-    """No underscore in a command or long option; -i is an input and -w the worker count, everywhere."""
+    """No underscore in a command or long option; -i is an input and -w the worker count, everywhere; one flag, one option."""
     problems = []
     for path, cmd in commands(cli):
         if "_" in path:
             problems.append(f"{path}: command name with underscore")
+        flags = [
+            o
+            for p in cmd.params
+            if isinstance(p, click.Option)
+            for o in p.opts + p.secondary_opts
+        ]
+        problems += [
+            f"{path}: {o} names two options" for o in set(flags) if flags.count(o) > 1
+        ]
         for p in cmd.params:
             if not isinstance(p, click.Option):
                 continue
@@ -43,6 +54,32 @@ def test_spellings_follow_one_rule():
                 problems.append(f"{path}: num_workers is {shorts}")
 
     assert problems == []
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "bootstrapper.train",
+        "bootstrapper.view",
+        "bootstrapper.data.bbox",
+        "bootstrapper.data.convert",
+        "bootstrapper.data.merge",
+        "bootstrapper.data.scale_pyramid",
+        "bootstrapper.eval.compute_errors",
+        "bootstrapper.eval.compute_metrics",
+    ],
+)
+def test_import_leaves_the_root_logger_alone(module):
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
+    root.handlers.clear()
+    root.setLevel(logging.WARNING)
+    try:
+        importlib.reload(importlib.import_module(module))
+        assert (root.handlers, root.level) == ([], logging.WARNING)
+    finally:
+        root.handlers[:] = handlers
+        root.setLevel(level)
 
 
 def test_a_failure_prints_one_line_and_logs_the_traceback(tmp_path, bs):

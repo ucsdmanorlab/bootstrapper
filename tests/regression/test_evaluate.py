@@ -17,8 +17,10 @@ from bootstrapper.gp import AddAffErrors, AddLSDErrors
 NEIGHBORHOOD = [[-1, 0, 0], [0, -1, 0], [0, 0, -1]]
 
 
-def make_volume(tmp_path, channels, pred_name, voxel_size=(50, 4, 4)):
-    """A labels array and a channels-deep prediction beside it."""
+def make_volume(
+    tmp_path, channels, pred_name, voxel_size=(50, 4, 4), chunk=(4, 16, 16)
+):
+    """One object filling the labels, and a flat channels-deep prediction beside it."""
 
     shape = (8, 32, 32)
     labels = prepare_ds(
@@ -27,6 +29,7 @@ def make_volume(tmp_path, channels, pred_name, voxel_size=(50, 4, 4)):
         offset=(0, 0, 0),
         voxel_size=voxel_size,
         axis_names=["z", "y", "x"],
+        chunk_shape=chunk,
         dtype=np.uint64,
     )
     labels[labels.roi] = np.ones(shape, dtype=np.uint64)
@@ -37,10 +40,10 @@ def make_volume(tmp_path, channels, pred_name, voxel_size=(50, 4, 4)):
         offset=(0, 0, 0),
         voxel_size=voxel_size,
         axis_names=["c^", "z", "y", "x"],
-        chunk_shape=(channels, 4, 16, 16),
+        chunk_shape=(channels, *chunk),
         dtype=np.uint8,
     )
-    pred[pred.roi] = np.zeros((channels, *shape), dtype=np.uint8)
+    pred[pred.roi] = np.full((channels, *shape), 128, dtype=np.uint8)
 
     return f"{tmp_path}/data.zarr/labels", f"{tmp_path}/data.zarr/{pred_name}"
 
@@ -139,6 +142,56 @@ def test_the_results_file_carries_the_mode_only_when_several_run(
     )
 
     assert config["out_result"] == str(tmp_path / expected)
+
+
+def test_an_odd_lsd_context_gives_an_error_map(tmp_path):
+    """sigma 120 at (50, 8, 8) is 7.2 z and 45 xy voxels of context; downsample 2 needs even."""
+    seg, pred = make_volume(tmp_path, 10, "3d_lsds", voxel_size=(50, 8, 8))
+    out_map = f"{tmp_path}/out.zarr/map"
+
+    ce.compute_errors(
+        seg, pred, None, out_map, f"{tmp_path}/out.zarr/mask", lsd_sigma=120
+    )
+
+    assert open_ds(out_map)[:].any()
+
+
+def test_an_roi_smaller_than_one_chunk_gets_an_error_map(tmp_path):
+    seg, pred = make_volume(
+        tmp_path, 3, "3d_affs", voxel_size=(40, 8, 8), chunk=(8, 32, 32)
+    )
+    out_map = f"{tmp_path}/e.zarr/map"
+
+    ce.compute_errors(
+        seg,
+        pred,
+        None,
+        out_map,
+        f"{tmp_path}/e.zarr/mask",
+        aff_neighborhood=NEIGHBORHOOD,
+        roi_offset=(80, 64, 64),
+        roi_shape=(160, 128, 128),
+    )
+
+    error_map = open_ds(out_map)
+    assert error_map.shape == (4, 16, 16)
+    assert error_map[:].all()
+
+
+@pytest.mark.parametrize(
+    "pred_name,channels,params",
+    [
+        ("3d_affs", 3, {"aff_neighborhood": NEIGHBORHOOD}),
+        ("3d_lsds", 10, {"lsd_sigma": 80}),
+    ],
+)
+def test_labels_are_padded_for_any_block_size(tmp_path, pred_name, channels, params):
+    seg, pred = make_volume(tmp_path, channels, pred_name, voxel_size=(40, 8, 8))
+    out_map = f"{tmp_path}/e.zarr/map"
+
+    ce.compute_errors(seg, pred, None, out_map, f"{tmp_path}/e.zarr/mask", **params)
+
+    assert open_ds(out_map)[:].all()
 
 
 def test_lsd_error_mask_keeps_a_one_voxel_thin_error():

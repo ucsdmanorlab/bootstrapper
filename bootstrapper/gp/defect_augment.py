@@ -1,3 +1,5 @@
+# adapted from https://github.com/funkelab/gunpowder/blob/main/gunpowder/nodes/defect_augment.py
+
 import logging
 import random
 

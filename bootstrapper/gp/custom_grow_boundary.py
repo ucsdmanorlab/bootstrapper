@@ -1,3 +1,5 @@
+# adapted from https://github.com/funkelab/gunpowder/blob/main/gunpowder/nodes/grow_boundary.py
+
 import gunpowder as gp
 import numpy as np
 import random

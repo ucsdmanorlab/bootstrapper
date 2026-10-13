@@ -13,7 +13,6 @@ from funlib.geometry import Coordinate, Roi
 from funlib.persistence import open_ds
 
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
