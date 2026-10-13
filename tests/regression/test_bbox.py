@@ -1,3 +1,5 @@
+"""bbox and convert --crop cut labels to the box around every nonzero voxel."""
+
 import numpy as np
 import tifffile
 from click.testing import CliRunner
@@ -34,6 +36,18 @@ def test_bbox_crops_labels(tmp_path):
     out_ds = open_ds(out_array)
     assert out_ds.shape == (3, 6, 7)
     assert tuple(out_ds.offset) == (80, 24, 32)
+
+
+def test_bbox_pads_into_a_default_output(tmp_path):
+    in_array = str(tmp_path / "in.zarr" / "labels")
+    write_labels(in_array)
+
+    result = CliRunner().invoke(bbox, ["-i", in_array, "--padding", "1"])
+
+    assert result.exit_code == 0, result.exception
+    out_ds = open_ds(in_array + "_bbox")
+    assert out_ds.shape == (5, 8, 9)
+    assert tuple(out_ds.offset) == (40, 16, 24)
 
 
 def test_convert_crops_labels(tmp_path):

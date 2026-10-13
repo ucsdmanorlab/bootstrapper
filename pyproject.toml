@@ -60,6 +60,9 @@ waterz = [
     "funlib.segment @ git+https://github.com/funkelab/funlib.segment@cdf607f0bde3b27f16cec39b9874e266be80bda9",
 ]
 
+[dependency-groups]
+dev = ["pytest>=8"]
+
 [project.urls]
 Homepage = "https://github.com/ucsdmanorlab/bootstrapper"
 
@@ -72,3 +75,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["smoke: CPU end-to-end run", "postgres: needs a PostgreSQL server"]
