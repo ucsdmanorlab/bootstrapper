@@ -1,6 +1,7 @@
 """User seeds ([segment] seeds_dataset) keep their ids through blockwise mutex watershed:
 two seeds part touching objects, one seed holds an object over many blocks, and unseeded
-objects get ids above every seed id. Also the segment ROI checks of mutex watershed."""
+objects get ids above every seed id. Seeds it cannot use are refused before any output. Also
+the segment ROI checks of mutex watershed."""
 
 import getpass
 import glob
@@ -314,16 +315,33 @@ def mws_step(tmp_path, affs, **extra):
     }
 
 
-def test_float_seeds_are_refused_by_name(tmp_path, affs):
+@pytest.mark.parametrize(
+    "dtype,bad,message",
+    [
+        (np.float32, 0, "float32"),
+        (np.int64, -3, "seed id -3"),
+        (np.uint64, 2**63, f"seed id {2**63}"),
+    ],
+)
+def test_unusable_seeds_are_refused_by_name_before_any_output(
+    tmp_path, affs, dtype, bad, message
+):
     seeds = f"{tmp_path}/v.zarr/seeds"
-    prepare_ds(seeds, shape=(8, 64, 64), voxel_size=(50, 8, 8), dtype=np.float32)
+    ds = prepare_ds(seeds, shape=(8, 64, 64), voxel_size=(50, 8, 8), dtype=dtype)
+    data = np.zeros(ds.shape, dtype)
+    data[2, 10, 10], data[4, 30, 30] = 5, bad
+    ds[ds.roi] = data
 
-    with pytest.raises(ValueError, match="float32") as refused:
+    with pytest.raises(ValueError, match=message) as refused:
         mutex_watershed_segmentation(
             get_seg_config(mws_step(tmp_path, affs, seeds_dataset=seeds), "mws")
         )
 
     assert seeds in str(refused.value)
+    assert sorted(n for n in os.listdir(f"{tmp_path}/v.zarr") if n[0] != ".") == [
+        "3d_affs",
+        "seeds",
+    ]
 
 
 def test_the_roi_is_cut_to_the_affs_and_snapped_to_their_grid(tmp_path, affs, caplog):

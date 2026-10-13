@@ -5,8 +5,12 @@ Fill holes gives every region enclosed by one object that object's id. Enclosed 
 face-connected path through other voxels to the edge of the object's bounding box, in 2D and
 3D alike. Background is always filled. An enclosed object goes too only when its region has at
 most max_area voxels and holds no excluded id. Closing keeps label contacts, dilate keeps
-excluded ids as they are, and the op names are the config file's.
+excluded ids as they are, the op names are the config file's, and [refine] num_workers is
+the default of every op.
 """
+
+import glob
+import os
 
 import numpy as np
 from click.testing import CliRunner
@@ -393,6 +397,27 @@ def test_exclude_ids_from_a_config_file_array(tmp_path):
     out = open_ds(in_array + "_dilate")[:]
     assert np.array_equal(out == 1, arr == 1)
     assert (out == 4).sum() > (arr == 4).sum()
+
+
+def test_refine_num_workers_is_the_default_of_every_op(tmp_path, bs):
+    arr = np.zeros((4, 32, 32), np.uint64)
+    arr[:, 4:20, 4:20] = 1
+    in_array = write_labels(str(tmp_path / "o.zarr" / "seg"), arr)
+    config = tmp_path / "refine.toml"
+    config.write_text(
+        f'[refine]\nin_array = "{in_array}"\nnum_workers = 2\n'
+        "[refine.size-filter]\nmin_size = 4\n"
+        "[refine.fill-holes]\nxy = true\nnum_workers = 1\n"
+    )
+
+    r = bs("run", config)
+
+    assert r.returncode == 0, r.stderr
+    workers = {
+        os.path.basename(d): len(glob.glob(f"{d}/worker_*.out"))
+        for d in glob.glob(f"{tmp_path}/daisy_logs/*")
+    }
+    assert workers == {"SizeFilter": 2, "Morph-fill-holes": 1}
 
 
 def test_exclude_ids_refuses_a_list_it_cannot_read(tmp_path):

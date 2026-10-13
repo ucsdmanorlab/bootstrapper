@@ -1,6 +1,7 @@
 """Segmentation: ws and mws are one volara implementation (ticket 09) with a SQLite database
-beside the output by default; outputs are named per variant, logged beside their container,
-checked against their inputs, and fragments are filtered. Edge scores come from upstream waterz."""
+beside the output by default; one line names the knobs that took a default; outputs are named
+per variant, logged beside their container, checked against their inputs, and fragments are
+filtered. Edge scores come from upstream waterz."""
 
 import glob
 import os
@@ -113,7 +114,23 @@ def test_a_configured_database_is_kept(tmp_path, affs, capsys):
 
     assert config["db"] == {"db_file": "/elsewhere/rag.db"}
     assert config["lut_dir"] == "/elsewhere/luts"
-    assert capsys.readouterr().out == ""
+    assert "No database" not in capsys.readouterr().out
+
+
+def test_segment_names_the_knobs_that_took_a_default(tmp_path, capsys):
+    step = {
+        "affs_dataset": "a",
+        "fragments_dataset": "f",
+        "seg_dataset_prefix": f"{tmp_path}/o.zarr/s",
+        "params": {"global_bias": [1.0, -0.6]},
+    }
+
+    get_seg_config(step, "mws", param=("remove_debris=10",))
+
+    assert capsys.readouterr().out.splitlines()[0] == (
+        "defaults applied: aff_neighborhood, bias, sigma=None, noise_eps=0.001, strides, "
+        "randomized_strides=True, filter_fragments=0.1, min_seed_distance=None"
+    )
 
 
 def test_connected_components_gets_no_database(tmp_path, affs):

@@ -34,11 +34,13 @@ def link_seeds(db, roi):
     return len(groups), len(links)
 
 
-def max_label(store, num_workers):
-    """The largest id in a labels array, read chunk by chunk."""
+def seed_range(store, num_workers):
+    """The smallest and largest id in a seeds array, read chunk by chunk."""
+    import dask
     from funlib.persistence import open_ds
 
-    return int(open_ds(store).data.max().compute(num_workers=num_workers))
+    data = open_ds(store).data
+    return tuple(int(v) for v in dask.compute(data.min(), data.max(), num_workers=num_workers))
 
 
 def seed_lut(db, lut, roi, max_seed):

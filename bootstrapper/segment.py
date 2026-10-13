@@ -105,7 +105,11 @@ def get_seg_config(config, method, **kwargs):
             config["context" if key == "block_context" else key] = value
 
     # merge method defaults with config params and provided params
-    params = DEFAULTS[method] | method_params | get_method_params(method, kwargs.get("param", ()))
+    given = method_params | get_method_params(method, kwargs.get("param", ()))
+    params = DEFAULTS[method] | given
+    defaulted = [k if isinstance(v, list) else f"{k}={v}" for k, v in DEFAULTS[method].items() if k not in given]
+    if defaulted:
+        click.echo(f"defaults applied: {', '.join(defaulted)}")
 
     # parse coordinate args
     for key in ("roi_offset", "roi_shape", "block_shape", "context"):

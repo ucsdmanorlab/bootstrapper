@@ -111,7 +111,20 @@ def run_pred_evaluation(config, seg_ds):
     return stats
 
 
+def print_report(report):
+    line = f"  {report['objects']} objects; foreground {report['foreground_of_roi']:.3f} of the ROI"
+    if "outside_mask" in report:
+        line += f", {report['foreground_of_mask']:.3f} of the mask; {report['outside_mask']} voxels outside the mask"
+    print(line)
+    if report["largest"]:
+        first, *rest = (f"id {i} = {f:.3f}" for i, f in report["largest"])
+        print("  largest: " + ", ".join([f"{first} of the ROI", *rest]))
+
+
 def run_evaluation(config, config_file, mode="pred", suffix=True, **kwargs):
+    """Report every segmentation, then evaluate it in mode gt or pred; mode report stops at the report."""
+    from .eval.compute_metrics import seg_report
+
     config = get_eval_config(config, config_file, mode, suffix, **kwargs)
     if "seg_datasets" in config:
         seg_datasets = [ds.rstrip("/") for ds in config["seg_datasets"]]
@@ -121,6 +134,11 @@ def run_evaluation(config, config_file, mode="pred", suffix=True, **kwargs):
 
     for seg_ds in seg_datasets:
         print(f"Evaluating {seg_ds}")
+        report = seg_report(seg_ds, config.get("mask_dataset"))
+        print_report(report)
+        seg_stats[seg_ds] = {"report": report}
+        if mode == "report":
+            continue
 
         if mode == "pred":
             stats = run_pred_evaluation(config, seg_ds)
@@ -129,7 +147,7 @@ def run_evaluation(config, config_file, mode="pred", suffix=True, **kwargs):
 
         print(f"Stats for {seg_ds}:")
         pprint(stats)
-        seg_stats[seg_ds] = stats
+        seg_stats[seg_ds] |= stats
 
     out_result = config["out_result"]
     logger.info(f"Saving stats to {out_result}")
@@ -150,7 +168,7 @@ def evaluate(config_file, step, gt, pred, out_result=None):
     steps = steps_of(config_file, "evaluate", step)
     for s in steps:
         flags = [m for m, on in (("gt", gt), ("pred", pred)) if on]
-        modes = flags or [m for m in ("gt", "pred") if m in s.keys] or ["pred"]
+        modes = flags or [m for m in ("gt", "pred") if m in s.keys] or ["report"]
         for volume, config in runs(s):
             for mode in modes:
                 run_evaluation(config, config_file, mode, suffix=len(modes) > 1, out_result=out_result)

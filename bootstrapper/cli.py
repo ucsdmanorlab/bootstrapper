@@ -136,8 +136,9 @@ def run_refine(ctx, step):
         array = config.get("in_array")
         if array is None:
             raise click.ClickException(f"[{step.label}] needs in_array")
+        defaults = {"num_workers": config["num_workers"]} if "num_workers" in config else {}
         for op, keys in ops.items():
-            keys = dict(keys)
+            keys = defaults | keys
             if op in MORPH_OPS:
                 keys["op"] = op
                 op = "morph"

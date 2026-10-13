@@ -1,4 +1,5 @@
 import logging
+from collections import Counter
 from tqdm import tqdm
 
 import numpy as np
@@ -67,6 +68,38 @@ def read_skeletons(gt_skeletons_file, roi):
         skeletons.add_edge(int(u), int(v), **attrs)
 
     return skeletons
+
+
+def seg_report(seg_dataset, mask_dataset=None):
+    """Object count, foreground fractions, voxels outside the mask and the 3 largest ids
+    of a segmentation, counted exactly over z slabs of one chunk."""
+    seg = open_ds(seg_dataset)
+    mask = None if mask_dataset is None else open_ds(mask_dataset)
+    if mask is not None and mask.voxel_size != seg.voxel_size:
+        raise ValueError(f"{mask_dataset} has voxel size {mask.voxel_size} but {seg_dataset} has {seg.voxel_size}: give a mask on the seg grid")
+
+    sizes = Counter()
+    mask_voxels = in_mask = outside = 0
+    step = seg.chunk_shape[0] * seg.voxel_size[0]
+    for z in range(seg.roi.begin[0], seg.roi.end[0], step):
+        slab = Roi((z, *seg.roi.begin[1:]), (step, *seg.roi.shape[1:])).intersect(seg.roi)
+        data = seg[slab]
+        ids, counts = np.unique(data, return_counts=True)
+        sizes.update(dict(zip(ids.tolist(), counts.tolist())))
+        if mask is not None:
+            inside = mask.to_ndarray(slab, fill_value=0) > 0
+            fg = data > 0
+            mask_voxels += int(inside.sum())
+            in_mask += int((fg & inside).sum())
+            outside += int((fg & ~inside).sum())
+
+    total = sum(sizes.values())
+    sizes.pop(0, None)
+    report = {"objects": len(sizes), "foreground_of_roi": sum(sizes.values()) / total}
+    if mask is not None:
+        report |= {"foreground_of_mask": in_mask / max(mask_voxels, 1), "outside_mask": outside}
+    report["largest"] = [[i, n / total] for i, n in sizes.most_common(3)]
+    return report
 
 
 def compute_metrics(

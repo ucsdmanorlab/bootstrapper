@@ -128,7 +128,13 @@ def parse_factor(value):
     required=True,
     prompt="Specify whether to upscale or downscale",
 )
-def scale_pyramid(in_array, scales, chunk_shape, mode):
+@click.option(
+    "--labels/--image",
+    default=None,
+    help="Sample ids (labels) or interpolate intensities (image). Default: labels for "
+    "uint32, uint64 or a name with label, lbl, ids, mask or seg",
+)
+def scale_pyramid(in_array, scales, chunk_shape, mode, labels):
     """
     Create a scale pyramid of a zarr array, in place.
 
@@ -140,8 +146,17 @@ def scale_pyramid(in_array, scales, chunk_shape, mode):
         scales (tuple): Spatial scale factors, one string per level.
         chunk_shape (str): Spatial chunk shape, or None to reuse the input's.
         mode (str): 'up' for upscaling, 'down' for downscaling.
+        labels (bool): True to sample ids, False to interpolate, None to guess.
     """
     in_array = os.path.normpath(in_array)
+    node = zarr.open(in_array, mode="r")
+    if isinstance(node, zarr.Group):
+        levels = sorted((k for k in node.array_keys() if re.fullmatch(r"s\d+", k)), key=lambda k: int(k[1:]))
+        if not levels:
+            raise click.ClickException(f"{in_array} is a group, not an array; give the path of an array in it")
+        # the level a killed run left the input at
+        pick = levels[-1] if mode == "up" else levels[0]
+        raise click.ClickException(f"{in_array} is a group with levels {', '.join(levels)}; give one level: -i {in_array}/{pick}")
     # the parent group, so no ".zarr" is needed anywhere in the path
     parent_path, ds_name = os.path.split(in_array)
     parent = zarr.open(parent_path)
@@ -173,7 +188,8 @@ def scale_pyramid(in_array, scales, chunk_shape, mode):
     # on its group instead
     at_level = re.match(r"^s(\d+)$", ds_name)
     pyramid_name = os.path.basename(parent_path) if at_level else ds_name
-    labels = is_label_array(pyramid_name, prev_array.dtype)
+    if labels is None:
+        labels = is_label_array(pyramid_name, prev_array.dtype)
     logger.info(
         f"{mode.capitalize()}scaling {in_array} by {scales} "
         f"({'labels: sampling' if labels else 'image: averaging'})"

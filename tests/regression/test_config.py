@@ -10,7 +10,7 @@ from click.testing import CliRunner
 from funlib.persistence import prepare_ds
 
 from bootstrapper.cli import cli
-from bootstrapper.config import load
+from bootstrapper.config import load, runs
 
 SEGMENT = """
 [segment]
@@ -105,6 +105,37 @@ method = "cc"
         ("synapse", "cc", {}),
     ]
     assert steps[0].keys["params"] == {"thresholds": [0.2, 0.3]}
+
+
+def test_a_volume_table_merges_key_by_key_over_the_step(write):
+    [(volume, config)] = runs(
+        load(
+            write("""
+[volumes.spine]
+raw = "/v/spine.zarr/raw"
+[segment]
+method = "mws"
+[segment.params]
+global_bias = [1.0, -0.6]
+filter_fragments = 0.05
+[segment.db]
+db_host = "h"
+db_name = "step"
+[segment.spine.params]
+remove_debris = 128
+[segment.spine.db]
+db_name = "spine"
+""")
+        )[0]
+    )
+
+    assert volume == "spine"
+    assert config["params"] == {
+        "global_bias": [1.0, -0.6],
+        "filter_fragments": 0.05,
+        "remove_debris": 128,
+    }
+    assert config["db"] == {"db_host": "h", "db_name": "spine"}
 
 
 @pytest.mark.parametrize(

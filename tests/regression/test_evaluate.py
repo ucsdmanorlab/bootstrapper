@@ -1,5 +1,7 @@
 """Evaluation: error values mean the same thing in every block and every run (ticket 11),
-and skeleton metrics drop isolated nodes."""
+skeleton metrics drop isolated nodes, and every segmentation gets a report."""
+
+import json
 
 import gunpowder as gp
 import networkx as nx
@@ -10,7 +12,7 @@ from funlib.persistence import open_ds, prepare_ds
 
 from bootstrapper.configs import EVAL_ERROR_THRESHOLDS
 from bootstrapper.eval import compute_errors as ce
-from bootstrapper.eval.compute_metrics import read_skeletons
+from bootstrapper.eval.compute_metrics import read_skeletons, seg_report
 from bootstrapper.evaluate import get_eval_config, run_pred_evaluation
 from bootstrapper.gp import AddAffErrors, AddLSDErrors
 
@@ -279,3 +281,59 @@ def test_isolated_skeleton_nodes_are_dropped(tmp_path):
     skeletons = read_skeletons(path, Roi((0, 0, 0), (20, 20, 20)))
 
     assert sorted(skeletons.nodes) == [1, 2]
+
+
+def write(path, data, voxel_size=(50, 8, 8)):
+    ds = prepare_ds(
+        path,
+        shape=data.shape,
+        voxel_size=voxel_size,
+        dtype=data.dtype,
+        chunk_shape=(2, 10, 10),
+    )
+    ds[ds.roi] = data
+    return path
+
+
+def test_a_step_without_gt_or_pred_reports_each_segmentation(tmp_path, bs):
+    seg = np.zeros((4, 10, 10), np.uint64)
+    seg[:, :, :5] = 7  # 200 voxels, over both z slabs
+    seg[:, :5, 5:] = 3  # 100
+    seg[:2, 5:, 5:] = 9  # 50
+    mask = np.zeros(seg.shape, np.uint8)
+    mask[:, :, :8] = 1  # 320 voxels; 60 seg voxels lie at x 8 and 9
+    write(f"{tmp_path}/o.zarr/segs/a", seg)
+    write(f"{tmp_path}/o.zarr/mask", mask)
+    config = tmp_path / "04_eval_v.toml"
+    config.write_text(
+        f'[evaluate]\nseg_datasets_prefix = "{tmp_path}/o.zarr/segs"\n'
+        f'mask_dataset = "{tmp_path}/o.zarr/mask"\n'
+    )
+
+    r = bs("evaluate", config)
+
+    assert r.returncode == 0, r.stderr
+    assert (
+        "  3 objects; foreground 0.875 of the ROI, 0.906 of the mask; 60 voxels outside the mask\n"
+        "  largest: id 7 = 0.500 of the ROI, id 3 = 0.250, id 9 = 0.125\n"
+    ) in r.stdout
+    results = json.loads((tmp_path / "results_v.json").read_text())
+    assert results[f"{tmp_path}/o.zarr/segs/a"]["report"] == {
+        "objects": 3,
+        "foreground_of_roi": 0.875,
+        "foreground_of_mask": 0.90625,
+        "outside_mask": 60,
+        "largest": [[7, 0.5], [3, 0.25], [9, 0.125]],
+    }
+
+
+def test_a_mask_on_another_grid_is_refused_by_name(tmp_path):
+    seg = write(f"{tmp_path}/o.zarr/seg", np.ones((4, 10, 10), np.uint64))
+    mask = write(
+        f"{tmp_path}/o.zarr/mask", np.ones((4, 20, 20), np.uint8), voxel_size=(50, 4, 4)
+    )
+
+    with pytest.raises(ValueError, match="voxel size") as refused:
+        seg_report(seg, mask)
+
+    assert mask in str(refused.value)

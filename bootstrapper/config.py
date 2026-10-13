@@ -87,10 +87,15 @@ def steps_of(path, kind, name=None):
 
 
 def runs(step):
-    """One flat config per volume table, else one for the step itself."""
+    """One flat config per volume table, else one for the step itself. A volume's
+    params and db tables merge key by key over the step's."""
     if not step.volumes:
         return [(None, dict(step.keys))]
-    return [(vol, step.keys | keys) for vol, keys in step.volumes.items()]
+    return [(vol, _merge(step.keys, keys)) for vol, keys in step.volumes.items()]
+
+
+def _merge(step, vol):
+    return step | vol | {k: step[k] | vol[k] for k in ("params", "db") if k in step and k in vol}
 
 
 def _own(kind, name):

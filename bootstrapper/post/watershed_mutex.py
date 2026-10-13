@@ -19,7 +19,7 @@ def mutex_watershed_segmentation(config):
 
     from .blockwise.extract_frags import ExtractFrags, SeededExtractFrags
     from .naming import build_name, dump_params, dump_lut_params, inputs_differ
-    from .seeds import link_seeds, max_label, seed_lut
+    from .seeds import link_seeds, seed_lut, seed_range
     from ..blockwise import run_volara_task, volara_log_dir
 
     affs_dataset = config["affs_dataset"]
@@ -85,6 +85,13 @@ def mutex_watershed_segmentation(config):
         if seeds.dtype.kind not in "iu":
             raise ValueError(
                 f"{seeds_dataset} has dtype {seeds.dtype}: give integer seed ids, such as uint64"
+            )
+        # a negative id wraps in the uint64 cast; the block shift and unseeded ids need room above max_seed
+        min_seed, max_seed = seed_range(seeds_dataset, num_workers)
+        if min_seed < 0 or max_seed >= 2**63:
+            raise ValueError(
+                f"{seeds_dataset} has seed id {min_seed if min_seed < 0 else max_seed}: give seed ids "
+                "from 0 to 2^63 - 1, so the ids of unseeded objects fit above them"
             )
 
     roi = affs.roi
@@ -223,7 +230,7 @@ def mutex_watershed_segmentation(config):
     )
     run_volara_task(global_mws, multiprocessing=False)
     if seeds_dataset:
-        seed_lut(db, lut, roi, max_label(seeds_dataset, num_workers))
+        seed_lut(db, lut, roi, max_seed)
     dump_lut_params(lut_name, {**run_params, **seg_params})
 
     relabel = Relabel(
