@@ -182,7 +182,7 @@ Models (? lists all 9) [2d_mtlsd 3d_affs_from_2d_mtlsd] >
     (["round_01", "--raw", "apical.zarr/raw/s0", "--labels", "labels"], "--labelled is needed with --labels: sparsely, "
      "densely, or a mask path (densely labelled within it). Example: --labelled sparsely"),
     (["round_01", "--raw", "apical.zarr/raw/s0", "--labels", "labels", "--labelled", "densely", "--target-mask", "mask/s1"],
-     "--target-mask mask/s1 has voxel 50 16 16 nm; the raw has 50 8 8 nm. Use mask/s0."),
+     "--target-mask: mask/s1 has voxel 50 16 16 nm; the raw has 50 8 8 nm. Use mask/s0."),
     (["round_01", "--raw", "apical.zarr/raw/s0"], "no volume has labels, so no model can train. Give --labels; "
      "label arrays at 50 8 8 nm in apical.zarr: labels"),
     (["apical.zarr"], "apical.zarr is zarr data, not a round. Give a new round folder and the raw: "
@@ -304,10 +304,11 @@ def test_bs_prepare_writes_the_tails_again_and_keeps_your_lines(tmp_path, prepar
     assert mask[mask.roi].sum() == 2 * (20 * 20 + 4 * 20)
     assert net_config.read_text().endswith("}\n\n")
     again = CliRunner().invoke(prepare, ["round_01"])
-    assert again.output.endswith("training_mask.zarr/apical\nround_01 is current.\n")
+    assert again.output.endswith("training_mask.zarr/apical\nround_01 is current.\nNext: bs run round_01\n")
     assert {f: f.read_text() for f in round_dir.glob("*.toml")} == after
     flags = CliRunner().invoke(prepare, ["round_01", "--gt", "labels"])
-    assert flags.stderr == "Error: round_01 is a round already. Edit its files, then run: bs prepare round_01\n"
+    assert flags.stderr == ("Error: --raw is needed to add a volume to round_01. To change a volume, edit "
+                            "round_01/volumes.toml, then run: bs prepare round_01\n")
 
 
 def test_predict_covers_the_target_mask_box_and_refine_masks_to_it(tmp_path):
@@ -437,7 +438,7 @@ def test_a_model_after_2d_mtlsd_reads_only_the_outputs_it_takes(tmp_path):
     assert result.exit_code == 0, result.output
     predict = step(tmp_path, "03_predict_3d_affs_from_2d_lsd.toml")
     assert predict.volumes["apical"]["input_datasets"] == [
-        f"{tmp_path}/apical.zarr/2d_mtlsd/30000/2d_lsds"
+        f"{tmp_path}/round_01/apical.zarr/2d_mtlsd/30000/2d_lsds"
     ]
 
 
@@ -508,9 +509,9 @@ def test_a_dry_run_prints_what_each_step_reads_and_writes(tmp_path):
     """Each read exists or comes from an earlier step; a missing one stops the run before any
     step."""
     run_prepare(tmp_path, "3M")
-    d, level = f"{tmp_path}/round_01", "3d_mtlsd/30000"
+    d = f"{tmp_path}/round_01"
+    level = f"{d}/apical.zarr/3d_mtlsd/30000"
     seg = step(tmp_path, "04_refine.toml").volumes["apical"]["in_array"]
-    seg = seg.removeprefix(f"{tmp_path}/apical.zarr/")
 
     result = CliRunner().invoke(cli, ["run", "round_01", "--dry-run"])
 
@@ -521,7 +522,7 @@ def test_a_dry_run_prints_what_each_step_reads_and_writes(tmp_path):
         f"   writes {d}/3d_mtlsd\n"
         "02 predict.3d_mtlsd on apical\n"
         f"   reads  raw, {d}/3d_mtlsd/model_checkpoint_30000.ckpt from 01\n"
-        "   writes 3d_mtlsd\n"
+        f"   writes {d}/apical.zarr/3d_mtlsd\n"
         "03 segment on apical\n"
         f"   reads  {level}/3d_affs from 02\n"
         f"   writes {level}/fragments_mws, {level}/luts_mws, {level}/segmentations_mws\n"
@@ -534,7 +535,7 @@ def test_a_dry_run_prints_what_each_step_reads_and_writes(tmp_path):
     )
     result = CliRunner().invoke(cli, ["run", "round_01", "--from", "03"])
     assert result.stderr == (
-        f"Error: 03_segment.toml [segment] apical reads {tmp_path}/apical.zarr/{level}/3d_affs: "
+        f"Error: 03_segment.toml [segment] apical reads {level}/3d_affs: "
         "nothing there, and no earlier step writes it. Nothing ran.\n"
     )
     assert not os.path.exists(f"{d}/runs")

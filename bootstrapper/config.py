@@ -180,6 +180,7 @@ def _expand(table, keys, where, taken):
         if len(found) != len(matches):
             raise click.ClickException(f"{where} {first} matches {len(matches)} arrays and {k} matches {len(found)}; they must match one to one")
     volumes = {}
+    taken.discard(table)  # a glob's table names no volume, so its first match may take the name
     for i, path in enumerate(matches):
         name = volume_name(path, taken)
         taken.add(name)

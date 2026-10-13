@@ -26,6 +26,7 @@ def derive(volumes, steps, root):
         check_round(chain)
     arrays = {n: {"raw": v.keys["raw"]} for n, v in volumes.items()}  # each volume's newest arrays by name
     models = {n: [] for n in volumes}  # each volume's <model>_<iteration> so far
+    outputs = _outputs(volumes, root)
     trained, segments, neighborhood, tails = {}, {}, None, []
     for step in steps:
         own, per = {}, {}  # derived keys of the step, and of each volume
@@ -42,7 +43,7 @@ def derive(volumes, steps, root):
             model = _model(step)
             own = trained.get(model.name) or _shipped(model)
             per = {n: {"input_datasets": [arrays[n][x] for x in model.inputs],
-                       "output_datasets_prefix": os.path.join(v.keys.get("outputs", _container(v.keys["raw"])), model.name),
+                       "output_datasets_prefix": os.path.join(outputs[n], model.name),
                        "chain_str": "--from--".join(models[n]), **_box(v.keys)}
                    for n, v in volumes.items() if set(model.inputs) <= set(arrays[n])}
             run, configs = _over(step, own, per)
@@ -127,6 +128,20 @@ def _box(keys):
 
 def _target(keys, key):
     return {key: keys["target_mask"]} if "target_mask" in keys else {}
+
+
+def _outputs(volumes, root):
+    """Each volume's outputs key, else a container in the round named like the raw's. A second
+    container of that name gets -2: b/v.zarr writes round_01/v-2.zarr after a/v.zarr."""
+    out, owner = {}, {}
+    for n, v in volumes.items():
+        container = _container(v.keys["raw"])
+        stem, ext = os.path.splitext(os.path.basename(container))
+        name, i = stem + ext, 2
+        while owner.setdefault(name, container) != container:
+            name, i = f"{stem}-{i}{ext}", i + 1
+        out[n] = v.keys.get("outputs", os.path.join(root, name))
+    return out
 
 
 def _container(path):

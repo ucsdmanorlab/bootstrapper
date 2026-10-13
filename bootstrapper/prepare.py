@@ -1,5 +1,5 @@
 """bs prepare: ask the facts of your data in a short dialogue, or take them as flags, then
-write the round; on a round, write its run tails again."""
+write the round; on a round, add the volume that flags give and write its run tails again."""
 import glob
 import os
 import re
@@ -148,11 +148,11 @@ def parse_target_mask(text, d):
 
 
 def parse_gt(text, d):
-    if text == "labels" and "labels" not in d.keys:
-        raise click.ClickException("this volume has no labels to reuse; give the ground truth's path")
     if not text:
         return d
-    return replace(d, keys=d.keys | {"gt": d.keys["labels"] if text == "labels" else _array(text, d)[0]})
+    if text == "labels" and "labels" in d.keys:
+        return replace(d, keys=d.keys | {"gt": d.keys["labels"]})
+    return replace(d, keys=d.keys | {"gt": _array(text, d)[0]})
 
 
 def parse_name(text, d):
@@ -305,7 +305,7 @@ def ask(questions, state, flags, terminal):
             new = q.parse(text, state)
         except click.ClickException as e:
             if not asked:
-                raise click.ClickException(f"{q.flag} {e.message}" if q.flag in flags else e.message)
+                raise click.ClickException(f"{q.flag}: {e.message}" if q.flag in flags else e.message)
             cli_echo(f"  {e.message}", STYLE, "error")
             continue
         if asked:
@@ -322,9 +322,7 @@ def ask_volumes(round_dir, flags, terminal):
     while True:
         d = ask(VOLUME, Draft(taken=frozenset(volumes), round=round_dir), flags, terminal)
         name = d.name or volume_name(d.keys["raw"], volumes)
-        container = discover.container(d.keys["raw"])
-        writable = glob.has_magic(container) or os.access(container, os.W_OK)
-        volumes[name] = d.keys | ({} if writable else {"outputs": os.path.join(round_dir, os.path.basename(container))})
+        volumes[name] = d.keys
         cli_echo(f"  {summary(name, d)}", STYLE)
         if (not terminal or flags.keys() & VOLUME_FLAGS
                 or not click.prompt("Another volume?", default="n", prompt_suffix=" > ").startswith("y")):
@@ -378,6 +376,10 @@ def _tab(base):
     readline.parse_and_bind("bind ^I rl_complete" if "libedit" in (readline.__doc__ or "") else "tab: complete")
 
 
+EVALUATE = ("Compare the segmentations with the ground truth, and the affinities with the segmentations.",
+            {"evaluate": defaults("evaluate")})
+
+
 def write_round(path, answers):
     """Write volumes.toml, unless it is there, and one numbered file of your keys per step; a path
     ending in .toml gets them all in one file. Then write their run tails. Returns the files written."""
@@ -398,8 +400,7 @@ def write_round(path, answers):
     files.append(("refine", "Refine the segmentation. The ops run in file order; each output feeds the next.",
                   {"refine": {"fill-holes": defaults("refine.fill-holes")} | masked}))
     if any("gt" in v for v in volumes.values()):
-        files.append(("evaluate", "Compare the segmentations with the ground truth, and the affinities with the segmentations.",
-                      {"evaluate": defaults("evaluate")}))
+        files.append(("evaluate", *EVALUATE))
     texts = {f"{n:02d}_{name}.toml" if n else name: file_text(title, doc) for n, (name, title, doc) in enumerate(files)}
     folder = path
     if path.endswith(".toml"):
@@ -412,6 +413,43 @@ def write_round(path, answers):
             f.write(text)
     refresh(path)
     return [os.path.join(folder, name) for name in texts]
+
+
+def add_volume(path, flags, terminal):
+    """Add the volume that flags give to the round folder at path, in its volumes.toml."""
+    if not os.path.isdir(path):
+        raise click.ClickException(f"{path} holds the round in one file. Add the volume as a [volumes.<name>] "
+                                   f"table in it, then run: bs prepare {path}")
+    beside = os.path.join(path, "volumes.toml")
+    if "--raw" not in flags:
+        raise click.ClickException(f"--raw is needed to add a volume to {path}. To change a volume, edit {beside}, "
+                                   f"then run: bs prepare {path}")
+    with open(beside, "rb") as f:
+        taken = set(tomllib.load(f).get("volumes", {})) | set(load_volumes(beside))
+    d = ask(VOLUME, Draft(round=os.path.abspath(path)), flags, terminal)
+    name = d.name or volume_name(d.keys["raw"], ())
+    if name in taken:
+        raise click.ClickException(f"{path} has a volume named {name} already. Give this one another name, such as --name {name}-2")
+    cli_echo(f"  {summary(name, d)}", STYLE)
+    with open(beside, "a") as f:
+        f.write(file_text("", {"volumes": {name: d.keys}}).split("\n", 1)[1])
+    cli_echo(f"added {name} to {beside}", STYLE)
+
+
+def add_steps(path):
+    """Write the step files that the volumes need and the round folder at path lacks: an
+    evaluate step once a volume has ground truth. Returns the files written."""
+    if not os.path.isdir(path):
+        return []
+    files = load_round(path, tail=False)
+    if (not any("gt" in v.keys for v in load_volumes(files[0][0]).values())
+            or any(s.kind == "evaluate" for _, steps in files for s in steps)):
+        return []
+    n = int(re.match(r"\d+", os.path.basename(files[-1][0]))[0]) + 1
+    out = os.path.join(path, f"{n:02d}_evaluate.toml")
+    with open(out, "w") as f:
+        f.write(file_text(*EVALUATE))
+    return [out]
 
 
 def stale(path):
@@ -472,7 +510,7 @@ def _flags(command):
     """One option per question that has a flag, with its help and an example."""
     for q in reversed([*VOLUME, MODELS]):
         if q.flag:
-            command = click.option(q.flag, help=f"{q.help.splitlines()[0]} Example: {q.flag} {q.example}")(command)
+            command = click.option(q.flag, multiple=True, help=f"{q.help.splitlines()[0]} Example: {q.flag} {q.example}")(command)
     return command
 
 
@@ -481,18 +519,34 @@ def _flags(command):
 @_flags
 def prepare(path, **given):
     """Write the round PATH from the facts of your data: a short dialogue asks them, or flags give
-    them. A PATH ending in .toml holds the round in one file. On a round, write each file's run
-    tail again from your edits. Example: bs prepare round_01 --raw data.zarr/raw/s0 --labels
-    labels/s0 --labelled sparsely"""
-    flags = {f"--{k.replace('_', '-')}": v for k, v in given.items() if v is not None}
+    them. A PATH ending in .toml holds the round in one file. On a round, add the volume that
+    flags give, then write each file's run tail again from your edits. Example: bs prepare
+    round_01 --raw data.zarr/raw/s0 --labels labels/s0 --labelled sparsely"""
+    given = {f"--{k.replace('_', '-')}": v for k, v in given.items()}
+    for flag, values in given.items():
+        if len(values) > 1:
+            if flag == "--models":
+                raise click.ClickException(f"--models: give it once, such as --models {values[-1]}")
+            raws = given["--raw"]
+            again = f" {flag} {values[1]}" * (flag != "--raw")
+            raise click.ClickException(f"{flag}: give one volume per command; add the next with bs prepare {path} "
+                                       f"--raw {raws[1] if len(raws) > 1 else '...'}{again}")
+    flags = {flag: values[0] for flag, values in given.items() if values}
     if os.path.isfile(path) or glob.glob(os.path.join(path, "[0-9]*.toml")):
+        if flags.keys() - VOLUME_FLAGS:
+            raise click.ClickException(f"--models: {path} is a round already. Edit its files, then run: bs prepare {path}")
         if flags:
-            raise click.ClickException(f"{path} is a round already. Edit its files, then run: bs prepare {path}")
+            add_volume(path, flags, _terminal())
+        added = add_steps(path)
+        for f in added:
+            cli_echo(f"wrote {f}", STYLE)
         for f, keys in refresh(path):
             tables = [f"[{table}] {', '.join(k)}" for table, k in keys.items()]
             more = f" and {len(tables) - 3} more tables" if len(tables) > 3 else ""
-            cli_echo(f"refreshed {os.path.basename(f)}: {'; '.join(tables[:3])}{more}", STYLE)
+            if f not in added:
+                cli_echo(f"refreshed {os.path.basename(f)}: {'; '.join(tables[:3])}{more}", STYLE)
         cli_echo(f"{path} is current.", STYLE, "success")
+        cli_echo(f"Next: bs run {path}", STYLE)
         return
     if ".zarr" in path:
         raise click.ClickException(f"{path} is zarr data, not a round. Give a new round folder and the raw: bs prepare round_01 --raw {path}")
@@ -502,10 +556,13 @@ def prepare(path, **given):
             raise click.ClickException(f"{beside} holds the volumes; edit it, or give a new round folder")
         volumes = {name: v.keys for name, v in load_volumes(beside).items()}
     else:
+        if not terminal and not flags:
+            raise click.ClickException("stdin is not a terminal, so bs prepare asks nothing. Give the facts as flags, "
+                                       "such as --raw data.zarr/raw/s0")
         if terminal and not flags:
             cli_echo("Set up a round: your arrays, then the models. '?' explains a question, '<' goes back, Tab completes.", STYLE)
         volumes = ask_volumes(os.path.abspath(os.path.dirname(path) if path.endswith(".toml") else path), flags, terminal)
     for f in write_round(path, ask([MODELS], Answers(volumes), flags, terminal)):
         cli_echo(f"wrote {f}", STYLE)
-    cli_echo(f"Next: bs run {path} --dry-run   checks every path; runs nothing\n      bs run {path}\n"
+    cli_echo(f"Next: bs run {path}\nbs run {path} --dry-run checks every path and runs nothing.\n"
              "To change a param, edit its file; every key says what it does.", STYLE, "success")

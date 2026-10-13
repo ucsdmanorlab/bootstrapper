@@ -21,7 +21,7 @@ KEYS = {
         "mask_dilation": Key(None, "Trains on this many voxels of background around each object."),
         "target_mask": Key(None, "Segment, refine and evaluate only inside this mask; predict covers its box."),
         "gt": Key(None, "Ground truth for evaluate."),
-        "outputs": Key(None, "Where outputs go. Default: the raw's container."),
+        "outputs": Key("/scratch/data.zarr", "Where predictions, segmentations and error maps go. Default: a container in the round, such as round_01/data.zarr.", off=True),
         "voxel_size": Key(None, "Voxel size in nm, z y x."),
     },
     "train.*": {
