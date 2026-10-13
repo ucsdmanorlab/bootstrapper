@@ -112,6 +112,9 @@ def get_seg_config(config, method, **kwargs):
         if key in config:
             config[key] = parse_shape(config[key])
 
+    if "seeds_dataset" in config and method != "mws":
+        raise ValueError(f"seeds_dataset works with mws only, not {method}: remove it or segment with -mws")
+
     if method == "cc":
         if config.get("blockwise", False):
             raise ValueError("Blockwise connected components is not supported!")
@@ -126,7 +129,8 @@ def get_seg_config(config, method, **kwargs):
         if "db" not in config:
             from .post.naming import build_name
 
-            db_file = os.path.join(out_dir, f"rag_{method}_{build_name(params)}.db")
+            seeded = "_seeded" if "seeds_dataset" in config else ""
+            db_file = os.path.join(out_dir, f"rag_{method}{seeded}_{build_name(params)}.db")
             config["db"] = {"db_file": db_file}
             click.echo(f"No database in config: using SQLite at {db_file}")
         if "db_file" in config["db"] and config.get("num_workers", 1) > 10:

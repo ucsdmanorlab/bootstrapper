@@ -9,7 +9,7 @@ def mutex_watershed_segmentation(config):
     import os
     from pathlib import Path
 
-    from funlib.geometry import Coordinate
+    from funlib.geometry import Coordinate, Roi
     from funlib.persistence import open_ds
     from volara.blockwise import AffAgglom, GraphMWS, Relabel
     from volara.datasets import Affs, Labels, Raw
@@ -17,14 +17,16 @@ def mutex_watershed_segmentation(config):
     from volara.logging import set_log_basedir
     from volara.lut import LUT
 
-    from .blockwise.extract_frags import ExtractFrags
+    from .blockwise.extract_frags import ExtractFrags, SeededExtractFrags
     from .naming import build_name, dump_params, dump_lut_params, inputs_differ
+    from .seeds import link_seeds, max_label, seed_lut
     from ..blockwise import run_volara_task, volara_log_dir
 
     affs_dataset = config["affs_dataset"]
     fragments_dataset_prefix = config["fragments_dataset"]
     db_config = config["db"]
     mask_dataset = config.get("mask_dataset")
+    seeds_dataset = config.get("seeds_dataset")
     lut_dir = config["lut_dir"]
     seg_dataset_prefix = config["seg_dataset_prefix"]
 
@@ -59,6 +61,11 @@ def mutex_watershed_segmentation(config):
         raise ValueError(
             f"{len(bias)} biases for {len(neighborhood)} neighborhood offsets: give one per offset"
         )
+    if seeds_dataset and min_seed_distance is not None:
+        raise ValueError(
+            "seeds_dataset and min_seed_distance are both set: mws takes user seeds or "
+            "local maxima seeds; remove one"
+        )
 
     set_log_basedir(volara_log_dir(seg_dataset_prefix))
 
@@ -68,11 +75,30 @@ def mutex_watershed_segmentation(config):
             f"{affs_dataset} has {affs.shape[0]} affinity channels but the neighborhood "
             f"has {len(neighborhood)} offsets: use a neighborhood with one offset per channel"
         )
+    if seeds_dataset:
+        seeds = open_ds(seeds_dataset)
+        if seeds.voxel_size != affs.voxel_size:
+            raise ValueError(
+                f"{seeds_dataset} has voxel size {seeds.voxel_size} but the affs have "
+                f"{affs.voxel_size}: give seeds on the affs grid"
+            )
+        if seeds.dtype.kind not in "iu":
+            raise ValueError(
+                f"{seeds_dataset} has dtype {seeds.dtype}: give integer seed ids, such as uint64"
+            )
 
+    roi = affs.roi
     if roi_offset is not None:
-        roi = (roi_offset, roi_shape)
-    else:
-        roi = (affs.roi.offset, affs.roi.shape)
+        asked = Roi(roi_offset, roi_shape)
+        roi = asked.snap_to_grid(affs.voxel_size, mode="grow").intersect(affs.roi)
+        if roi.empty:
+            raise ValueError(
+                f"roi_offset {roi_offset} and roi_shape {roi_shape} lie outside {affs_dataset} "
+                f"{affs.roi}: give an ROI inside it, in world units"
+            )
+        if roi != asked:
+            logger.warning("segment ROI %s is now %s: cut to %s and its voxel grid %s",
+                           asked, roi, affs_dataset, affs.voxel_size)
 
     if blockwise:
         block_size = (
@@ -84,7 +110,7 @@ def mutex_watershed_segmentation(config):
             else Coordinate([max(1, s // 8) for s in block_size])
         )
     else:
-        block_size = Coordinate(roi[1]) / affs.voxel_size
+        block_size = roi.shape / affs.voxel_size
         ctx = Coordinate([0] * affs.roi.dims)
 
     # dataset names: frags from fragment params; lut/seg add the global mws
@@ -99,6 +125,8 @@ def mutex_watershed_segmentation(config):
         "filter_fragments": filter_fragments,
         "remove_debris": remove_debris,
     }
+    if seeds_dataset:
+        frag_params["seeded"] = True
     seg_params = {"global_bias": list(global_bias), **frag_params}
     shift_name = build_name(frag_params)
     agglom_name = build_name(seg_params)
@@ -112,31 +140,41 @@ def mutex_watershed_segmentation(config):
         "blockwise": blockwise,
         "affs_dataset": affs_dataset,
         "mask_dataset": mask_dataset,
+        "seeds_dataset": seeds_dataset,
         "aff_neighborhood": neighborhood,
-        "roi_offset": list(roi[0]),
-        "roi_shape": list(roi[1]),
+        "roi_offset": list(roi.offset),
+        "roi_shape": list(roi.shape),
         "block_shape": list(block_size),
         "context": list(ctx),
     }
 
     affinities = Affs(store=affs_dataset, neighborhood=neighborhood)
     mask_data = Raw(store=mask_dataset) if mask_dataset else None
+    # seeded runs keep each fragment's seed id and the seed constraint edges
+    graph_attrs = {"edge_attrs": {"zyx_aff": "float"}}
+    if seeds_dataset:
+        graph_attrs = {
+            "node_attrs": {"seed_id": "str"},
+            "edge_attrs": {"zyx_aff": "float", "seed_link": "float"},
+        }
     if "db_file" in db_config:
-        db = SQLite(path=db_config["db_file"], edge_attrs={"zyx_aff": "float"})
+        db = SQLite(path=db_config["db_file"], **graph_attrs)
     else:
         db = PostgreSQL(
             name=db_config["db_name"],
             host=db_config["db_host"],
             user=db_config["db_user"],
             password=db_config["db_password"],
-            edge_attrs={"zyx_aff": "float"},
+            **graph_attrs,
         )
     fragments = Labels(store=frags_ds_name)
     segments = Labels(store=seg_name)
     os.makedirs(lut_dir, exist_ok=True)
     lut = LUT(path=lut_name)
 
-    extract_frags = ExtractFrags(
+    seeded = {"seeds_data": Labels(store=seeds_dataset)} if seeds_dataset else {}
+    extract_frags = (SeededExtractFrags if seeds_dataset else ExtractFrags)(
+        **seeded,
         db=db,
         affs_data=affinities,
         frags_data=fragments,
@@ -172,13 +210,20 @@ def mutex_watershed_segmentation(config):
     )
     run_volara_task(aff_agglom, blockwise)
 
+    weights = {"zyx_aff": global_bias}
+    if seeds_dataset:
+        num_seeds, num_links = link_seeds(db, roi)
+        logger.info("%d seed ids: %d seed constraint edges", num_seeds, num_links)
+        weights["seed_link"] = (1.0, 0.0)
     global_mws = GraphMWS(
         db=db,
         lut=lut,
-        weights={"zyx_aff": global_bias},
+        weights=weights,
         roi=roi,
     )
     run_volara_task(global_mws, multiprocessing=False)
+    if seeds_dataset:
+        seed_lut(db, lut, roi, max_label(seeds_dataset, num_workers))
     dump_lut_params(lut_name, {**run_params, **seg_params})
 
     relabel = Relabel(

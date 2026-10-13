@@ -5,6 +5,7 @@ import zarr
 
 # param -> short code; dict order is the name order
 CODES = {
+    "seeded": "seeded",
     "merge_function": "mf",
     "threshold": "t",
     "global_bias": "gb",
@@ -51,7 +52,8 @@ def mws_segmentation_name(params):
     """The name watershed_mutex gives its segmentation for these params."""
     keys = ("min_seed_distance", "sigma", "noise_eps", "bias", "strides", "randomized_strides",
             "filter_fragments", "remove_debris")
-    return build_name({"global_bias": list(params.get("global_bias", [1.0, -0.5])), **{k: params.get(k) for k in keys}})
+    return build_name({"seeded": bool(params.get("seeds_dataset")) or None,
+                       "global_bias": list(params.get("global_bias", [1.0, -0.5])), **{k: params.get(k) for k in keys}})
 
 
 def _jsonable(value):
@@ -72,7 +74,7 @@ def inputs_differ(store, run_params):
         return None
     changed = {
         k: (recorded[k], run_params[k])
-        for k in ("affs_dataset", "mask_dataset", "roi_offset", "roi_shape")
+        for k in ("affs_dataset", "mask_dataset", "seeds_dataset", "roi_offset", "roi_shape")
         if k in recorded and _jsonable(run_params.get(k)) != recorded[k]
     }
     if not changed:

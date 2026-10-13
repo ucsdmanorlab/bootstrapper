@@ -10,17 +10,13 @@ logger = logging.getLogger(__name__)
 
 
 def volara_log_dir(seg_dataset_prefix):
-    """Volara log dir beside the output container, or a hashed name in the cwd when the
-    path holds ':' or '=' (daisy cannot pass those to workers)."""
+    """Volara log dir of one output prefix: <container>_volara_logs/<prefix in the container>
+    beside the container, or a hashed name in the cwd when the path holds ':' or '='
+    (daisy cannot pass those to workers)."""
     import hashlib
-    import os
-    from pathlib import Path
 
-    if ".zarr" in seg_dataset_prefix:
-        container = seg_dataset_prefix.rsplit(".zarr", 1)[0] + ".zarr"
-        log_dir = os.path.join(os.path.dirname(container), f"{Path(container).stem}_volara_logs")
-    else:
-        log_dir = f"{seg_dataset_prefix}_volara_logs"
+    container, _, group = seg_dataset_prefix.rpartition(".zarr")
+    log_dir = f"{container}_volara_logs{group}" if container else f"{seg_dataset_prefix}_volara_logs"
     if ":" in log_dir or "=" in log_dir:
         log_dir = f"volara_logs_{hashlib.sha1(seg_dataset_prefix.encode()).hexdigest()[:8]}"
     return log_dir

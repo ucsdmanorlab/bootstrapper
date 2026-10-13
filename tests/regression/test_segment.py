@@ -31,7 +31,9 @@ def test_floats_in_names_keep_twelve_digits():
 
 
 def test_volara_logs_go_beside_the_container():
-    assert volara_log_dir("/data/x/apical.zarr/segs") == "/data/x/apical_volara_logs"
+    assert (
+        volara_log_dir("/data/x/apical.zarr/segs") == "/data/x/apical_volara_logs/segs"
+    )
 
 
 def test_a_path_with_a_colon_gets_a_hashed_log_dir():
@@ -266,7 +268,8 @@ def test_a_one_block_region_run_and_a_rerun_with_other_inputs(tmp_path, affs, bs
     assert frags.shape == (8, 32, 32)
     assert frags.chunks == (8, 32, 32)  # the region, not the whole array
     assert any(f.startswith("rag_mws_gb") for f in os.listdir(tmp_path / "o.zarr"))
-    assert (tmp_path / "o_volara_logs").is_dir()
+    # one log dir per output prefix: volara drops a task's -meta dir at the start of every run
+    assert glob.glob(f"{tmp_path}/o_volara_logs/segs/*-extract-frags-meta")
 
     mask = prepare_ds(
         f"{tmp_path}/v.zarr/mask",
