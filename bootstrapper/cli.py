@@ -97,7 +97,7 @@ def run(ctx, path, only, from_):
             raise click.ClickException(f"{path}: no numbered .toml files")
     else:
         files = [path]
-    todo = [(f, s) for f in files for s in load(f).steps]
+    todo = [(f, s) for f in files for s in load(f)]
 
     def match(sel, f, s):
         return sel in (s.kind, s.label) or os.path.basename(f).startswith(sel)

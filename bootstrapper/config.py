@@ -1,6 +1,7 @@
 """Config files are kind tables. [volumes.<name>] describes data; [train.<name>],
 [predict.<name>], [segment], [segment.<name>], [refine] and [evaluate] are steps. A file
 holds one step or a whole round; a step is named only when a kind has several."""
+import os
 import tomllib
 from dataclasses import dataclass, field
 
@@ -21,8 +22,6 @@ KEYS = {
     "evaluate": {"seg_datasets_prefix", "seg_datasets", "mask_dataset", "out_result", "out_dir",
                  "num_workers", "thresholds", "roi_offset", "roi_shape"},
 }
-FLAT_HINTS = (("segment", {"affs_dataset"}), ("train", {"samples", "max_iterations"}),
-              ("evaluate", {"seg_datasets_prefix", "seg_datasets"}), ("predict", {"checkpoint"}))
 
 
 @dataclass
@@ -37,34 +36,27 @@ class Step:
         return self.kind if self.name == self.kind else f"{self.kind}.{self.name}"
 
 
-@dataclass
-class Config:
-    path: str
-    volumes: dict
-    steps: list
-
-
 def load(path):
     with open(path, "rb") as f:
         doc = tomllib.load(f)
     volumes = doc.pop("volumes", {})
+    beside = os.path.join(os.path.dirname(os.path.abspath(path)), "volumes.toml")
+    if not volumes and os.path.exists(beside) and os.path.abspath(path) != beside:
+        with open(beside, "rb") as f:
+            volumes = tomllib.load(f).get("volumes", {})
     doc.pop("round", None)
     doc.pop("run", None)
 
-    flat = {k for k, v in doc.items() if not isinstance(v, dict)}
-    if flat:
-        kind = next((k for k, hint in FLAT_HINTS if hint & set(doc)), "<kind>")
-        fix = f"put these keys under [{kind}]" if kind in ("segment", "evaluate") else f"put these keys under [{kind}.<name>]"
-        old = OLD_PARAMS & set(doc)
-        if old:
-            fix += f" and rename [{old.pop()}] to [{kind}.params]"
-        raise click.ClickException(f"{path}: {fix}")
+    if any(not isinstance(v, dict) for v in doc.values()):
+        raise click.ClickException(
+            f"{path}: keys at the top level; put them under [segment], [evaluate], [train.<name>] "
+            "or [predict.<name>], and a [<method>_params] table under [segment.params]"
+        )
 
     steps = []
     for kind, table in doc.items():
         if kind not in KINDS:
-            hint = " (a prediction: put its keys under [predict.<name>])" if any(isinstance(v, dict) and "checkpoint" in v for v in table.values()) else ""
-            raise click.ClickException(f"{path}: unknown table [{kind}]; tables are volumes, {', '.join(KINDS)}{hint}")
+            raise click.ClickException(f"{path}: unknown table [{kind}]; tables are volumes, {', '.join(KINDS)}")
         if _is_step(kind, table, volumes):
             steps.append(_step(kind, kind, table, volumes, path))
         else:
@@ -72,21 +64,20 @@ def load(path):
                 if name in volumes:
                     raise click.ClickException(f"{path}: [{kind}.{name}] is a step named like the volume {name!r}")
                 steps.append(_step(kind, name, sub, volumes, path))
-    return Config(path, volumes, steps)
+    return steps
 
 
 def steps_of(path, kind, name=None):
     """The steps of one kind in a file, or the one named."""
-    cfg = load(path)
-    steps = [s for s in cfg.steps if s.kind == kind]
+    steps = [s for s in load(path) if s.kind == kind]
     if not steps:
         raise click.ClickException(f"{path}: no [{kind}] step")
     if name:
+        names = [s.name for s in steps]
         steps = [s for s in steps if s.name == name]
         if not steps:
-            names = ", ".join(s.name for s in cfg.steps if s.kind == kind)
-            raise click.ClickException(f"{path}: no [{kind}.{name}]; {kind} steps are {names}")
-    return cfg, steps
+            raise click.ClickException(f"{path}: no [{kind}.{name}]; {kind} steps are {', '.join(names)}")
+    return steps
 
 
 def runs(step):
@@ -96,16 +87,16 @@ def runs(step):
     return [(vol, step.keys | keys) for vol, keys in step.volumes.items()]
 
 
-def _belongs(kind, name, volumes):
-    return name in STEP_TABLES or name in OLD_PARAMS or name in volumes or (kind == "refine" and name in OPS)
+def _own(kind, name):
+    return name in STEP_TABLES or name in OLD_PARAMS or (kind == "refine" and name in OPS)
 
 
 def _is_step(kind, table, volumes):
-    """A table with a scalar key is one step; so is one whose sub-tables all belong to a
-    step. Otherwise its sub-tables are named steps."""
+    """A table with a scalar key is one step; so is one whose sub-tables are all its own
+    or volumes. Otherwise its sub-tables are named steps."""
     if any(not isinstance(v, dict) for v in table.values()):
         return True
-    return all(_belongs(kind, k, volumes) for k in table)
+    return all(_own(kind, k) or k in volumes for k in table)
 
 
 def _step(kind, name, table, volumes, path):
@@ -120,8 +111,10 @@ def _step(kind, name, table, volumes, path):
     if kind != "train":
         unknown = [k for k in keys if k not in KEYS[kind] and k not in STEP_TABLES and k != "ops"]
         if unknown:
+            k = unknown[0]
             ops = f"; ops are {', '.join(OPS)}" if kind == "refine" else ""
-            raise click.ClickException(
-                f"{path}: [{label}] has no key {unknown[0]!r}; keys are {', '.join(sorted(KEYS[kind]))}{ops}"
-            )
+            if isinstance(keys[k], dict):
+                vols_known = f"volumes are {', '.join(volumes)}" if volumes else "no volumes are defined"
+                raise click.ClickException(f"{path}: [{label}.{k}] is neither a table of [{label}] nor a volume; {vols_known}{ops}")
+            raise click.ClickException(f"{path}: [{label}] has no key {k!r}; keys are {', '.join(sorted(KEYS[kind]))}{ops}")
     return Step(kind, name, keys, vols)

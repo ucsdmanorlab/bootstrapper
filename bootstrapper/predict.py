@@ -288,7 +288,7 @@ def get_pred_config(config, **kwargs):
 
 def run_prediction(config_file, step=None, **kwargs):
     """Run the [predict.*] steps of config_file in file order, or the one named."""
-    _, steps = steps_of(config_file, "predict", step)
+    steps = steps_of(config_file, "predict", step)
     for s in steps:
         for volume, step_config in runs(s):
             config = get_pred_config(step_config, **kwargs)

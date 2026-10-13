@@ -1,344 +1,190 @@
-import click
+"""bs prepare: ask about the data, then write the round directory."""
+import json
 import os
-import toml
 
-from .configs import (
-    find_checkpoints,
-    save_config,
-    download_checkpoints,
-    copy_model_scripts,
-    make_round_configs,
-    create_training_config,
-    create_prediction_configs,
-    create_segmentation_configs,
-    create_evaluation_configs,
-    check_and_update,
-    MODEL_NAMES
-)
-from .data.volumes import prepare_volume
+import click
+import toml
+import zarr
+
+from .configs import BS_DIR, MODEL_NAMES, MODEL_URLS, EVAL_ERROR_THRESHOLDS, checkpoint_iteration, copy_model_scripts, find_checkpoints
+from .data.convert import convert
+from .data.mask import mask as make_mask
+from .post.naming import mws_segmentation_name
+from .segment import DEFAULTS as SEG_DEFAULTS
 from .styles import cli_echo, cli_prompt, cli_confirm
 
+PRESETS = {
+    "2d": ("2D labels to 3D segmentation", ["2d_mtlsd", "3d_affs_from_2d_mtlsd"]),
+    "3d": ("3D labels to 3D segmentation", ["3d_mtlsd"]),
+}
+STYLE = "prepare"
+SHIPPED_ITERATION = 25000
 
-def make_volumes(round_dir=None, style="prepare"):
-    """Prepare volumes for bootstrapping."""
 
-    if round_dir is None:
-        round_dir = os.getcwd()
-    else:
-        assert os.path.isdir(round_dir)
+def ask_volume(round_dir):
+    raw = os.path.abspath(cli_prompt("Raw image: zarr array, tif, or directory of 2D images", STYLE, type=click.Path(exists=True)))
+    if not os.path.exists(os.path.join(raw, ".zarray")):
+        name = cli_prompt("Volume name", STYLE, default=os.path.splitext(os.path.basename(raw))[0])
+        voxel_size = cli_prompt("Voxel size in z y x (nm)", STYLE)
+        container = os.path.join(round_dir, f"{name}.zarr")
+        click.get_current_context().invoke(convert, in_path=raw, out_array=os.path.join(container, "raw"), voxel_size=voxel_size)
+        raw = os.path.join(container, "raw")
+    volume = {"raw": raw}
+    container = raw.rsplit(".zarr", 1)[0] + ".zarr"
+    name = os.path.basename(container)[: -len(".zarr")]
+    attrs = zarr.open(raw, "r").attrs
+    if "voxel_size" not in attrs:
+        volume["voxel_size"] = [int(v) for v in cli_prompt(f"{raw} has no voxel_size; voxel size in z y x (nm)", STYLE).split()]
+    if not os.access(container, os.W_OK):
+        volume["outputs"] = os.path.join(round_dir, f"{name}.zarr")
 
-    num_volumes = cli_prompt(
-        f"Enter number of volumes to prepare in {round_dir}",
-        style,
-        default=1,
-        type=int,
-    )
+    labels = cli_prompt("Labels array (enter to skip: the volume is only predicted)", STYLE, default="", show_default=False)
+    if labels:
+        volume["labels"] = os.path.abspath(labels)
+        volume["sparse_labels"] = not cli_confirm("Is every object in this volume labelled?", STYLE, default=False)
+        volume["2d_labels"] = cli_confirm("Do the labels sit on single sections?", STYLE, default=labels_look_2d(volume["labels"]))
+        if volume["sparse_labels"]:
+            volume["dense_objects"] = cli_confirm("Are the unlabelled neighbours of a labelled object other objects (yes), or background (no)?", STYLE, default=True)
+    mask = cli_prompt("Mask array for the raw image (enter to skip)", STYLE, default="", show_default=False)
+    if mask:
+        volume["mask"] = os.path.abspath(mask)
+    gt = cli_prompt("Ground truth labels for evaluation (enter to skip)", STYLE, default="", show_default=False)
+    if gt:
+        volume["gt"] = os.path.abspath(gt)
+    return name, volume
 
+
+def labels_look_2d(path):
+    """Fewer than half of sixteen sampled sections hold a label."""
+    arr = zarr.open(path, "r")
+    zs = range(0, arr.shape[0], max(1, arr.shape[0] // 16))
+    return sum(bool(arr[z].any()) for z in zs) < len(zs) / 2
+
+
+def ask_models(volumes):
+    any_2d = any(v.get("2d_labels") for v in volumes.values())
+    click.echo()
+    for key, (title, chain) in PRESETS.items():
+        cli_echo(f"  {key}: {title}: {' then '.join(chain)}", STYLE)
+    cli_echo(f"  custom: models by name, in chain order ({', '.join(MODEL_NAMES)})", STYLE)
+    choice = cli_prompt("Pipeline", STYLE, type=click.Choice([*PRESETS, "custom"]), default="2d" if any_2d else "3d")
+    if choice in PRESETS:
+        return PRESETS[choice][1]
+    names = [n.strip() for n in cli_prompt("Models in chain order, comma-separated", STYLE).split(",")]
+    for n in names:
+        if n not in MODEL_NAMES:
+            raise click.ClickException(f"unknown model {n!r}; models are {', '.join(MODEL_NAMES)}")
+    return names
+
+
+def ask_gpus():
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    granted = len([d for d in visible.split(",") if d.strip()]) if visible else 1
+    return cli_prompt("GPUs for prediction", STYLE, type=int, default=max(1, granted))
+
+
+def net_config(setup_dir):
+    with open(os.path.join(setup_dir, "net_config.json")) as f:
+        return json.load(f)
+
+
+def write_round(round_dir, volumes, chain, num_gpus):
+    trained = [v for v in volumes.values() if "labels" in v]
+    if not trained:
+        raise click.ClickException("no volume has labels; nothing to train")
+    written = []
+
+    def write(name, doc):
+        path = os.path.join(round_dir, name)
+        with open(path, "w") as f:
+            toml.dump(doc, f)
+        written.append(path)
+
+    write("volumes.toml", {"volumes": volumes})
+    voxel_size = trained[0].get("voxel_size") or [int(v) for v in zarr.open(trained[0]["raw"], "r").attrs["voxel_size"]]
+
+    done, outputs = [], {}  # (model, iteration) so far; each volume's latest outputs
+    n = 1
+    for i, model in enumerate(chain):
+        if model in MODEL_URLS:
+            setup_dir = os.path.join(BS_DIR, "models", model)
+            found = find_checkpoints(setup_dir)
+            checkpoint = found[max(found)] if found else os.path.join(setup_dir, f"model_checkpoint_{SHIPPED_ITERATION}")
+        else:
+            setup_dir = os.path.join(round_dir, model)
+            copy_model_scripts(model, setup_dir, cli_edit=False)
+            train = {"setup_dir": setup_dir, "voxel_size": voxel_size, "max_iterations": 30001,
+                     "save_checkpoints_every": 5000, "save_snapshots_every": 1000, "devices": "auto",
+                     "samples": [{"raw": v["raw"], "labels": v["labels"], **({"mask": training_mask(v)} if v.get("sparse_labels") else {})} for v in trained]}
+            write(f"{n:02d}_train_{model}.toml", {"train": {model: train}})
+            n += 1
+            checkpoint = os.path.join(setup_dir, f"model_checkpoint_{train['max_iterations'] - 1}.ckpt")
+        iteration = checkpoint_iteration(checkpoint)
+        chain_str = "--from--".join(f"{s}_{it}" for s, it in done)
+        predict = {"setup_dir": setup_dir, "checkpoint": checkpoint, "num_gpus": num_gpus, "num_workers": num_gpus}
+        out_names = list(net_config(setup_dir)["outputs"])
+        for name, v in volumes.items():
+            prefix = os.path.join(v.get("outputs", v["raw"].rsplit(".zarr", 1)[0] + ".zarr"), model)
+            level = f"{iteration}--from--{chain_str}" if chain_str else str(iteration)
+            predict[name] = {"input_datasets": [v["raw"]] if i == 0 else outputs[name], "output_datasets_prefix": prefix, "chain_str": chain_str}
+            outputs[name] = [os.path.join(prefix, level, o) for o in out_names]
+        write(f"{n:02d}_predict_{model}.toml", {"predict": {model: predict}})
+        n += 1
+        done.append((model, iteration))
+
+    affs_of = {name: next((o for o in outs if o.endswith("3d_affs")), None) for name, outs in outputs.items()}
+    if not any(affs_of.values()):
+        raise click.ClickException(f"the chain {' then '.join(chain)} ends without a 3d_affs output; nothing to segment")
+    neighborhood = net_config(setup_dir)["outputs"]["3d_affs"]["neighborhood"]
+    params = dict(SEG_DEFAULTS["mws"], aff_neighborhood=neighborhood)
+    segment = {"method": "mws", "blockwise": True, "num_workers": 10, "params": params}
+    refine, evaluate = {"fill-holes": {"xy": True}}, {}
+    for name, v in volumes.items():
+        level = os.path.dirname(affs_of[name])
+        segment[name] = {"affs_dataset": affs_of[name], "fragments_dataset": os.path.join(level, "fragments_mws"),
+                         "lut_dir": os.path.join(level, "luts_mws"), "seg_dataset_prefix": os.path.join(level, "segmentations_mws"),
+                         **({"mask_dataset": v["mask"]} if "mask" in v else {})}
+        refine[name] = {"in_array": os.path.join(level, "segmentations_mws", mws_segmentation_name(params))}
+        if "gt" in v:
+            evaluate[name] = {"seg_datasets_prefix": os.path.join(level, "segmentations_mws"),
+                              **({"mask_dataset": v["mask"]} if "mask" in v else {}),
+                              "gt": {"labels_dataset": v["gt"]},
+                              "pred": {"pred_dataset": affs_of[name], "thresholds": EVAL_ERROR_THRESHOLDS["affs"], "params": {"aff_neighborhood": neighborhood}}}
+    write(f"{n:02d}_segment.toml", {"segment": segment})
+    write(f"{n + 1:02d}_refine.toml", {"refine": refine})
+    n += 2
+    if evaluate:
+        write(f"{n:02d}_evaluate.toml", {"evaluate": evaluate})
+    return written
+
+
+def training_mask(volume):
+    """labels > 0, beside the outputs."""
+    outputs = volume.get("outputs", volume["raw"].rsplit(".zarr", 1)[0] + ".zarr")
+    path = os.path.join(outputs, "masks", "labels_mask")
+    if not os.path.exists(path):
+        click.get_current_context().invoke(make_mask, in_array=volume["labels"], out_array=path, mode="labels")
+    return path
+
+
+@click.command()
+@click.option("--out", "-o", "round_dir", type=click.Path(), help="Round directory to create (asked if not given)")
+def prepare(round_dir):
+    """Ask about your data and what you want, then write the round directory:
+    volumes.toml, numbered step files, and the setup to train."""
+    round_dir = os.path.abspath(round_dir or cli_prompt("Round directory", STYLE, default=os.path.join(os.getcwd(), "round_01")))
+    os.makedirs(round_dir, exist_ok=True)
     volumes = {}
-    for i in range(num_volumes):
-        click.echo()
-        cli_echo(f"Processing volume {i+1}", style)
-        vol_name = cli_prompt(
-            f"Enter name of volume {i+1} in {round_dir}",
-            style,
-            default=f"volume_{i+1}",
-        )
-        volume_info = prepare_volume(os.path.join(round_dir, f"{vol_name}.zarr"))
-        if volume_info:
-            volumes[vol_name] = volume_info
-
-    return volumes
-
-
-def get_volumes(round_dir=None, style="prepare"):
-    """Get volumes from config file if exists, else ask for volumes info"""
-
-    if round_dir is not None and os.path.exists(
-        os.path.join(round_dir, "volumes.toml")
-    ):
-        volumes_doc = os.path.abspath(os.path.join(round_dir, "volumes.toml"))
-        load_volumes = cli_confirm(
-            f"Load volumes from {volumes_doc}?", style, default=True
-        )
-    elif os.path.exists(os.path.join(os.getcwd(), "volumes.toml")):
-        volumes_doc = os.path.abspath(os.path.join(os.getcwd(), "volumes.toml"))
-        load_volumes = cli_confirm(
-            f"Load volumes from {volumes_doc}?", style, default=True
-        )
-    else:
-        load_volumes = False
-
-    if load_volumes:
-        with open(volumes_doc) as f:
-            volumes = toml.load(f)
-            cli_echo(f"Loaded volumes from {volumes_doc}", style)
-    else:
-        volumes = make_volumes(round_dir)
-
-    return check_and_update(volumes, style)
-
-
-def make_configs(base_dir):
-    """Create configs for multiple rounds."""
-
-    existing_rounds = [
-        d
-        for d in os.listdir(base_dir)
-        if os.path.isdir((os.path.join(base_dir, d)))
-        and ".zarr" not in d
-        and "round" in d
-    ]
-
-    cli_echo(f"Existing rounds: {existing_rounds}", style="prepare")
-
-    i = 0
-
     while True:
         click.echo()
-        round_name = cli_prompt(
-            f"Enter name for round {i+1}",
-            style="prepare",
-            default=f"round_{i+1}",
-        )
-        round_dir = os.path.join(base_dir, round_name)
-        os.makedirs(round_dir, exist_ok=True)
-
-        volumes = get_volumes(round_dir=round_dir)
-
-        cli_echo(f"Writing volumes to {round_dir}/volumes.toml", style="prepare")
-        save_config(volumes, os.path.join(round_dir, "volumes.toml"), style="prepare")
-
-        make_round_configs(volumes, round_dir)
-
-        click.echo()
-        if not cli_confirm(
-            "Make configs for next round?", style="prepare", default=False
-        ):
+        name, volume = ask_volume(round_dir)
+        volumes[name] = volume
+        if not cli_confirm("Another volume?", STYLE, default=False):
             break
-        i += 1
-
+    chain = ask_models(volumes)
+    num_gpus = ask_gpus()
+    written = write_round(round_dir, volumes, chain, num_gpus)
     click.echo()
-    cli_echo("All configs created successfully!", style="prepare", stype="success")
-
-
-class PrepareGroup(click.Group):
-    def list_commands(self, ctx):
-        return [
-            "volumes",
-            "model",
-            "train",
-            "predict",
-            "segment",
-            "eval",
-        ]
-
-    def get_command(self, ctx, cmd_name):
-        ret = click.Group.get_command(self, ctx, cmd_name)
-        if ret is not None:
-            return ret
-
-        aliases = {
-            "vols": "volumes",
-            "vol": "volumes",
-            "v": "volumes",
-            "model": "model",
-            "m": "model",
-            "train": "train",
-            "t": "train",
-            "pred": "predict",
-            "p": "predict",
-            "seg": "segment",
-            "s": "segment",
-            "eval": "evaluate",
-            "e": "eval",
-        }
-
-        if cmd_name in aliases:
-            return click.Group.get_command(self, ctx, aliases[cmd_name])
-        return None
-
-
-@click.group(invoke_without_command=True, cls=PrepareGroup, chain=True)
-@click.pass_context
-def prepare(ctx):
-    """
-    Prepare volumes and config files for bootstrapping
-
-    This command sets up a pipeline for training, prediction, post-processing,
-    and evaluation across multiple rounds. It handles:
-
-    - Volume preparation: Process raw and label data (tif/zarr)
-
-    - Model preparation: Create model directory (setup_dir)
-
-    - Configuration generation for each round:
-
-        - Training: Set model and parameters
-
-        - Prediction: Configure for each volume
-
-        - Segmentation: Set up RAG, blockwise for each volume
-
-        - Evaluation: Configure lsd error metrics and ground truth comparisons
-
-    Each round is configured independently.
-    """
-    if ctx.invoked_subcommand is None:
-        base_dir = cli_prompt(
-            "Enter path to base directory",
-            style="prepare",
-            type=click.Path(),
-            default=os.getcwd(),
-        )
-        os.makedirs(base_dir, exist_ok=True)
-
-        make_configs(base_dir)
-    pass
-
-
-@prepare.command("volumes")
-def prep_vol():
-    """Prepare a single volume."""
-    volumes = make_volumes()
-    click.echo()
-    if cli_confirm("Save volumes.toml?", default=True):
-        volumes_doc = cli_prompt(
-            "Enter path for new volumes.config file",
-            type=click.Path(),
-            default=os.path.join(os.getcwd(), "volumes.toml"),
-        )
-        save_config(volumes, volumes_doc)
-
-
-@prepare.command("model")
-@click.option("--model-name", "-m", help="Name of model to create", required=True, type=click.Choice(MODEL_NAMES))
-@click.option("--setup-dir", "-s", help="Path to setup directory to create", required=True, type=click.Path())
-def prep_model(model_name, setup_dir):
-    """Copies model to desired setup directory."""
-    os.makedirs(setup_dir, exist_ok=True)
-    copy_model_scripts(model_name, setup_dir, cli_edit=False)
-
-
-@prepare.command("train")
-def prep_train_config():
-    """Create training config files."""
-
-    volumes = get_volumes(style="train")
-    ret = create_training_config(volumes, os.getcwd())
-
-    click.echo()
-    for setup_dir in ret["configs"]:
-        config_path = cli_prompt(
-            f"Enter path to save train config file for {setup_dir}",
-            style="train",
-            type=click.Path(),
-            default=os.path.join(
-                os.getcwd(), f"train_{os.path.basename(setup_dir)}.toml"
-            ),
-        )
-        save_config(ret["configs"][setup_dir], config_path, style="train")
-
-
-@prepare.command("predict")
-def prep_predict_config():
-    """Create prediction config files."""
-    volumes = get_volumes(style="predict")
-
-    # get list of setup directories
-    setup_dirs = cli_prompt(
-        f"Enter setups paths for prediction in order (comma-separated)", style="predict"
-    )
-    setup_dirs = [x.strip() for x in setup_dirs.split(",")]
-
-    # check if all setup directories exist
-    for i, setup_dir in enumerate(setup_dirs):
-        if not os.path.isdir(setup_dir):
-            # accept just names of '_from_' models. for example, '3d_affs_from_2d_affs'
-            if "_from_" in setup_dir:
-                setup_dir = os.path.join(os.path.dirname(__file__), "models", setup_dir)
-                if not os.path.isdir(setup_dir):
-                    raise ValueError(
-                        f"Invalid setup: directory {setup_dir} does not exist"
-                    )
-
-                checkpoints = find_checkpoints(setup_dir)
-                if not checkpoints:
-                    cli_echo(f"No checkpoints found in {setup_dir}", style="predict")
-                    download = cli_confirm(
-                        f"Download pretrained checkpoints for {os.path.basename(setup_dir)}?",
-                        style="predict",
-                        default=False,
-                    )
-                    if download:
-                        download_checkpoints(
-                            os.path.basename(setup_dir), setup_dir, style="predict"
-                        )
-                    else:
-                        raise ValueError(
-                            f"Please either download checkpoints or train from scratch"
-                        )
-
-                # replace setup_dir with setup_dir from bootstrapper source directory
-                setup_dirs[i] = setup_dir
-
-            else:
-                raise ValueError(f"Invalid setup: directory {setup_dir} does not exist")
-        else:
-            setup_dirs[i] = os.path.abspath(setup_dir)
-
-    ret = create_prediction_configs(volumes, setup_dirs)
-
-    for volume_name, config in ret["configs"].items():
-        click.echo()
-        config_path = cli_prompt(
-            f"Enter path to save predict config for {volume_name}",
-            style="predict",
-            type=click.Path(),
-            default=os.path.join(os.getcwd(), f"predict_{volume_name}.toml"),
-        )
-        save_config(config, config_path, style="predict")
-
-
-@prepare.command("segment")
-def prep_segment_config():
-    """Create segmentation config files."""
-    volumes = get_volumes(style="segment")
-    out_affs_ds = cli_prompt(
-        "Enter name of output affinities dataset inside zarr", style="segment"
-    )
-    ret = create_segmentation_configs(volumes, out_affs_ds)
-
-    for volume_name, config in ret["configs"].items():
-        click.echo()
-        config_path = cli_prompt(
-            f"Enter path to save segment config for {volume_name}",
-            style="segment",
-            type=click.Path(),
-            default=os.path.join(os.getcwd(), f"seg_{volume_name}.toml"),
-        )
-        save_config(config, config_path, style="segment")
-
-
-@prepare.command("evaluate")
-def prep_eval_config():
-    """Create evaluation config files."""
-    volumes = get_volumes(style="evaluate")
-    out_segs_prefix = cli_prompt(
-        "Enter prefix for segmentation datasets", style="evaluate"
-    )
-    pred_datasets = cli_prompt(
-        "Enter prediction datasets (comma-separated)", style="evaluate"
-    )
-    pred_datasets = [x.strip() for x in pred_datasets.split(",")]
-
-    ret = create_evaluation_configs(volumes, out_segs_prefix, pred_datasets)
-
-    for volume_name, config in ret["configs"].items():
-        click.echo()
-        config_path = cli_prompt(
-            "Enter path to save eval config for {volume_name}",
-            style="evaluate",
-            type=click.Path(),
-            default=os.path.join(os.getcwd(), f"eval_{volume_name}.toml"),
-        )
-        save_config(config, config_path, style="evaluate")
+    for path in written:
+        cli_echo(f"wrote {path}", STYLE)
+    cli_echo(f"Edit a file to change a parameter. Then: bs run {round_dir}", STYLE, "success")

@@ -356,7 +356,7 @@ MORPH_OPS = ("dilate", "erode", "opening", "closing", "fill_holes")
 def _fill_holes(data, threshold=0.95):
     """Fill background enclosed by one label.
 
-    3D: fastmorph, 2x faster; it can absorb an object enclosed by another label.
+    3D: fastmorph; it can absorb an object enclosed by another label.
     2D: every object survives. A background component whose contacts are >= threshold
     one label takes that label; then components with no path to the outside (fastmorph's
     hole groups) take the single label around the group, background voxels only.

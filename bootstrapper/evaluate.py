@@ -35,8 +35,7 @@ def get_eval_config(config, config_file, mode, suffix=True, **kwargs):
     if "out_result" not in config:
         config["out_result"] = config_file.replace("04_eval_","results_").replace(".toml", ".json")
 
-    # one file per mode when several modes run, so gt results do not overwrite
-    # pred results; a single mode keeps the name it was given
+    # a mode suffix only when several modes run; one mode keeps the given name
     if suffix:
         root, ext = os.path.splitext(config["out_result"])
         config["out_result"] = f"{root}_{mode}{ext}"
@@ -87,8 +86,7 @@ def run_pred_evaluation(config, seg_ds):
     mask_dataset = config.get("mask_dataset")
 
     pred_name = os.path.basename(pred_dataset)
-    # error maps land beside the segmentation unless out_dir says where; the
-    # segmentation may live in a read-only container (a ground-truth labels array)
+    # out_dir: the segmentation may sit in a read-only container
     out_group = seg_ds + f"__vs__{pred_name}"
     if config.get("out_dir"):
         out_group = os.path.join(config["out_dir"], os.path.basename(seg_ds) + f"__vs__{pred_name}")
@@ -107,8 +105,7 @@ def run_pred_evaluation(config, seg_ds):
         **params,
     )
     if kwargs["num_workers"] > 1:
-        # gunpowder forks its scan workers; after one scan the parent holds thread
-        # pools that deadlock the next fork, so every scan starts from a fresh process
+        # a second forked scan in one process deadlocks: one fresh process per scan
         proc = multiprocessing.get_context("spawn").Process(target=_compute_errors, args=(kwargs,))
         proc.start()
         proc.join()
@@ -167,7 +164,7 @@ def run_evaluation(config, config_file, mode="pred", suffix=True, **kwargs):
 @click.option("--out-result", "-o", type=click.Path())
 def evaluate(config_file, step, gt, pred, out_result=None):
     """Evaluate segmentations as the [evaluate] step of config_file says."""
-    _, steps = steps_of(config_file, "evaluate", step)
+    steps = steps_of(config_file, "evaluate", step)
     for s in steps:
         flags = [m for m, on in (("gt", gt), ("pred", pred)) if on]
         modes = flags or [m for m in ("gt", "pred") if m in s.keys] or ["pred"]

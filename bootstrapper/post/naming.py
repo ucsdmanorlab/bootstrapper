@@ -47,6 +47,13 @@ def build_name(params):
     return "--".join(parts)
 
 
+def mws_segmentation_name(params):
+    """The name watershed_mutex gives its segmentation for these params."""
+    keys = ("min_seed_distance", "sigma", "noise_eps", "bias", "strides", "randomized_strides",
+            "filter_fragments", "remove_debris")
+    return build_name({"global_bias": list(params.get("global_bias", [1.0, -0.5])), **{k: params.get(k) for k in keys}})
+
+
 def _jsonable(value):
     if isinstance(value, (list, tuple)):
         return [_jsonable(v) for v in value]

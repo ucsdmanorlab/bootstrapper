@@ -7,7 +7,7 @@ allow-direct-references = true
 
 [project]
 name = "bootstrapper"
-version = "0.3.2"
+version = "1.0.0"
 description = "Bootstrap volume segmentations from sparse annotations"
 readme = "README.md"
 authors = [
@@ -15,6 +15,10 @@ authors = [
 ]
 license = {text = "MIT"}
 requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
 dependencies = [
     "numpy",
     "scipy",
@@ -31,7 +35,8 @@ dependencies = [
     "gunpowder<1.5",
     "daisy<2",
     "funlib.geometry",
-    "funlib.persistence<0.7",
+    # gunpowder 1.4.4 caps this at 0.6; allowing 0.6.1 silently drops gunpowder
+    "funlib.persistence<=0.6",
     "mwatershed",
     "volara<1.0.3",
     "edt",
@@ -42,17 +47,17 @@ dependencies = [
     "tqdm",
     "natsort",
     "rich",
-    "lsds @ git+https://github.com/yajivunev/lsd",
-    "funlib.learn.torch @ git+https://github.com/funkelab/funlib.learn.torch",
-    "funlib.show.neuroglancer @ git+https://github.com/funkelab/funlib.show.neuroglancer",
-    "funlib.evaluate @ git+https://github.com/yajivunev/funlib.evaluate",
+    "lsds @ git+https://github.com/yajivunev/lsd@082ebe648abbd58811de125adaa5d4edb58e550b",
+    "funlib.learn.torch @ git+https://github.com/funkelab/funlib.learn.torch@228e15f41d755ee5c7e50cfaa26f7ed5110b55e4",
+    "funlib.show.neuroglancer @ git+https://github.com/funkelab/funlib.show.neuroglancer@f218bf061372aa28280a4fdbcb77288a4e1632ee",
+    "funlib.evaluate @ git+https://github.com/yajivunev/funlib.evaluate@17602798f3e39cd437abcb7b4693b54d8bb4c54c",
     "click",
 ]
 
 [project.optional-dependencies]
 waterz = [
-    "waterz @ git+https://github.com/ZettaAI/waterz",
-    "funlib.segment @ git+https://github.com/funkelab/funlib.segment",
+    "waterz @ git+https://github.com/ZettaAI/waterz@a52bafa5dd2e912c593b72f4b7fabc83e6d55ef4",
+    "funlib.segment @ git+https://github.com/funkelab/funlib.segment@cdf607f0bde3b27f16cec39b9874e266be80bda9",
 ]
 
 [project.urls]
@@ -60,3 +65,10 @@ Homepage = "https://github.com/ucsdmanorlab/bootstrapper"
 
 [project.scripts]
 bs = "bootstrapper.cli:cli"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

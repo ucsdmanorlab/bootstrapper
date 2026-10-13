@@ -224,7 +224,7 @@ def segment(config_file, step, ws, mws, cc, **kwargs):
     The step's method key picks the method; -ws, -mws or -cc overrides it.
     """
     flags = [m for m, on in (("ws", ws), ("mws", mws), ("cc", cc)) if on]
-    _, steps = steps_of(config_file, "segment", step)
+    steps = steps_of(config_file, "segment", step)
     for s in steps:
         methods = flags or ([s.keys["method"]] if "method" in s.keys else [])
         if not methods:

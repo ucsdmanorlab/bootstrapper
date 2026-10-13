@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def setup_train(config_file, step=None, **kwargs):
-    _, steps = steps_of(config_file, "train", step)
+    steps = steps_of(config_file, "train", step)
     if len(steps) > 1:
         names = ", ".join(s.name for s in steps)
         raise click.ClickException(f"{config_file} has several train steps ({names}); pass --step")
@@ -100,7 +100,7 @@ def setup_train(config_file, step=None, **kwargs):
         if value is not None:
             config[key] = value
 
-    # the setup's train.py reads a flat file; it lives beside the checkpoints it makes
+    # the setup's train.py reads a flat file
     worker_config = os.path.join(config["setup_dir"], "train.toml")
     with open(worker_config, "w") as file:
         toml.dump(config, file)

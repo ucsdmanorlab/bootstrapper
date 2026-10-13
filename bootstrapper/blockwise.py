@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 
 
 def volara_log_dir(seg_dataset_prefix):
-    """Volara log dir beside the output container; ':' or '=' in the path breaks
-    daisy's worker context, so such a path gets a hashed name in the cwd."""
+    """Volara log dir beside the output container, or a hashed name in the cwd when the
+    path holds ':' or '=' (daisy cannot pass those to workers)."""
     import hashlib
     import os
     from pathlib import Path
