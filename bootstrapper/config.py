@@ -2,6 +2,7 @@
 [predict.<name>], [segment], [segment.<name>], [refine] and [evaluate] are steps. A file
 holds one step or a whole round; a step is named only when a kind has several."""
 import difflib
+import glob
 import os
 import tomllib
 from dataclasses import dataclass, field
@@ -14,6 +15,13 @@ OPS = ("size-filter", "outlier-filter", "z-filter", "remap", "fill-holes", "dila
        "erode", "opening", "closing", "mask")
 OLD_PARAMS = {"ws_params", "mws_params", "cc_params"}
 POSTGRES = {"db_name", "db_host", "db_user", "db_password"}
+RESERVED = (*KINDS, "volumes", "run", "round")
+VOLUME_KEYS = {"raw", "labels", "training_mask", "2d_labels", "mask_dilation", "target_mask", "gt", "outputs", "voxel_size"}
+OLD_VOLUME_KEYS = {
+    "sparse_labels": 'write training_mask = "labels" (sparsely labelled) or "everywhere" (densely labelled)',
+    "dense_objects": "delete it, or write mask_dilation = 10 if untraced space next to an object is background",
+    "mask": "rename it target_mask",
+}
 KEYS = {
     "predict": {"setup_dir", "checkpoint", "input_datasets", "output_datasets_prefix",
                 "chain_str", "num_workers", "num_gpus", "roi_offset", "roi_shape"},
@@ -24,6 +32,16 @@ KEYS = {
     "evaluate": {"seg_datasets_prefix", "seg_datasets", "mask_dataset", "out_result", "out_dir",
                  "thresholds", "roi_offset", "roi_shape"},
 }
+
+
+@dataclass
+class Volume:
+    name: str
+    keys: dict  # raw, labels, training_mask, target_mask, gt, facts, and arrays under your own names
+
+    def array(self, ref):
+        """A path has a slash; a name has none and names one of this volume's arrays."""
+        return ref if "/" in ref else self.keys[ref]
 
 
 @dataclass
@@ -39,13 +57,9 @@ class Step:
 
 
 def load(path):
-    with open(path, "rb") as f:
-        doc = tomllib.load(f)
-    volumes = doc.pop("volumes", {})
-    beside = os.path.join(os.path.dirname(os.path.abspath(path)), "volumes.toml")
-    if not volumes and os.path.exists(beside) and os.path.abspath(path) != beside:
-        with open(beside, "rb") as f:
-            volumes = tomllib.load(f).get("volumes", {})
+    doc = _toml(path)
+    volumes = load_volumes(path)
+    doc.pop("volumes", None)
     doc.pop("round", None)
     doc.pop("run", None)
 
@@ -71,6 +85,69 @@ def load(path):
                     raise click.ClickException(f"{path}: [{kind}.{name}] is a step named like the volume {name!r}")
                 steps.append(_step(kind, name, sub, volumes, path))
     return steps
+
+
+def load_volumes(path):
+    """The volumes of a file, else of the volumes.toml beside it. Globs give one volume per
+    match, named by its container; the globs of a volume pair up in sorted order."""
+    tables = _toml(path).get("volumes", {})
+    beside = os.path.join(os.path.dirname(os.path.abspath(path)), "volumes.toml")
+    if not tables and os.path.exists(beside):
+        path, tables = beside, _toml(beside).get("volumes", {})
+    taken, volumes = set(tables), {}
+    for table, keys in tables.items():
+        where = f"{path}: [volumes.{table}]"
+        if not isinstance(keys, dict):
+            raise click.ClickException(f"{path}: [volumes] {table} is a key, not a volume; write [volumes.<name>] above it")
+        if table in RESERVED:
+            raise click.ClickException(f"{where}: a volume cannot be named {', '.join(RESERVED[:-1])} or {RESERVED[-1]}. Example: [volumes.{table}-1]")
+        old = next((k for k in keys if k in OLD_VOLUME_KEYS), None)
+        if old:
+            raise click.ClickException(f"{where} has no key {old!r}; {OLD_VOLUME_KEYS[old]}")
+        refuse_unknown(where, [k for k, v in keys.items() if k not in VOLUME_KEYS and not _own_array(k, v)],
+                       VOLUME_KEYS, ", or a name of your own for an array path")
+        volumes |= {name: Volume(name, k) for name, k in _expand(table, keys, where, taken).items()}
+    return volumes
+
+
+def _toml(path):
+    with open(path, "rb") as f:
+        return tomllib.load(f)
+
+
+def _own_array(key, value):
+    """A path under a key of your own, unless the key looks like a misspelt one: pgt is a
+    name, lables a typo of labels."""
+    return isinstance(value, str) and all(k in key for k in difflib.get_close_matches(key, VOLUME_KEYS, 1, 0.8))
+
+
+def _expand(table, keys, where, taken):
+    globs = {k: sorted(glob.glob(v)) for k, v in keys.items() if isinstance(v, str) and glob.has_magic(v)}
+    if not globs:
+        return {table: keys}
+    first, matches = next(iter(globs.items()))
+    if not matches:
+        raise click.ClickException(f"{where} {first} = {keys[first]!r} matches nothing")
+    for k, found in globs.items():
+        if len(found) != len(matches):
+            raise click.ClickException(f"{where} {first} matches {len(matches)} arrays and {k} matches {len(found)}; they must match one to one")
+    volumes = {}
+    for i, path in enumerate(matches):
+        name = _volume_name(path, taken)
+        taken.add(name)
+        volumes[name] = keys | {k: found[i] for k, found in globs.items()}
+    return volumes
+
+
+def _volume_name(path, taken):
+    """The container's file name with the dot as a dash, since a table name takes no dot:
+    training.zarr gives training-zarr, and a second volume in it training-zarr-2."""
+    container = path.rsplit(".zarr", 1)[0] + ".zarr" if ".zarr" in path else path
+    name = base = os.path.basename(container).replace(".", "-")
+    n = 2
+    while name in taken:
+        name, n = f"{base}-{n}", n + 1
+    return name
 
 
 def steps_of(path, kind, name=None):

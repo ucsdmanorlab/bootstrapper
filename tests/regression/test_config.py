@@ -10,7 +10,7 @@ from click.testing import CliRunner
 from funlib.persistence import prepare_ds
 
 from bootstrapper.cli import cli
-from bootstrapper.config import load, runs
+from bootstrapper.config import load, load_volumes, runs
 
 SEGMENT = """
 [segment]
@@ -228,6 +228,33 @@ def labels(tmp_path):
             "rename [mws_params] to [segment.params]",
             id="old params table at the top",
         ),
+        pytest.param(
+            '[volumes.v]\nraw = "/v/v.zarr/raw"\nlables = "/v/v.zarr/labels"\n',
+            "[volumes.v] has no key 'lables'; did you mean 'labels'?",
+            id="typo in a volume",
+        ),
+        pytest.param(
+            '[volumes.v]\nraw = "/v/v.zarr/raw"\nsparse_labels = true\n',
+            "[volumes.v] has no key 'sparse_labels'; write training_mask = \"labels\" "
+            '(sparsely labelled) or "everywhere" (densely labelled)',
+            id="old volume key",
+        ),
+        pytest.param(
+            '[volumes.segment]\nraw = "/v/v.zarr/raw"\n',
+            "[volumes.segment]: a volume cannot be named train, predict, segment, refine, "
+            "evaluate, volumes, run or round. Example: [volumes.segment-1]",
+            id="volume named like a step kind",
+        ),
+        pytest.param(
+            '[volumes]\nraw = "/v/v.zarr/raw"\n',
+            "[volumes] raw is a key, not a volume; write [volumes.<name>] above it",
+            id="key outside a volume",
+        ),
+        pytest.param(
+            '[volumes.crops]\nraw = "/no/such/*.zarr/raw"\n',
+            "[volumes.crops] raw = '/no/such/*.zarr/raw' matches nothing",
+            id="glob that matches nothing",
+        ),
     ],
 )
 def test_the_loader_refuses_an_unknown_key_with_the_fix(write, text, message):
@@ -237,6 +264,43 @@ def test_the_loader_refuses_an_unknown_key_with_the_fix(write, text, message):
         load(path)
 
     assert str(error.value) == f"{path}: {message}"
+
+
+def test_a_glob_gives_one_volume_per_match_named_by_its_container(tmp_path, write):
+    for array in [
+        "a.zarr/raw",
+        "a.zarr/labels",
+        "b.zarr/raw",
+        "b.zarr/labels",
+        "c.zarr/raw",
+    ]:
+        (tmp_path / array).mkdir(parents=True)
+    labels = f'labels = "{tmp_path}/*.zarr/labels"\n'
+
+    volumes = load_volumes(
+        write(f'[volumes.crops]\nraw = "{tmp_path}/[ab].zarr/raw"\n' + labels)
+    )
+    path = write(f'[volumes.crops]\nraw = "{tmp_path}/*.zarr/raw"\n' + labels)
+    with pytest.raises(click.ClickException) as error:
+        load(path)
+
+    assert {name: v.keys["labels"] for name, v in volumes.items()} == {
+        "a-zarr": f"{tmp_path}/a.zarr/labels",
+        "b-zarr": f"{tmp_path}/b.zarr/labels",
+    }
+    assert str(error.value) == (
+        f"{path}: [volumes.crops] raw matches 3 arrays and labels matches 2; "
+        "they must match one to one"
+    )
+
+
+def test_a_volume_array_is_named_by_its_key_or_given_as_a_path(write):
+    [volume] = load_volumes(
+        write('[volumes.v]\nraw = "/v/v.zarr/raw"\npgt = "/v/v.zarr/pgt/s0"\n')
+    ).values()
+
+    assert volume.array("pgt") == "/v/v.zarr/pgt/s0"
+    assert volume.array("/o/o.zarr/mask") == "/o/o.zarr/mask"
 
 
 @pytest.mark.parametrize(

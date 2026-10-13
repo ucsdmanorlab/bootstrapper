@@ -38,13 +38,13 @@ def ask_volume(round_dir):
     labels = cli_prompt("Labels array (enter to skip: the volume is only predicted)", STYLE, default="", show_default=False)
     if labels:
         volume["labels"] = os.path.abspath(labels)
-        volume["sparse_labels"] = not cli_confirm("Is every object in this volume labelled?", STYLE, default=False)
+        volume["training_mask"] = "everywhere" if cli_confirm("Is every object in this volume labelled?", STYLE, default=False) else "labels"
         volume["2d_labels"] = cli_confirm("Do the labels sit on single sections?", STYLE, default=labels_look_2d(volume["labels"]))
-        if volume["sparse_labels"]:
-            volume["dense_objects"] = cli_confirm("Are the unlabelled neighbours of a labelled object other objects (yes), or background (no)?", STYLE, default=True)
+        if volume["training_mask"] == "labels" and not cli_confirm("Are the unlabelled neighbours of a labelled object other objects (yes), or background (no)?", STYLE, default=True):
+            volume["mask_dilation"] = 10
     mask = cli_prompt("Mask array for the raw image (enter to skip)", STYLE, default="", show_default=False)
     if mask:
-        volume["mask"] = os.path.abspath(mask)
+        volume["target_mask"] = os.path.abspath(mask)
     gt = cli_prompt("Ground truth labels for evaluation (enter to skip)", STYLE, default="", show_default=False)
     if gt:
         volume["gt"] = os.path.abspath(gt)
@@ -117,7 +117,7 @@ def write_round(round_dir, volumes, chain, num_gpus):
             copy_model_scripts(model.name, setup_dir, cli_edit=False)
             train = {"setup_dir": setup_dir, "voxel_size": voxel_size, "max_iterations": 30001,
                      "save_checkpoints_every": 5000, "save_snapshots_every": 1000, "devices": "auto",
-                     "samples": [{"raw": v["raw"], "labels": v["labels"], **({"mask": training_mask(v)} if v.get("sparse_labels") else {})} for v in trained]}
+                     "samples": [{"raw": v["raw"], "labels": v["labels"], **({"mask": training_mask(v)} if v.get("training_mask") == "labels" else {})} for v in trained]}
             write(f"{n:02d}_train_{model.name}.toml", {"train": {model.name: train}})
             n += 1
             checkpoint = os.path.join(setup_dir, f"model_checkpoint_{train['max_iterations'] - 1}.ckpt")
@@ -142,11 +142,11 @@ def write_round(round_dir, volumes, chain, num_gpus):
         level = os.path.dirname(affs)
         segment[name] = {"affs_dataset": affs, "fragments_dataset": os.path.join(level, "fragments_mws"),
                          "lut_dir": os.path.join(level, "luts_mws"), "seg_dataset_prefix": os.path.join(level, "segmentations_mws"),
-                         **({"mask_dataset": v["mask"]} if "mask" in v else {})}
+                         **({"mask_dataset": v["target_mask"]} if "target_mask" in v else {})}
         refine[name] = {"in_array": os.path.join(level, "segmentations_mws", mws_segmentation_name(params))}
         if "gt" in v:
             evaluate[name] = {"seg_datasets_prefix": os.path.join(level, "segmentations_mws"),
-                              **({"mask_dataset": v["mask"]} if "mask" in v else {}),
+                              **({"mask_dataset": v["target_mask"]} if "target_mask" in v else {}),
                               "gt": {"labels_dataset": v["gt"]},
                               "pred": {"pred_dataset": affs, "thresholds": EVAL_ERROR_THRESHOLDS["affs"], "params": {"aff_neighborhood": neighborhood}}}
     write(f"{n:02d}_segment.toml", {"segment": segment})

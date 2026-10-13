@@ -25,7 +25,7 @@ FILES = [
 
 
 def run_prepare(tmp_path, models=""):
-    """One volume with sparse labels on two sections; every default but the models."""
+    """One volume, sparse labels on two sections, background beside each object."""
     labels = np.zeros((8, 64, 64), np.uint64)
     labels[2, 10:30, 10:30] = 1
     labels[5, 30:50, 30:50] = 2
@@ -48,7 +48,7 @@ def run_prepare(tmp_path, models=""):
         f"{tmp_path}/apical.zarr/labels",
         "n",  # not every object is labelled
         "",  # labels on single sections: the default, guessed from the labels
-        "",  # unlabelled neighbours are other objects
+        "n",  # untraced space next to an object is background
         "",  # no mask
         f"{tmp_path}/apical.zarr/labels",  # ground truth
         "n",  # no other volume
@@ -88,11 +88,14 @@ def test_the_dialogue_writes_the_files_in_run_order(tmp_path, dialogue):
 def test_the_volume_facts_are_recorded(tmp_path, dialogue):
     volume = toml.load(f"{tmp_path}/round_01/volumes.toml")["volumes"]["apical"]
 
-    assert volume["sparse_labels"] is True
-    assert volume["2d_labels"] is True
-    assert volume["dense_objects"] is True
-    assert volume["gt"] == f"{tmp_path}/apical.zarr/labels"
-    assert "mask" not in volume
+    assert volume == {
+        "raw": f"{tmp_path}/apical.zarr/raw",
+        "labels": f"{tmp_path}/apical.zarr/labels",
+        "training_mask": "labels",
+        "2d_labels": True,
+        "mask_dilation": 10,
+        "gt": f"{tmp_path}/apical.zarr/labels",
+    }
 
 
 def test_the_train_step_trains_a_fresh_setup_on_a_labels_mask(tmp_path, dialogue):
