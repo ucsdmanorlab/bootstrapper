@@ -8,7 +8,6 @@ import numpy as np
 import logging
 import signal
 import subprocess
-from pprint import pprint
 
 from funlib.geometry import Roi, Coordinate
 from funlib.persistence import open_ds, prepare_ds
@@ -310,7 +309,6 @@ def run_prediction(config_file, step=None, **kwargs):
     for s in steps:
         for volume, step_config in runs(s):
             config = get_pred_config(step_config, **kwargs)
-            pprint(config)
             if config["num_gpus"] > 1 or config["num_workers"] > 1:
                 predict_blockwise(config)
             else:

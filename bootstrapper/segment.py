@@ -3,7 +3,6 @@ import click
 from .config import steps_of, runs, refuse_unknown
 import logging
 import os
-from pprint import pprint
 import toml
 from ast import literal_eval
 
@@ -148,7 +147,6 @@ def get_seg_config(config, method, **kwargs):
 
 def run_segmentation(config, mode="ws", **kwargs):
     config = get_seg_config(config, mode, **kwargs)
-    pprint(config)
 
     if mode == "ws":
         try:

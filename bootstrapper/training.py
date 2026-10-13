@@ -2,6 +2,7 @@ import glob
 import click
 import logging
 import os
+import warnings
 
 import gunpowder as gp
 import numpy as np
@@ -141,6 +142,11 @@ def fit(
     warning = device_warning()
     if warning:
         click.secho(warning, fg="red", bold=True, err=True)
+
+    torch.set_float32_matmul_precision("high")
+    # setup_dir holds the model files, and fit resumes from its newest checkpoint on purpose
+    warnings.filterwarnings("ignore", message="Checkpoint directory .* exists and is not empty")
+    logging.getLogger("pytorch_lightning.utilities.rank_zero").addFilter(lambda r: not r.getMessage().startswith("💡 Tip"))
 
     # indices are positions within the inherited CUDA_VISIBLE_DEVICES set
     trainer = pl.Trainer(

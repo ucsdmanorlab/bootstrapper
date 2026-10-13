@@ -51,7 +51,6 @@ def compute_errors(
                 f"Set lsd_sigma in the eval config for {pred_dataset}: the sigma the "
                 "model was trained with"
             )
-        logging.info(f"Computing LSD errors with sigma={sigma}")
     elif "3d_affs" in pred_name:
         error_type = "aff"
         num_aff_offsets = pred_ds.shape[0]
@@ -66,7 +65,6 @@ def compute_errors(
                 f"aff_neighborhood has {len(neighborhood)} offsets, but "
                 f"{pred_dataset} has {num_aff_offsets} channels"
             )
-        logging.info(f"Computing affinity errors with neighborhood={neighborhood}")
     else:
         raise ValueError(f"Unknown type for {pred_dataset}")
 

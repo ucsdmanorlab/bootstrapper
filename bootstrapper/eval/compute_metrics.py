@@ -125,8 +125,6 @@ def compute_metrics(
         roi_shape = Coordinate(roi_shape)
         roi = Roi(roi_offset, roi_shape).intersect(roi)
 
-    print(seg_ds.roi, roi)
-
     # read gt skeletons
     gt_skeletons = (
         None if gt_skeletons_file is None else read_skeletons(gt_skeletons_file, roi)

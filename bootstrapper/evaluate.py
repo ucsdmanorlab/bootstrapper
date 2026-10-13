@@ -2,17 +2,11 @@ import click
 import toml
 import glob
 import os
-import logging
 import json
-from pprint import pprint
 
 from funlib.persistence import open_ds
 
 from .config import steps_of, runs
-
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 def get_seg_datasets(seg_datasets_prefix):
@@ -120,8 +114,41 @@ def print_report(report):
         print("  largest: " + ", ".join([f"{first} of the ROI", *rest]))
 
 
+def short_names(seg_datasets):
+    """Names such as 'mws b-0.3/fill_holes': the method of segmentations_<method>, the name parts
+    that differ between the segmentations, and the refine suffix. Full paths when names clash."""
+    leaves = [os.path.basename(ds) for ds in seg_datasets]
+    roots = [min((r for r in leaves if leaf.startswith(r + "_")), key=len, default=leaf) for leaf in leaves]
+    shared = set.intersection(*(set(r.split("--")) for r in roots)) if any("--" in r for r in roots) else set()
+    names = []
+    for ds, leaf, root in zip(seg_datasets, leaves, roots):
+        name = os.path.basename(os.path.dirname(ds)).removeprefix("segmentations_")
+        parts = [p for p in root.split("--") if p not in shared]
+        name += " " + "--".join(parts) if parts else ""
+        names.append(name + ("/" + leaf[len(root) + 1:] if leaf != root else ""))
+    return names if len(set(names)) == len(names) else list(seg_datasets)
+
+
+def summary(stats):
+    """The numbers of one segmentation that a user reads first."""
+    if "metrics" in stats:
+        parts = []
+        if "voi" in stats["metrics"]:
+            v = stats["metrics"]["voi"]
+            parts.append(f"NVI split {v['nvi_split']:.3f} merge {v['nvi_merge']:.3f}  "
+                         f"VOI split {v['voi_split']:.2f} merge {v['voi_merge']:.2f}")
+        if "skel" in stats["metrics"]:
+            s = stats["metrics"]["skel"]
+            parts.append(f"nERL {s['nerl']:.3f}  {s['n_mergers']} merges {s['n_splits']} splits")
+        return "  ".join(parts)
+    if "error_mask" in stats:
+        return f"error mask {stats['error_mask']['nonzero_ratio']:.3f} of the ROI"
+    return f"{stats['report']['objects']} objects"
+
+
 def run_evaluation(config, config_file, mode="pred", suffix=True, volume=None, **kwargs):
-    """Report every segmentation, then evaluate it in mode gt or pred; mode report stops at the report."""
+    """Report every segmentation, then evaluate it in mode gt or pred; mode report stops at the report.
+    Returns one row per segmentation for the closing summary."""
     from .eval.compute_metrics import seg_report
 
     config = get_eval_config(config, config_file, mode, suffix, volume, **kwargs)
@@ -148,14 +175,13 @@ def run_evaluation(config, config_file, mode="pred", suffix=True, volume=None, *
         elif mode == "gt":
             stats = run_gt_evaluation(config, seg_ds)
 
-        print(f"Stats for {seg_ds}:")
-        pprint(stats)
         seg_stats[seg_ds] |= stats
 
     out_result = config["out_result"]
-    logger.info(f"Saving stats to {out_result}")
     with open(out_result, "w") as f:
         json.dump(seg_stats, f, indent=4)
+    names = short_names(seg_datasets)
+    return [(volume or "", name, summary(seg_stats[ds]), f"({out_result})") for ds, name in zip(seg_datasets, names)]
 
 
 @click.command()
@@ -169,9 +195,13 @@ def run_evaluation(config, config_file, mode="pred", suffix=True, volume=None, *
 def evaluate(config_file, step, gt, pred, out_result=None):
     """Evaluate segmentations as the [evaluate] step of config_file says."""
     steps = steps_of(config_file, "evaluate", step)
+    rows = []
     for s in steps:
         flags = [m for m, on in (("gt", gt), ("pred", pred)) if on]
         for volume, config in runs(s):
             modes = flags or [m for m in ("gt", "pred") if m in config] or ["report"]
             for mode in modes:
-                run_evaluation(config, config_file, mode, len(modes) > 1, volume, out_result=out_result)
+                rows += run_evaluation(config, config_file, mode, len(modes) > 1, volume, out_result=out_result)
+    widths = [max((len(row[i]) for row in rows), default=0) for i in range(3)]
+    for row in rows:
+        click.echo("  ".join([*(c.ljust(w) for c, w in zip(row, widths) if w), row[3]]))
