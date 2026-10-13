@@ -263,6 +263,19 @@ def test_error_maps_go_under_out_dir(tmp_path):
     assert error_map[10:14, 100:200, 100:200].mean() > 3 * error_map.mean()
 
 
+def test_the_step_thresholds_make_the_error_mask(tmp_path):
+    seg, pred = make_volume(tmp_path, 3, "3d_affs")
+    config = {
+        "thresholds": [0.3, 1.0],
+        "pred": {"pred_dataset": pred, "params": {"aff_neighborhood": NEIGHBORHOOD}},
+    }
+
+    stats = run_pred_evaluation(config, seg)
+
+    # every error is about 0.25: the squared gap from 128/255 to 1 or 0
+    assert not open_ds(stats["error_mask_ds"])[:].any()
+
+
 def test_isolated_skeleton_nodes_are_dropped(tmp_path):
     graph = nx.Graph()
     positions = {

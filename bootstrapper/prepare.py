@@ -3,16 +3,17 @@ import json
 import os
 
 import click
-import toml
 import zarr
 
 from .catalog import check_round, default_chain, describe, parse_chain, valid_chains
-from .configs import BS_DIR, EVAL_ERROR_THRESHOLDS, checkpoint_iteration, copy_model_scripts, find_checkpoints
+from .configs import BS_DIR, checkpoint_iteration, copy_model_scripts, find_checkpoints
 from .data.convert import convert
 from .data.mask import training_mask
+from .params import defaults
 from .post.naming import mws_segmentation_name
 from .segment import DEFAULTS as SEG_DEFAULTS
 from .styles import cli_echo, cli_prompt, cli_confirm
+from .write import file_text
 
 STYLE = "prepare"
 SHIPPED_ITERATION = 25000
@@ -79,30 +80,24 @@ def ask_models(volumes):
         return chain
 
 
-def ask_gpus():
-    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
-    granted = len([d for d in visible.split(",") if d.strip()]) if visible else 1
-    return cli_prompt("GPUs for prediction", STYLE, type=int, default=max(1, granted))
-
-
 def net_config(setup_dir):
     with open(os.path.join(setup_dir, "net_config.json")) as f:
         return json.load(f)
 
 
-def write_round(round_dir, volumes, chain, num_gpus):
+def write_round(round_dir, volumes, chain):
     trained = [v for v in volumes.values() if "labels" in v]
     if not trained:
         raise click.ClickException("no volume has labels; nothing to train")
     written = []
 
-    def write(name, doc):
+    def write(name, title, doc):
         path = os.path.join(round_dir, name)
         with open(path, "w") as f:
-            toml.dump(doc, f)
+            f.write(file_text(title, doc))
         written.append(path)
 
-    write("volumes.toml", {"volumes": volumes})
+    write("volumes.toml", "Volumes of this round. Every step reads its arrays from here.", {"volumes": volumes})
     voxel_size = trained[0].get("voxel_size") or [int(v) for v in zarr.open(trained[0]["raw"], "r").attrs["voxel_size"]]
     samples = []
     for name, v in volumes.items():
@@ -113,6 +108,7 @@ def write_round(round_dir, volumes, chain, num_gpus):
     done, outputs = [], {name: {"raw": v["raw"]} for name, v in volumes.items()}  # (model, iteration) so far; each volume's latest arrays by name
     n = 1
     for model in chain:
+        io = f"{' and '.join(model.inputs)} in, {' and '.join(model.outputs)} out"
         if model.shipped:
             setup_dir = os.path.join(BS_DIR, "models", model.name)
             found = find_checkpoints(setup_dir)
@@ -120,45 +116,46 @@ def write_round(round_dir, volumes, chain, num_gpus):
         else:
             setup_dir = os.path.join(round_dir, model.name)
             copy_model_scripts(model.name, setup_dir, cli_edit=False)
-            train = {"setup_dir": setup_dir, "voxel_size": voxel_size, "max_iterations": 30001,
-                     "save_checkpoints_every": 5000, "save_snapshots_every": 1000, "devices": "auto",
-                     "samples": samples}
-            write(f"{n:02d}_train_{model.name}.toml", {"train": {model.name: train}})
+            train = defaults("train.*") | {"setup_dir": setup_dir, "voxel_size": voxel_size, "samples": samples}
+            write(f"{n:02d}_train_{model.name}.toml", f"Train {model.name} ({model.short}) on every volume with labels: {io}.",
+                  {"train": {model.name: train}})
             n += 1
             checkpoint = os.path.join(setup_dir, f"model_checkpoint_{train['max_iterations'] - 1}.ckpt")
         iteration = checkpoint_iteration(checkpoint)
         chain_str = "--from--".join(f"{s}_{it}" for s, it in done)
-        predict = {"setup_dir": setup_dir, "checkpoint": checkpoint, "num_gpus": num_gpus, "num_workers": num_gpus}
+        predict = defaults("predict.*") | {"setup_dir": setup_dir, "checkpoint": checkpoint}
         for name, v in volumes.items():
             prefix = os.path.join(v.get("outputs", v["raw"].rsplit(".zarr", 1)[0] + ".zarr"), model.name)
             level = f"{iteration}--from--{chain_str}" if chain_str else str(iteration)
             predict[name] = {"input_datasets": [outputs[name][x] for x in model.inputs], "output_datasets_prefix": prefix, "chain_str": chain_str}
             outputs[name] = {o: os.path.join(prefix, level, o) for o in model.outputs}
-        write(f"{n:02d}_predict_{model.name}.toml", {"predict": {model.name: predict}})
+        write(f"{n:02d}_predict_{model.name}.toml", f"Predict {model.name} ({model.short}) on every volume: {io}.",
+              {"predict": {model.name: predict}})
         n += 1
         done.append((model.name, iteration))
 
     neighborhood = net_config(setup_dir)["outputs"]["3d_affs"]["neighborhood"]
-    params = dict(SEG_DEFAULTS["mws"], aff_neighborhood=neighborhood)
-    segment = {"method": "mws", "blockwise": True, "num_workers": 10, "params": params}
-    refine, evaluate = {"fill-holes": {"xy": True}}, {}
+    params = defaults("segment.params") | {"aff_neighborhood": neighborhood}
+    segment = defaults("segment") | {"params": params}
+    refine, evaluate = {"fill-holes": defaults("refine.fill-holes")}, {}
     for name, v in volumes.items():
         affs = outputs[name]["3d_affs"]
         level = os.path.dirname(affs)
         segment[name] = {"affs_dataset": affs, "fragments_dataset": os.path.join(level, "fragments_mws"),
                          "lut_dir": os.path.join(level, "luts_mws"), "seg_dataset_prefix": os.path.join(level, "segmentations_mws"),
                          **({"mask_dataset": v["target_mask"]} if "target_mask" in v else {})}
-        refine[name] = {"in_array": os.path.join(level, "segmentations_mws", mws_segmentation_name(params))}
+        refine[name] = {"in_array": os.path.join(level, "segmentations_mws", mws_segmentation_name(SEG_DEFAULTS["mws"] | params))}
         if "gt" in v:
             evaluate[name] = {"seg_datasets_prefix": os.path.join(level, "segmentations_mws"),
                               **({"mask_dataset": v["target_mask"]} if "target_mask" in v else {}),
                               "gt": {"labels_dataset": v["gt"]},
-                              "pred": {"pred_dataset": affs, "thresholds": EVAL_ERROR_THRESHOLDS["affs"], "params": {"aff_neighborhood": neighborhood}}}
-    write(f"{n:02d}_segment.toml", {"segment": segment})
-    write(f"{n + 1:02d}_refine.toml", {"refine": refine})
+                              "pred": {"pred_dataset": affs, "params": {"aff_neighborhood": neighborhood}}}
+    write(f"{n:02d}_segment.toml", f"Segment the 3D affinities of {chain[-1].name} into objects.", {"segment": segment})
+    write(f"{n + 1:02d}_refine.toml", "Refine the segmentation. The ops run in file order; each output feeds the next.", {"refine": refine})
     n += 2
     if evaluate:
-        write(f"{n:02d}_evaluate.toml", {"evaluate": evaluate})
+        write(f"{n:02d}_evaluate.toml", "Compare the segmentations with the ground truth, and the affinities with the segmentations.",
+              {"evaluate": defaults("evaluate") | evaluate})
     return written
 
 
@@ -177,8 +174,7 @@ def prepare(round_dir):
         if not cli_confirm("Another volume?", STYLE, default=False):
             break
     chain = ask_models(volumes)
-    num_gpus = ask_gpus()
-    written = write_round(round_dir, volumes, chain, num_gpus)
+    written = write_round(round_dir, volumes, chain)
     click.echo()
     for path in written:
         cli_echo(f"wrote {path}", STYLE)

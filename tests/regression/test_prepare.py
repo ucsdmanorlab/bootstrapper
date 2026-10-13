@@ -1,9 +1,10 @@
 """bs prepare asks about the data, then writes volumes.toml, numbered step files, a
 checkpoint-free setup with no __pycache__, and the training masks in the round, never in the
-data container; every file loads."""
+data container; every file loads, and every param in it says what it does."""
 
 import glob
 import os
+import re
 
 import numpy as np
 import pytest
@@ -14,6 +15,7 @@ from funlib.persistence import open_ds, prepare_ds
 from bootstrapper import configs
 from bootstrapper.catalog import parse_chain
 from bootstrapper.config import load
+from bootstrapper.params import KEYS
 from bootstrapper.prepare import prepare, write_round
 
 FILES = [
@@ -58,7 +60,6 @@ def run_prepare(tmp_path, models=""):
         f"{tmp_path}/apical.zarr/labels",  # ground truth
         "n",  # no other volume
         models,  # "": the default chain for 2D labels
-        "",  # GPUs
     ]
 
     return CliRunner().invoke(
@@ -88,6 +89,23 @@ def test_the_dialogue_writes_the_files_in_run_order(tmp_path, dialogue):
     assert "bs run" in dialogue.output
     for name in FILES:
         assert load(f"{tmp_path}/round_01/{name}")
+
+
+def test_each_param_says_what_it_does_and_each_example_loads(tmp_path, dialogue):
+    """The step files show every key of params.KEYS, and volumes.toml each one it sets, with
+    its meaning; with the commented lines on, every file still loads."""
+    kinds = ["volumes", "train", "predict", "predict", "segment", "refine", "evaluate"]
+    for name, kind in zip(["volumes.toml", *FILES], kinds):
+        path = tmp_path / "round_01" / name
+        text = path.read_text()
+        volume = toml.loads(text).get("volumes", {}).get("apical", {})
+        for table, keys in KEYS.items():
+            for k, key in keys.items():
+                if table.split(".")[0] == kind and (kind != "volumes" or k in volume):
+                    assert re.search(rf"(?m)^(# )?{k} = ", text), (name, k)
+                    assert key.help in text, (name, k)
+        path.write_text(re.sub(r"(?m)^# (?=\[[\w.-]+\]$|[\w-]+ = )", "", text))
+        load(path)
 
 
 def test_the_volume_facts_are_recorded(tmp_path, dialogue):
@@ -152,7 +170,7 @@ def test_each_labelling_trains_on_its_own_mask(tmp_path):
 
     volumes = {name: data | keys for name, (keys, _) in cases.items()}
     (tmp_path / "round_01").mkdir()
-    write_round(f"{tmp_path}/round_01", volumes, parse_chain("3M"), 1)
+    write_round(f"{tmp_path}/round_01", volumes, parse_chain("3M"))
 
     samples = step(tmp_path, "01_train_3d_mtlsd.toml").keys["samples"]
     for (name, (_, expected)), sample in zip(cases.items(), samples):
@@ -204,7 +222,7 @@ def test_segment_refine_and_evaluate_follow_the_affs(tmp_path, dialogue):
         evaluate.volumes["apical"]["gt"]["labels_dataset"]
         == f"{tmp_path}/apical.zarr/labels"
     )
-    assert evaluate.volumes["apical"]["pred"]["thresholds"] == [0.1, 1.0]
+    assert evaluate.keys["thresholds"] == [0.1, 1.0]
 
 
 def test_model_copy_leaves_out_pycache(tmp_path, monkeypatch):

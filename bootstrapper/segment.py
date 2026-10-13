@@ -130,7 +130,7 @@ def get_seg_config(config, method, **kwargs):
         if "lut_dir" not in config:
             config["lut_dir"] = os.path.join(out_dir, f"luts_{method}")
 
-        if "db" not in config:
+        if not config.get("db"):
             from .post.naming import build_name
 
             seeded = "_seeded" if "seeds_dataset" in config else ""

@@ -88,9 +88,12 @@ def default_step(tmp_path, affs, method, **extra):
     }
 
 
+@pytest.mark.parametrize("db", [{}, {"db": {}}], ids=["no db table", "an empty one"])
 @pytest.mark.parametrize("method", ["ws", "mws"])
-def test_the_default_database_goes_beside_the_output(tmp_path, affs, capsys, method):
-    config = get_seg_config(default_step(tmp_path, affs, method), method)
+def test_the_default_database_goes_beside_the_output(
+    tmp_path, affs, capsys, method, db
+):
+    config = get_seg_config(default_step(tmp_path, affs, method, **db), method)
 
     db_file = config["db"]["db_file"]
     assert os.path.dirname(db_file) == str(tmp_path / "v.zarr")
