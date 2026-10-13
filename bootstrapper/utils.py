@@ -25,20 +25,16 @@ utils.add_command(tissue_mask)
 @click.option("--setup-dir", "-s", help="Directory to download checkpoints to")
 def download_ckpts(model_name=None, setup_dir=None):
     """Download pretrained checkpoints for all pred models"""
-    from bootstrapper.configs import MODEL_NAMES, MODEL_DIR, MODEL_SHORT_NAMES, copy_model_scripts, download_checkpoints
+    from bootstrapper.catalog import MODELS, parse_chain
+    from bootstrapper.configs import MODEL_DIR, copy_model_scripts, download_checkpoints
     import os
     import json
 
-    pred_models = [m for m in MODEL_NAMES if "_from_" in m]
-
-    if model_name is None:
-        models = pred_models
-    elif model_name in pred_models:
-        models = [model_name]
-    elif model_name in MODEL_SHORT_NAMES.values():
-        models = [k for k, v in MODEL_SHORT_NAMES.items() if v == model_name]
-    else:
-        raise ValueError(f"Unknown model: {model_name}")
+    pred_models = [m.name for m in MODELS.values() if m.shipped]
+    models = pred_models if model_name is None else [m.name for m in parse_chain(model_name)]
+    trained = [m for m in models if m not in pred_models]
+    if trained:
+        raise click.ClickException(f"{trained[0]} trains on your labels, so no checkpoint ships for it; checkpoints ship for {', '.join(pred_models)}")
     
     for model in models:
         if setup_dir is None:

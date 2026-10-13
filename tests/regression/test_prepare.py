@@ -24,9 +24,8 @@ FILES = [
 ]
 
 
-@pytest.fixture
-def dialogue(tmp_path):
-    """One volume with sparse labels on two sections, the 2d pipeline, every default."""
+def run_prepare(tmp_path, models=""):
+    """One volume with sparse labels on two sections; every default but the models."""
     labels = np.zeros((8, 64, 64), np.uint64)
     labels[2, 10:30, 10:30] = 1
     labels[5, 30:50, 30:50] = 2
@@ -53,7 +52,7 @@ def dialogue(tmp_path):
         "",  # no mask
         f"{tmp_path}/apical.zarr/labels",  # ground truth
         "n",  # no other volume
-        "",  # the 2d pipeline
+        models,  # "": the default chain for 2D labels
         "",  # GPUs
     ]
 
@@ -63,6 +62,11 @@ def dialogue(tmp_path):
         input="\n".join(answers) + "\n",
         catch_exceptions=False,
     )
+
+
+@pytest.fixture
+def dialogue(tmp_path):
+    return run_prepare(tmp_path)
 
 
 def step(tmp_path, name):
@@ -113,6 +117,16 @@ def test_the_second_predict_step_reads_the_first_ones_output(tmp_path, dialogue)
     assert predict.volumes["apical"]["input_datasets"][0].endswith(
         "2d_mtlsd/30000/2d_lsds"
     )
+
+
+def test_a_model_after_2d_mtlsd_reads_only_the_outputs_it_takes(tmp_path):
+    result = run_prepare(tmp_path, "2M 3Af2L")
+
+    assert result.exit_code == 0, result.output
+    predict = step(tmp_path, "03_predict_3d_affs_from_2d_lsd.toml")
+    assert predict.volumes["apical"]["input_datasets"] == [
+        f"{tmp_path}/apical.zarr/2d_mtlsd/30000/2d_lsds"
+    ]
 
 
 def test_segment_refine_and_evaluate_follow_the_affs(tmp_path, dialogue):

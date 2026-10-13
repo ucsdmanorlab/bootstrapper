@@ -21,12 +21,6 @@ MODEL_NAMES = sorted(
             if os.path.isdir(os.path.join(MODEL_DIR, d))
         ]
     )
-MODEL_SHORT_NAMES = {
-    "3d_affs_from_2d_affs": "3Af2A",
-    "3d_affs_from_2d_lsd": "3Af2L",
-    "3d_affs_from_2d_mtlsd": "3Af2M",
-    "3d_affs_from_3d_lsd": "3Af3L",
-}
 MODEL_URLS = {
     "3d_affs_from_2d_affs": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.2/3d_affs_from_2d_affs.zip",
     "3d_affs_from_2d_lsd": "https://github.com/ucsdmanorlab/bootstrapper/releases/download/v0.3.2/3d_affs_from_2d_lsd.zip",

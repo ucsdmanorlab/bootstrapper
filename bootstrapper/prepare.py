@@ -6,17 +6,14 @@ import click
 import toml
 import zarr
 
-from .configs import BS_DIR, MODEL_NAMES, MODEL_URLS, EVAL_ERROR_THRESHOLDS, checkpoint_iteration, copy_model_scripts, find_checkpoints
+from .catalog import check_round, default_chain, describe, parse_chain, valid_chains
+from .configs import BS_DIR, EVAL_ERROR_THRESHOLDS, checkpoint_iteration, copy_model_scripts, find_checkpoints
 from .data.convert import convert
 from .data.mask import mask as make_mask
 from .post.naming import mws_segmentation_name
 from .segment import DEFAULTS as SEG_DEFAULTS
 from .styles import cli_echo, cli_prompt, cli_confirm
 
-PRESETS = {
-    "2d": ("2D labels to 3D segmentation", ["2d_mtlsd", "3d_affs_from_2d_mtlsd"]),
-    "3d": ("3D labels to 3D segmentation", ["3d_mtlsd"]),
-}
 STYLE = "prepare"
 SHIPPED_ITERATION = 25000
 
@@ -62,19 +59,24 @@ def labels_look_2d(path):
 
 
 def ask_models(volumes):
-    any_2d = any(v.get("2d_labels") for v in volumes.values())
+    default = " ".join(m.name for m in default_chain(any(v.get("2d_labels") for v in volumes.values())))
+    chains = valid_chains()
     click.echo()
-    for key, (title, chain) in PRESETS.items():
-        cli_echo(f"  {key}: {title}: {' then '.join(chain)}", STYLE)
-    cli_echo(f"  custom: models by name, in chain order ({', '.join(MODEL_NAMES)})", STYLE)
-    choice = cli_prompt("Pipeline", STYLE, type=click.Choice([*PRESETS, "custom"]), default="2d" if any_2d else "3d")
-    if choice in PRESETS:
-        return PRESETS[choice][1]
-    names = [n.strip() for n in cli_prompt("Models in chain order, comma-separated", STYLE).split(",")]
-    for n in names:
-        if n not in MODEL_NAMES:
-            raise click.ClickException(f"unknown model {n!r}; models are {', '.join(MODEL_NAMES)}")
-    return names
+    while True:
+        text = cli_prompt(f"Models (? lists all {len(chains)})", STYLE, default=default)
+        if text.strip() == "?":
+            for chain in chains:
+                cli_echo(f"  {' '.join(m.short for m in chain):9s} {describe(chain)}", STYLE)
+            cli_echo("  Type names or short forms, such as 2M 3Af2L.", STYLE)
+            continue
+        try:
+            chain = parse_chain(text)
+            check_round(chain)
+        except click.ClickException as e:
+            cli_echo(e.message, STYLE, "error")
+            continue
+        cli_echo(f"  {describe(chain)}", STYLE)
+        return chain
 
 
 def ask_gpus():
@@ -103,45 +105,42 @@ def write_round(round_dir, volumes, chain, num_gpus):
     write("volumes.toml", {"volumes": volumes})
     voxel_size = trained[0].get("voxel_size") or [int(v) for v in zarr.open(trained[0]["raw"], "r").attrs["voxel_size"]]
 
-    done, outputs = [], {}  # (model, iteration) so far; each volume's latest outputs
+    done, outputs = [], {name: {"raw": v["raw"]} for name, v in volumes.items()}  # (model, iteration) so far; each volume's latest arrays by name
     n = 1
-    for i, model in enumerate(chain):
-        if model in MODEL_URLS:
-            setup_dir = os.path.join(BS_DIR, "models", model)
+    for model in chain:
+        if model.shipped:
+            setup_dir = os.path.join(BS_DIR, "models", model.name)
             found = find_checkpoints(setup_dir)
             checkpoint = found[max(found)] if found else os.path.join(setup_dir, f"model_checkpoint_{SHIPPED_ITERATION}")
         else:
-            setup_dir = os.path.join(round_dir, model)
-            copy_model_scripts(model, setup_dir, cli_edit=False)
+            setup_dir = os.path.join(round_dir, model.name)
+            copy_model_scripts(model.name, setup_dir, cli_edit=False)
             train = {"setup_dir": setup_dir, "voxel_size": voxel_size, "max_iterations": 30001,
                      "save_checkpoints_every": 5000, "save_snapshots_every": 1000, "devices": "auto",
                      "samples": [{"raw": v["raw"], "labels": v["labels"], **({"mask": training_mask(v)} if v.get("sparse_labels") else {})} for v in trained]}
-            write(f"{n:02d}_train_{model}.toml", {"train": {model: train}})
+            write(f"{n:02d}_train_{model.name}.toml", {"train": {model.name: train}})
             n += 1
             checkpoint = os.path.join(setup_dir, f"model_checkpoint_{train['max_iterations'] - 1}.ckpt")
         iteration = checkpoint_iteration(checkpoint)
         chain_str = "--from--".join(f"{s}_{it}" for s, it in done)
         predict = {"setup_dir": setup_dir, "checkpoint": checkpoint, "num_gpus": num_gpus, "num_workers": num_gpus}
-        out_names = list(net_config(setup_dir)["outputs"])
         for name, v in volumes.items():
-            prefix = os.path.join(v.get("outputs", v["raw"].rsplit(".zarr", 1)[0] + ".zarr"), model)
+            prefix = os.path.join(v.get("outputs", v["raw"].rsplit(".zarr", 1)[0] + ".zarr"), model.name)
             level = f"{iteration}--from--{chain_str}" if chain_str else str(iteration)
-            predict[name] = {"input_datasets": [v["raw"]] if i == 0 else outputs[name], "output_datasets_prefix": prefix, "chain_str": chain_str}
-            outputs[name] = [os.path.join(prefix, level, o) for o in out_names]
-        write(f"{n:02d}_predict_{model}.toml", {"predict": {model: predict}})
+            predict[name] = {"input_datasets": [outputs[name][x] for x in model.inputs], "output_datasets_prefix": prefix, "chain_str": chain_str}
+            outputs[name] = {o: os.path.join(prefix, level, o) for o in model.outputs}
+        write(f"{n:02d}_predict_{model.name}.toml", {"predict": {model.name: predict}})
         n += 1
-        done.append((model, iteration))
+        done.append((model.name, iteration))
 
-    affs_of = {name: next((o for o in outs if o.endswith("3d_affs")), None) for name, outs in outputs.items()}
-    if not any(affs_of.values()):
-        raise click.ClickException(f"the chain {' then '.join(chain)} ends without a 3d_affs output; nothing to segment")
     neighborhood = net_config(setup_dir)["outputs"]["3d_affs"]["neighborhood"]
     params = dict(SEG_DEFAULTS["mws"], aff_neighborhood=neighborhood)
     segment = {"method": "mws", "blockwise": True, "num_workers": 10, "params": params}
     refine, evaluate = {"fill-holes": {"xy": True}}, {}
     for name, v in volumes.items():
-        level = os.path.dirname(affs_of[name])
-        segment[name] = {"affs_dataset": affs_of[name], "fragments_dataset": os.path.join(level, "fragments_mws"),
+        affs = outputs[name]["3d_affs"]
+        level = os.path.dirname(affs)
+        segment[name] = {"affs_dataset": affs, "fragments_dataset": os.path.join(level, "fragments_mws"),
                          "lut_dir": os.path.join(level, "luts_mws"), "seg_dataset_prefix": os.path.join(level, "segmentations_mws"),
                          **({"mask_dataset": v["mask"]} if "mask" in v else {})}
         refine[name] = {"in_array": os.path.join(level, "segmentations_mws", mws_segmentation_name(params))}
@@ -149,7 +148,7 @@ def write_round(round_dir, volumes, chain, num_gpus):
             evaluate[name] = {"seg_datasets_prefix": os.path.join(level, "segmentations_mws"),
                               **({"mask_dataset": v["mask"]} if "mask" in v else {}),
                               "gt": {"labels_dataset": v["gt"]},
-                              "pred": {"pred_dataset": affs_of[name], "thresholds": EVAL_ERROR_THRESHOLDS["affs"], "params": {"aff_neighborhood": neighborhood}}}
+                              "pred": {"pred_dataset": affs, "thresholds": EVAL_ERROR_THRESHOLDS["affs"], "params": {"aff_neighborhood": neighborhood}}}
     write(f"{n:02d}_segment.toml", {"segment": segment})
     write(f"{n + 1:02d}_refine.toml", {"refine": refine})
     n += 2
