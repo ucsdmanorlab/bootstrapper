@@ -6,6 +6,7 @@ import json
 import daisy
 import numpy as np
 import logging
+import signal
 import subprocess
 from pprint import pprint
 
@@ -54,7 +55,15 @@ def get_devices(num_gpus):
 
     if visible is None:
         # unset means every local device is visible, so position is the token
-        return [str(i) for i in range(num_gpus)]
+        devices = [str(i) for i in range(num_gpus)]
+        if devices:
+            cli_echo(
+                f"CUDA_VISIBLE_DEVICES is not set; predicting on GPU {','.join(devices)} of this machine. "
+                "Set CUDA_VISIBLE_DEVICES to the GPUs you were granted.",
+                "predict",
+                "warning",
+            )
+        return devices
 
     devices = [d for d in (token.strip() for token in visible.split(",")) if d]
 
@@ -78,11 +87,19 @@ def get_devices(num_gpus):
 def call_predict(config):
     worker_id = int(daisy.Context.from_env()["worker_id"])
     devices = config["devices"]
-    subprocess.run(
+    # daisy stops a worker with SIGTERM; unwind so its model process dies too
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
+    child = subprocess.Popen(
         [sys.executable, config["worker"], *config["args"]],
-        check=True,
         env=os.environ | {"CUDA_VISIBLE_DEVICES": devices[worker_id % len(devices)]},
+        start_new_session=True,
     )
+    try:
+        if child.wait():
+            raise subprocess.CalledProcessError(child.returncode, child.args)
+    finally:
+        if child.poll() is None:
+            os.killpg(child.pid, signal.SIGKILL)
 
 
 def refuse_incompatible_output(path, **wanted):
@@ -143,7 +160,7 @@ def get_pred_config(config, **kwargs):
     output_datasets_prefix = config["output_datasets_prefix"]
     chain_str = config.get("chain_str", "")
     num_workers = config.get("num_workers", 1)
-    devices = get_devices(config.get("num_gpus", 1))
+    devices = get_devices(config.get("num_gpus", 1)) or [""]  # num_gpus 0: an empty grant hides every GPU
     num_gpus = len(devices)
     roi_offset = parse_shape(config.get("roi_offset", None))
     roi_shape = parse_shape(config.get("roi_shape", None))
@@ -197,6 +214,12 @@ def get_pred_config(config, **kwargs):
     else:
         input_roi = in_ds.roi.grow(context, context)
         output_roi = in_ds.roi
+
+    if any(s < b for s, b in zip(output_roi.shape, output_size)):
+        raise click.ClickException(
+            f"prediction ROI {output_roi} is smaller than one output block {output_size}; "
+            f"set roi_offset and roi_shape to a ROI of at least {output_size}"
+        )
 
     # get output dataset names and prepare output datasets if using daisy
     output_datasets = []
@@ -258,8 +281,8 @@ def get_pred_config(config, **kwargs):
     for out_ds in output_datasets:
         args.extend(["-o", out_ds])
 
-    # daisy for distributed prediction
-    if num_gpus > 1:
+    # daisy blocks sit on the chunk grid, so parallel workers never share a chunk
+    if num_gpus > 1 or num_workers > 1:
         args.extend(["-d"])
 
         return {
@@ -283,6 +306,7 @@ def get_pred_config(config, **kwargs):
             "args": args,
             "num_gpus": num_gpus,
             "num_workers": num_workers,
+            "devices": devices,
         }
 
 
@@ -293,10 +317,14 @@ def run_prediction(config_file, step=None, **kwargs):
         for volume, step_config in runs(s):
             config = get_pred_config(step_config, **kwargs)
             pprint(config)
-            if config["num_gpus"] > 1:
+            if config["num_gpus"] > 1 or config["num_workers"] > 1:
                 predict_blockwise(config)
             else:
-                subprocess.run([sys.executable, config["worker"], *config["args"]], check=True)
+                subprocess.run(
+                    [sys.executable, config["worker"], *config["args"]],
+                    check=True,
+                    env=os.environ | {"CUDA_VISIBLE_DEVICES": config["devices"][0]},
+                )
 
 
 @click.command()

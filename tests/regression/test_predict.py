@@ -1,13 +1,19 @@
 """Prediction covers the configured region, reads its checkpoint by iteration, uses only the
-granted GPUs, and refuses an output it cannot write into."""
+granted GPUs, and refuses an output it cannot write into. Several workers run daisy blocks on
+the zarr chunk grid, and a stopped worker takes its model process with it."""
 
 import importlib
 import json
 import os
+import subprocess
+import sys
+import time
 
 import click
 import numpy as np
 import pytest
+import toml
+import zarr
 from funlib.persistence import prepare_ds
 
 from bootstrapper.configs import checkpoint_iteration
@@ -17,6 +23,7 @@ from bootstrapper.predict import (
     get_pred_config,
     refuse_incompatible_output,
     resolve_checkpoint,
+    run_prediction,
 )
 
 predict_module = importlib.import_module("bootstrapper.predict")
@@ -29,6 +36,76 @@ NET = {
     "outputs": {"affs": {"dims": 3, "dtype": "uint8"}},
 }
 
+WORKER_ARGS = """
+import argparse
+import sys
+
+parser = argparse.ArgumentParser()
+for flag in ("-c", "-n", "-ro", "-rs"):
+    parser.add_argument(flag)
+parser.add_argument("-i", action="append")
+parser.add_argument("-o", action="append")
+parser.add_argument("-d", action="store_true")
+args = parser.parse_args()
+"""
+
+CONSTANT_WORKER = (
+    WORKER_ARGS
+    + """
+import gunpowder as gp
+import numpy as np
+
+if not args.d:
+    sys.exit("this fake worker runs only as a daisy worker (-d)")
+
+affs = gp.ArrayKey("AFFS")
+out = args.o[0]
+
+
+class Constant(gp.BatchProvider):
+    def setup(self):
+        self.provides(affs, gp.ArraySpec(voxel_size=gp.Coordinate(1, 1, 1), dtype=np.uint8, interpolatable=False))
+
+    def provide(self, request):
+        spec = self.spec[affs].copy()
+        spec.roi = request[affs].roi
+        batch = gp.Batch()
+        batch[affs] = gp.Array(np.full((3, *spec.roi.shape), 200, np.uint8), spec)
+        return batch
+
+
+reference = gp.BatchRequest()
+reference.add(affs, gp.Coordinate(8, 32, 32))
+pipeline = (
+    Constant()
+    + gp.ZarrWrite({affs: out.split(".zarr")[-1]}, store=out.split(".zarr")[0] + ".zarr")
+    + gp.DaisyRequestBlocks(reference, roi_map={affs: "write_roi"})
+)
+with gp.build(pipeline):
+    pipeline.request_batch(gp.BatchRequest())
+"""
+)
+
+# the first worker to start waits for the second to sleep, then fails
+ONE_FAILS_WORKER = """
+import os
+import sys
+import time
+from pathlib import Path
+
+here = Path(__file__).parent
+try:
+    os.close(os.open(here / "first", os.O_CREAT | os.O_EXCL))
+except FileExistsError:
+    (here / "sleeper.pid").write_text(str(os.getpid()))
+    time.sleep(120)
+for _ in range(200):
+    if (here / "sleeper.pid").exists():
+        break
+    time.sleep(0.1)
+sys.exit(1)
+"""
+
 
 @pytest.fixture(autouse=True)
 def one_granted_gpu(monkeypatch):
@@ -36,15 +113,15 @@ def one_granted_gpu(monkeypatch):
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
 
 
-def make_config(tmp_path, **keys):
-    """The keys of a [predict] step: a fake setup and a 30 x 64 x 64 raw array."""
+def make_config(tmp_path, worker="", z=30, **keys):
+    """The keys of a [predict] step: a fake setup and a z x 64 x 64 raw array."""
     setup_dir = tmp_path / "setup"
     setup_dir.mkdir()
     (setup_dir / "net_config.json").write_text(json.dumps(NET))
     (setup_dir / "model_checkpoint_10").touch()
-    (setup_dir / "predict.py").write_text("")
+    (setup_dir / "predict.py").write_text(worker)
     raw = str(tmp_path / "data.zarr" / "raw")
-    prepare_ds(raw, shape=(30, 64, 64), voxel_size=(1, 1, 1), dtype=np.uint8)
+    prepare_ds(raw, shape=(z, 64, 64), voxel_size=(1, 1, 1), dtype=np.uint8)
     return {
         "setup_dir": str(setup_dir),
         "checkpoint": str(setup_dir / "model_checkpoint_10"),
@@ -53,6 +130,33 @@ def make_config(tmp_path, **keys):
         "num_gpus": 1,
         **keys,
     }
+
+
+def run_bs_predict(tmp_path, config):
+    config_file = tmp_path / "predict.toml"
+    config_file.write_text(toml.dumps({"predict": config}))
+    return subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from bootstrapper.cli import cli; cli()",
+            "predict",
+            str(config_file),
+        ],
+        cwd=tmp_path,
+        env=os.environ | {"CUDA_VISIBLE_DEVICES": "-1"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def alive(pid):
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            return f.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except FileNotFoundError:
+        return False
 
 
 @pytest.mark.parametrize(
@@ -151,11 +255,19 @@ def test_workers_index_into_the_granted_devices(monkeypatch):
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "4,5")
     seen = []
 
-    monkeypatch.setattr(
-        predict_module.subprocess,
-        "run",
-        lambda cmd, check, env: seen.append(env["CUDA_VISIBLE_DEVICES"]),
-    )
+    class Child:
+        pid = None
+
+        def __init__(self, cmd, env, start_new_session):
+            seen.append(env["CUDA_VISIBLE_DEVICES"])
+
+        def wait(self):
+            return 0
+
+        poll = wait
+
+    monkeypatch.setattr(predict_module.subprocess, "Popen", Child)
+    monkeypatch.setattr(predict_module.signal, "signal", lambda *args: None)
     config = {"devices": get_devices(2), "worker": "predict.py", "args": []}
 
     for worker_id in range(4):
@@ -179,6 +291,76 @@ def test_fewer_visible_devices_drop_prediction_off_the_blockwise_path(
 
     assert config["num_gpus"] == 1
     assert "-d" not in config["args"]
+
+
+@pytest.mark.parametrize(
+    "grant,num_gpus,expected",
+    [("4,5", 1, "4"), (None, 1, "0"), ("4,5", 0, "")],
+)
+def test_the_single_worker_gets_the_grant(
+    tmp_path, monkeypatch, capsys, grant, num_gpus, expected
+):
+    if grant is None:
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    else:
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", grant)
+    seen = []
+    monkeypatch.setattr(
+        subprocess, "run", lambda cmd, **kwargs: seen.append(kwargs.get("env") or {})
+    )
+    config_file = tmp_path / "predict.toml"
+    config_file.write_text(
+        toml.dumps({"predict": make_config(tmp_path, num_gpus=num_gpus)})
+    )
+
+    run_prediction(str(config_file))
+
+    assert seen[0].get("CUDA_VISIBLE_DEVICES") == expected
+    warned = "CUDA_VISIBLE_DEVICES is not set" in capsys.readouterr().out
+    assert warned == (grant is None)
+
+
+def test_a_roi_smaller_than_one_block_names_both_shapes(tmp_path):
+    config = make_config(tmp_path, roi_offset="0 0 0", roi_shape="4 64 64")
+
+    with pytest.raises(click.ClickException) as error:
+        get_pred_config(config)
+
+    assert "(4, 64, 64)" in error.value.message
+    assert "(8, 32, 32)" in error.value.message
+
+
+def test_two_workers_write_every_voxel(tmp_path):
+    result = run_bs_predict(
+        tmp_path, make_config(tmp_path, CONSTANT_WORKER, num_workers=2)
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    affs = zarr.open(str(tmp_path / "out.zarr" / "10" / "affs"), "r")[:]
+    assert affs.shape == (3, 30, 64, 64)
+    assert (affs == 0).sum() == 0, (
+        f"zero voxels at z {sorted(set(np.nonzero(affs == 0)[1].tolist()))}"
+    )
+
+
+def test_a_failed_worker_ends_the_run_and_stops_the_other_model_process(tmp_path):
+    result = run_bs_predict(
+        tmp_path, make_config(tmp_path, ONE_FAILS_WORKER, num_workers=2)
+    )
+    pid_file = tmp_path / "setup" / "sleeper.pid"
+    pid = int(pid_file.read_text()) if pid_file.exists() else None
+
+    try:
+        assert result.returncode != 0
+        assert pid is not None, "only one model process started"
+        for _ in range(50):
+            if not alive(pid):
+                break
+            time.sleep(0.1)
+        assert not alive(pid), "the model process of the stopped worker still runs"
+    finally:
+        if pid is not None and alive(pid):
+            os.kill(pid, 9)
 
 
 SAME = dict(
