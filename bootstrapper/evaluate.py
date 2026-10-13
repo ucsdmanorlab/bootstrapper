@@ -23,7 +23,7 @@ def get_seg_datasets(seg_datasets_prefix):
     return seg_datasets
 
 
-def get_eval_config(config, config_file, mode, suffix=True, **kwargs):
+def get_eval_config(config, config_file, mode, suffix=True, volume=None, **kwargs):
     config = dict(config)
 
     # Override config values with provided kwargs
@@ -34,10 +34,9 @@ def get_eval_config(config, config_file, mode, suffix=True, **kwargs):
     if "out_result" not in config:
         config["out_result"] = config_file.replace("04_eval_","results_").replace(".toml", ".json")
 
-    # a mode suffix only when several modes run; one mode keeps the given name
-    if suffix:
-        root, ext = os.path.splitext(config["out_result"])
-        config["out_result"] = f"{root}_{mode}{ext}"
+    # each volume its own file; a mode suffix only when several modes run
+    root, ext = os.path.splitext(config["out_result"])
+    config["out_result"] = root + (f"_{volume}" if volume else "") + (f"_{mode}" if suffix else "") + ext
 
     return config
 
@@ -121,11 +120,11 @@ def print_report(report):
         print("  largest: " + ", ".join([f"{first} of the ROI", *rest]))
 
 
-def run_evaluation(config, config_file, mode="pred", suffix=True, **kwargs):
+def run_evaluation(config, config_file, mode="pred", suffix=True, volume=None, **kwargs):
     """Report every segmentation, then evaluate it in mode gt or pred; mode report stops at the report."""
     from .eval.compute_metrics import seg_report
 
-    config = get_eval_config(config, config_file, mode, suffix, **kwargs)
+    config = get_eval_config(config, config_file, mode, suffix, volume, **kwargs)
     if "seg_datasets" in config:
         seg_datasets = [ds.rstrip("/") for ds in config["seg_datasets"]]
     else:
@@ -168,7 +167,7 @@ def evaluate(config_file, step, gt, pred, out_result=None):
     steps = steps_of(config_file, "evaluate", step)
     for s in steps:
         flags = [m for m, on in (("gt", gt), ("pred", pred)) if on]
-        modes = flags or [m for m in ("gt", "pred") if m in s.keys] or ["report"]
         for volume, config in runs(s):
+            modes = flags or [m for m in ("gt", "pred") if m in config] or ["report"]
             for mode in modes:
-                run_evaluation(config, config_file, mode, suffix=len(modes) > 1, out_result=out_result)
+                run_evaluation(config, config_file, mode, len(modes) > 1, volume, out_result=out_result)

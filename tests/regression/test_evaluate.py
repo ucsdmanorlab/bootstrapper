@@ -7,9 +7,11 @@ import gunpowder as gp
 import networkx as nx
 import numpy as np
 import pytest
+from click.testing import CliRunner
 from funlib.geometry import Roi
 from funlib.persistence import open_ds, prepare_ds
 
+from bootstrapper.cli import cli
 from bootstrapper.configs import EVAL_ERROR_THRESHOLDS
 from bootstrapper.eval import compute_errors as ce
 from bootstrapper.eval.compute_metrics import read_skeletons, seg_report
@@ -126,21 +128,21 @@ def test_neighborhood_mismatch_is_refused_before_outputs_exist(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "mode,suffix,given,expected",
+    "mode,suffix,volume,given,expected",
     [
-        ("gt", True, "report.json", "report_gt.json"),
-        ("pred", False, None, "results_v.json"),
+        ("gt", True, "a", "report.json", "report_a_gt.json"),
+        ("pred", False, None, None, "results_v.json"),
     ],
 )
-def test_the_results_file_carries_the_mode_only_when_several_run(
-    tmp_path, mode, suffix, given, expected
+def test_the_results_file_carries_the_volume_and_the_mode_only_when_several_run(
+    tmp_path, mode, suffix, volume, given, expected
 ):
     config_file = f"{tmp_path}/04_eval_v.toml"
     step = {"seg_datasets_prefix": "/x", "gt": {"labels_dataset": "/y"}}
 
     out_result = given and str(tmp_path / given)
     config = get_eval_config(
-        step, config_file, mode, suffix=suffix, out_result=out_result
+        step, config_file, mode, suffix=suffix, volume=volume, out_result=out_result
     )
 
     assert config["out_result"] == str(tmp_path / expected)
@@ -325,6 +327,26 @@ def test_a_step_without_gt_or_pred_reports_each_segmentation(tmp_path, bs):
         "outside_mask": 60,
         "largest": [[7, 0.5], [3, 0.25], [9, 0.125]],
     }
+
+
+def test_each_volume_is_evaluated_with_its_own_gt_into_its_own_file(tmp_path):
+    text = "[volumes.a]\n[volumes.b]\n"
+    for v in "ab":
+        write(f"{tmp_path}/{v}.zarr/segs/s", np.ones((4, 10, 10), np.uint64))
+        text += (
+            f'[evaluate.{v}]\nseg_datasets_prefix = "{tmp_path}/{v}.zarr/segs"\n'
+            f'[evaluate.{v}.gt]\nlabels_dataset = "{tmp_path}/{v}.zarr/segs/s"\n'
+        )
+    (tmp_path / "ev.toml").write_text(text)
+
+    result = CliRunner().invoke(cli, ["evaluate", str(tmp_path / "ev.toml")])
+
+    assert result.exit_code == 0, result.output
+    assert sorted(p.name for p in tmp_path.glob("*.json")) == ["ev_a.json", "ev_b.json"]
+    for v in "ab":
+        results = json.loads((tmp_path / f"ev_{v}.json").read_text())
+        assert list(results) == [f"{tmp_path}/{v}.zarr/segs/s"]
+        assert "voi" in results[f"{tmp_path}/{v}.zarr/segs/s"]["metrics"]
 
 
 def test_a_mask_on_another_grid_is_refused_by_name(tmp_path):
