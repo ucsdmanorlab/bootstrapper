@@ -19,7 +19,7 @@ from . import (
     utils,
 )
 
-from .config import READS, WRITES, OPS, load_round, load_volumes, ops_beside, paths, prepared_round, refuse_unknown, runs
+from .config import READS, WRITES, OPS, load_volumes, matches, numbered, ops_beside, paths, prepared_round, refuse_unknown, runs
 from .configs import MODEL_DIR
 from .prepare import stale
 from .refine import MORPH_OPS
@@ -98,19 +98,14 @@ cli.add_command(utils)
 def run(ctx, path, only, from_, dry_run):
     """Run the steps of a config file in file order, or the numbered files of a directory. Each
     run writes a receipt into runs/: the keys each step read, which bs run repeats."""
-    steps = [(f, s) for f, file_steps in load_round(path) for s in file_steps]
-    todo = [(f"{n:02d}", f, s) for n, (f, s) in enumerate(steps, 1)]
-
-    def match(sel, f, s):
-        return sel in (s.kind, s.label) or os.path.basename(f).startswith(sel)
-
+    todo = numbered(path)
     if from_:
-        first = next((i for i, (_, f, s) in enumerate(todo) if match(from_, f, s)), None)
+        first = next((i for i, step in enumerate(todo) if matches(from_, *step)), None)
         if first is None:
-            raise click.ClickException(f"--from {from_}: no such step; steps are " + ", ".join(s.label for _, s in steps))
+            raise click.ClickException(f"--from {from_}: no such step; steps are " + ", ".join(s.label for _, _, s in todo))
         todo = todo[first:]
     if only:
-        todo = [(n, f, s) for n, f, s in todo if any(match(o, f, s) for o in only)]
+        todo = [step for step in todo if any(matches(o, *step) for o in only)]
         if not todo:
             raise click.ClickException(f"--only {' '.join(only)}: no such step")
 
@@ -126,7 +121,7 @@ def run(ctx, path, only, from_, dry_run):
     typed = f"bs run {path}" + "".join(f" --only {o}" for o in only) + (f" --from {from_}" if from_ else "")
     notes = [f"{typed}, {time.strftime('%Y-%m-%d %H:%M:%S')}, bootstrapper {version('bootstrapper')}, on {platform.node()}"]
     ran = []
-    for _, f, s in todo:
+    for n, f, s in todo:
         cli_echo(f"Running {s.label} from {f}", s.kind)
         name, start = f"{os.path.basename(f)} [{s.label}]", time.time()
         try:
@@ -142,6 +137,7 @@ def run(ctx, path, only, from_, dry_run):
         notes.append(f"{name}: done, {_took(start)}")
         ran.append(s)
         write_receipt(receipt, notes, volumes, ran)
+        click.echo(f"View: bs view {path} {n}")
 
 
 def refuse_stale(path):

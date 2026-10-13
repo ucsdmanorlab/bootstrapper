@@ -114,6 +114,17 @@ def load_round(path, tail=True):
     return [(f, load(f, tail)) for f in files]
 
 
+def numbered(path):
+    """(number, file, step) of each step of a round in run order, numbered from 01."""
+    steps = [(f, s) for f, file_steps in load_round(path) for s in file_steps]
+    return [(f"{n:02d}", f, s) for n, (f, s) in enumerate(steps, 1)]
+
+
+def matches(sel, n, f, s):
+    """A step chosen by its number, kind, kind.name, or a prefix of its file name."""
+    return sel in (n, s.kind, s.label) or os.path.basename(f).startswith(sel)
+
+
 def prepared_round(path):
     """The round that path runs in, if bs prepare wrote it (a file holds a run tail); None for
     files of your own. A step file whose volumes sit in volumes.toml beside it runs in that

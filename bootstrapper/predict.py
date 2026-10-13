@@ -15,7 +15,7 @@ from funlib.persistence import open_ds, prepare_ds
 
 from .blockwise import run_blockwise
 from .config import steps_of, runs
-from .configs import checkpoint_iteration, download_checkpoints, find_checkpoints, MODEL_URLS
+from .configs import checkpoint_iteration, download_checkpoints, find_checkpoints, output_level, MODEL_URLS
 from .segment import parse_shape
 from .styles import cli_echo, cli_confirm
 
@@ -234,13 +234,7 @@ def get_pred_config(config, **kwargs):
         output_dims = val["dims"]
         output_dtype = val["dtype"]
 
-        out_ds = (
-            f"{iteration}/{output_name}"
-            if chain_str == ""
-            else f"{iteration}--from--{chain_str}/{output_name}"
-        )
-
-        output_dataset = os.path.join(output_datasets_prefix, out_ds)
+        output_dataset = os.path.join(output_datasets_prefix, output_level(checkpoint, chain_str), output_name)
         output_datasets.append(output_dataset)
 
         output_axes = (

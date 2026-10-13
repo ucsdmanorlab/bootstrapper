@@ -38,6 +38,12 @@ def checkpoint_iteration(checkpoint):
     return int(iteration) if iteration.isdigit() else None
 
 
+def output_level(checkpoint, chain_str=""):
+    """The group predict writes its outputs in: <iteration>, or <iteration>--from--<chain_str>."""
+    iteration = checkpoint_iteration(checkpoint)
+    return f"{iteration}--from--{chain_str}" if chain_str else str(iteration)
+
+
 def find_checkpoints(setup_dir):
     """Checkpoints of a setup by iteration. Look one level down as well."""
     paths = glob(os.path.join(setup_dir, "*", "model_checkpoint_*")) + glob(

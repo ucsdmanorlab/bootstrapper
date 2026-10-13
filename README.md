@@ -59,7 +59,7 @@ A **round** is a cycle of the above commands run on a set of volumes.
 Bootstrapper also has:
 
 - `bs run`: Runs the appropriate command for the given config file.
-- `bs view` : A wrapper for `neuroglancer -d`
+- `bs view` : Opens what a round wrote in neuroglancer: `bs view round_01`, or one step with `bs view round_01 04`. It also opens a training snapshot (`-s`) or array paths.
 - `bs utils` offers functions for data manipulation and preprocessing.
 
 ## Examples

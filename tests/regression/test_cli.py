@@ -168,6 +168,19 @@ def test_run_a_round_by_file_prefix_then_chain_the_refine_ops(tmp_path, round_di
     assert r.returncode == 0, r.stderr
 
 
+def test_run_prints_how_to_view_each_step_after_it(tmp_path, round_dir):
+    (round_dir / "02_refine.toml").write_text(
+        f'[refine]\nin_array = "{tmp_path}/o.zarr/segs/x"\n[refine.fill-holes]\nxy = true\n'
+    )
+
+    result = CliRunner().invoke(cli, ["run", str(round_dir), "--only", "01"])
+
+    assert result.exit_code == 0, result.output
+    assert [line for line in result.output.splitlines() if line.startswith("View")] == [
+        f"View: bs view {round_dir} 01"
+    ]
+
+
 @pytest.mark.parametrize(
     "option,step,needles",
     [

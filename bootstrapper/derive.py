@@ -10,7 +10,7 @@ from funlib.persistence import open_ds
 
 from .catalog import MODELS, check_round
 from .config import Step, ops_beside, runs, unset, with_tail
-from .configs import MODEL_DIR, checkpoint_iteration, find_checkpoints
+from .configs import MODEL_DIR, checkpoint_iteration, find_checkpoints, output_level
 from .data.mask import training_mask
 from .post.naming import mws_segmentation_name
 from .segment import DEFAULTS as SEG_DEFAULTS
@@ -51,8 +51,7 @@ def derive(volumes, steps, root):
                     raise click.ClickException(
                         f"[{step.label}] needs setup_dir and checkpoint: no train step before it trains "
                         f"{model.name}, and {model.name} ships no checkpoint")
-                iteration, chain_str = checkpoint_iteration(config["checkpoint"]), config.get("chain_str", "")
-                level = f"{iteration}--from--{chain_str}" if chain_str else str(iteration)
+                iteration, level = checkpoint_iteration(config["checkpoint"]), output_level(config["checkpoint"], config.get("chain_str", ""))
                 arrays[n] = {o: os.path.join(config["output_datasets_prefix"], level, o) for o in model.outputs}
                 models[n].append(f"{model.name}_{iteration}")
             if "3d_affs" in model.outputs:
