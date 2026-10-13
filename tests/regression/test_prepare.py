@@ -241,7 +241,7 @@ def test_a_glob_or_your_own_volumes_toml_makes_several_volumes(tmp_path):
     assert (tmp_path / "round_02" / "volumes.toml").read_text() == own
     for name in ("round_01", "round_02"):
         samples = load(f"{name}/01_train_3d_mtlsd.toml")[0].keys["samples"]
-        assert [s["labels"] for s in samples] == [f"{tmp_path}/a.zarr/labels", f"{tmp_path}/b.zarr/labels"]
+        assert [(s["volume"], s["labels"]) for s in samples] == [("a-zarr", f"{tmp_path}/a.zarr/labels"), ("b-zarr", f"{tmp_path}/b.zarr/labels")]
 
 
 def test_your_keys_sit_above_the_run_tail(tmp_path, prepared):

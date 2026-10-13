@@ -4,10 +4,13 @@ import subprocess
 import sys
 import os
 import click
+import numpy as np
 from funlib.persistence import open_ds
 
 from .config import steps_of
 import logging
+
+SCHEMES = ("labels", "equal", "inv")
 
 
 def setup_train(config_file, step=None, **kwargs):
@@ -90,16 +93,15 @@ def setup_train(config_file, step=None, **kwargs):
             check_inside("labels", labels_ds, "raw", raw)
             if mask_ds:
                 check_inside("mask", mask_ds, "labels", labels_ds)
-            out_samples.append(
-                {
-                    "raw": raw,
-                    "labels": labels_ds,
-                    "mask": mask_ds,
-                }
-            )
+            out_samples.append(sample | {"labels": labels_ds, "mask": mask_ds})
 
     # update samples in config
+    sampling = config.pop("sampling", "labels")
     if samples:
+        for sample, p in zip(out_samples, probabilities(out_samples, sampling)):
+            sample["probability"] = p
+        if len(out_samples) > 1:
+            click.echo("Sampling " + ", ".join(f"{_name(s)} {s['probability']:.0%}" for s in out_samples))
         config["samples"] = out_samples
 
     for key, value in kwargs.items():
@@ -114,6 +116,33 @@ def setup_train(config_file, step=None, **kwargs):
 
     train_script = os.path.join(config["setup_dir"], "train.py")
     return train_script, worker_config
+
+
+def probabilities(samples, sampling):
+    """Each sample's share of the batches: by its labelled voxels ("labels"), equal ("equal"),
+    by the inverse ("inv"), or your numbers, as a list in sample order or a table by volume."""
+    if isinstance(sampling, str):
+        if sampling not in SCHEMES:
+            raise click.ClickException(f'sampling = "{sampling}" names no scheme; give "labels", "equal", "inv", or numbers such as [3, 1]')
+        counts = [1] * len(samples)
+        if sampling != "equal" and len(samples) > 1:
+            counts = [labelled_voxels(s) for s in samples]
+        weights = [1 / n if n else 0 for n in counts] if sampling == "inv" else counts
+    else:
+        weights = [sampling.get(_name(s)) for s in samples] if isinstance(sampling, dict) else sampling
+        if len(weights) != len(samples) or None in weights:
+            order = ", ".join(map(_name, samples))
+            raise click.ClickException(f"sampling needs one number per volume, as a list in the order {order} or a table by name")
+    return [w / sum(weights) for w in weights]
+
+
+def _name(sample):
+    return sample.get("volume", sample["labels"])
+
+
+def labelled_voxels(sample):
+    """The voxels a sample trains on: those of its training mask, else of its labels."""
+    return int(np.count_nonzero(open_ds(sample["mask"] or sample["labels"]).data))
 
 
 def check_inside(name, path, outer_name, outer_path):

@@ -1,7 +1,8 @@
 """Training must use only the granted GPUs and say so when it runs on the CPU; -s is the step,
 and a model script names both dirs when the setup_dir is not its own. bs train refuses a sample
 whose labels reach past the raw or whose mask reaches past the labels, and names the bs prepare
-command when the setup or a mask it makes is missing. The shipped trainers deform within
+command when the setup or a mask it makes is missing. It draws the volumes by labelled voxels,
+equally, inversely or by your numbers. The shipped trainers draw by them, deform within
 sections, keep raw on labels and train on labels."""
 
 import ast
@@ -231,6 +232,49 @@ def test_a_mask_inside_the_labels_is_accepted(tmp_path):
     assert setup_train(config_file)[1] == str(tmp_path / "setup_01" / "train.toml")
 
 
+def two_volumes(tmp_path):
+    """a has 48 labelled voxels; b has 64, but its training mask holds 16."""
+    data, section = np.ones((4, 4, 4), np.uint8), np.zeros((4, 4, 4), np.uint8)
+    section[0] = 1
+    a, b = ({"volume": n, "raw": write(tmp_path / f"{n}.zarr" / "raw", data)} for n in "ab")
+    a["labels"] = write(tmp_path / "a.zarr" / "labels", data - section)
+    b["labels"] = write(tmp_path / "b.zarr" / "labels", data)
+    b["mask"] = write(tmp_path / "b.zarr" / "mask", section)
+    return [a, b]
+
+
+@pytest.mark.parametrize(
+    "sampling,expected",
+    [(None, [0.75, 0.25]), ("equal", [0.5, 0.5]), ("inv", [0.25, 0.75]), ([1, 4], [0.2, 0.8]), ({"b": 4, "a": 1}, [0.2, 0.8])],
+)
+def test_volumes_are_drawn_by_labelled_voxels_equally_inversely_or_as_given(tmp_path, capsys, sampling, expected):
+    extra = {} if sampling is None else {"sampling": sampling}
+    config_file = write_config(tmp_path, samples=two_volumes(tmp_path), **extra)
+
+    worker_config = toml.load(setup_train(config_file)[1])
+
+    assert [s["probability"] for s in worker_config["samples"]] == pytest.approx(expected)
+    assert "sampling" not in worker_config
+    assert capsys.readouterr().out == f"Sampling a {expected[0]:.0%}, b {expected[1]:.0%}\n"
+
+
+@pytest.mark.parametrize(
+    "sampling,message",
+    [
+        ("uniform", 'sampling = "uniform" names no scheme; give "labels", "equal", "inv", or numbers such as [3, 1]'),
+        ([1], "sampling needs one number per volume, as a list in the order a, b or a table by name"),
+        ({"a": 1}, "sampling needs one number per volume, as a list in the order a, b or a table by name"),
+    ],
+)
+def test_a_sampling_that_fits_no_volume_is_refused_with_the_fix(tmp_path, sampling, message):
+    config_file = write_config(tmp_path, samples=two_volumes(tmp_path), sampling=sampling)
+
+    with pytest.raises(click.ClickException) as error:
+        setup_train(config_file)
+
+    assert error.value.message == message
+
+
 @pytest.mark.parametrize(
     "grant,why",
     [
@@ -335,7 +379,7 @@ def test_deform_stays_in_sections_and_keeps_raw_on_labels(
     trainer, model, ramp, tmp_path
 ):
     tiny = write(tmp_path / "tiny.zarr" / "a", np.ones((1, 1, 1), np.uint8))
-    pipeline, request, _ = build(trainer(model), model, [{"raw": tiny, "labels": tiny}])
+    pipeline, request, _ = build(trainer(model), model, [{"raw": tiny, "labels": tiny, "probability": 1}])
     nodes = []
     pipeline.traverse(lambda p: nodes.append(p.output))
     [deform] = [n for n in nodes if isinstance(n, gp.DeformAugment)]
@@ -373,6 +417,18 @@ def test_deform_stays_in_sections_and_keeps_raw_on_labels(
             assert offset <= 0.5 + 1e-3, f"raw is {offset:.1f} voxels off the labels"
 
 
+@pytest.mark.parametrize("model", REAL_DATA)
+def test_a_trainer_draws_each_sample_by_its_probability(trainer, model, tmp_path):
+    tiny = write(tmp_path / "tiny.zarr" / "a", np.ones((1, 1, 1), np.uint8))
+    samples = [{"raw": tiny, "labels": tiny, "probability": p} for p in (0.75, 0.25)]
+    pipeline, _, _ = build(trainer(model), model, samples)
+    nodes = []
+    pipeline.traverse(lambda p: nodes.append(p.output))
+    [draw] = [n for n in nodes if isinstance(n, gp.RandomProvider)]
+
+    assert draw.probabilities == [0.75, 0.25]
+
+
 @pytest.fixture(scope="module")
 def sparse_sample(tmp_path_factory):
     """One labelled section in 12: a source window passes the 5 % check, an output window often has none."""
@@ -386,6 +442,7 @@ def sparse_sample(tmp_path_factory):
         "raw": write(path / "raw", np.full((Z, Y, X), 128, np.uint8)),
         "labels": write(path / "labels", labels),
         "mask": write(path / "mask", mask),
+        "probability": 1,
     }
 
 

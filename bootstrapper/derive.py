@@ -34,7 +34,7 @@ def derive(volumes, steps, root):
             first = next(iter(labelled.values()))
             own = {"setup_dir": os.path.join(root, _model(step).name),
                    "voxel_size": first.get("voxel_size") or [int(x) for x in zarr.open(first["raw"], "r").attrs["voxel_size"]],
-                   "samples": [_sample(keys, os.path.join(root, "training_mask.zarr", n)) for n, keys in labelled.items()]}
+                   "samples": [_sample(n, keys, os.path.join(root, "training_mask.zarr", n)) for n, keys in labelled.items()]}
             run = _over(step, own, per)[0].keys
             last = os.path.join(run["setup_dir"], f"model_checkpoint_{run['max_iterations'] - 1}.ckpt")
             trained[step.name] = {"setup_dir": run["setup_dir"], "checkpoint": last}
@@ -113,9 +113,9 @@ def _net_config(setup_dir, model):
         return json.load(f)
 
 
-def _sample(keys, mask_out):
+def _sample(name, keys, mask_out):
     mask = training_mask(keys, mask_out)
-    return {"raw": keys["raw"], "labels": keys["labels"], **({"mask": mask} if mask else {})}
+    return {"volume": name, "raw": keys["raw"], "labels": keys["labels"], **({"mask": mask} if mask else {})}
 
 
 def _box(keys):

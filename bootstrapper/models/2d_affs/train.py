@@ -97,7 +97,7 @@ def create_pipeline(voxel_size, net_config, samples):
         for sample in samples
     )
 
-    pipeline = source + gp.RandomProvider()
+    pipeline = source + gp.RandomProvider(probabilities=[s["probability"] for s in samples])
 
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
     pipeline += DeformAugment(
