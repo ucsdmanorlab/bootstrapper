@@ -170,13 +170,13 @@ def _expand(table, keys, where, taken):
             raise click.ClickException(f"{where} {first} matches {len(matches)} arrays and {k} matches {len(found)}; they must match one to one")
     volumes = {}
     for i, path in enumerate(matches):
-        name = _volume_name(path, taken)
+        name = volume_name(path, taken)
         taken.add(name)
         volumes[name] = keys | {k: found[i] for k, found in globs.items()}
     return volumes
 
 
-def _volume_name(path, taken):
+def volume_name(path, taken):
     """The container's file name with the dot as a dash, since a table name takes no dot:
     training.zarr gives training-zarr, and a second volume in it training-zarr-2."""
     container = path.rsplit(".zarr", 1)[0] + ".zarr" if ".zarr" in path else path

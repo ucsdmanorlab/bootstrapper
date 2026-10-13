@@ -1,4 +1,4 @@
-"""bs prepare asks about the data, then writes volumes.toml, numbered step files, a
+"""bs prepare asks the facts, or takes them as flags, then writes volumes.toml, numbered step files, a
 checkpoint-free setup with no __pycache__, and the training masks in the round, never in the
 data container; every file loads, and every param in it says what it does. Each file holds
 your keys above a run tail of derived keys, which bs prepare PATH writes again from them.
@@ -7,6 +7,7 @@ bs run refuses a stale tail, checks every path before any step, and keeps a rece
 import glob
 import os
 import re
+import sys
 
 import numpy as np
 import pytest
@@ -17,9 +18,11 @@ from funlib.persistence import open_ds, prepare_ds
 from bootstrapper import configs
 from bootstrapper.catalog import parse_chain
 from bootstrapper.cli import cli
-from bootstrapper.config import load, runs
+from bootstrapper.config import load, load_round, runs
 from bootstrapper.params import KEYS, defaults
-from bootstrapper.prepare import prepare, write_round
+from bootstrapper.prepare import Answers, prepare, write_round
+
+PREPARE = sys.modules["bootstrapper.prepare"]
 
 FILES = [
     "01_train_2d_mtlsd.toml",
@@ -31,12 +34,12 @@ FILES = [
 ]
 
 
-def write(path, data, chunk_shape=None, offset=(0, 0, 0)):
+def write(path, data, chunk_shape=None, offset=(0, 0, 0), voxel_size=(50, 8, 8)):
     ds = prepare_ds(
         str(path),
         shape=data.shape,
         offset=offset,
-        voxel_size=(50, 8, 8),
+        voxel_size=voxel_size,
         axis_names=["z", "y", "x"],
         units=["nm", "nm", "nm"],
         dtype=data.dtype,
@@ -46,55 +49,58 @@ def write(path, data, chunk_shape=None, offset=(0, 0, 0)):
     return str(path)
 
 
-def run_prepare(tmp_path, models="", mask=""):
+def run_prepare(tmp_path, models="", mask="", path="round_01"):
     """One volume, sparse labels on two sections, background beside each object."""
     labels = np.zeros((8, 64, 64), np.uint64)
     labels[2, 10:30, 10:30] = 1
     labels[5, 30:50, 30:50] = 2
     write(tmp_path / "apical.zarr" / "raw", np.full(labels.shape, 100, np.uint8))
     write(tmp_path / "apical.zarr" / "labels", labels)
-    answers = [
-        f"{tmp_path}/apical.zarr/raw",
-        f"{tmp_path}/apical.zarr/labels",
-        "n",  # not every object is labelled
-        "",  # labels on single sections: the default, guessed from the labels
-        "n",  # untraced space next to an object is background
-        mask,  # "": no target mask
-        f"{tmp_path}/apical.zarr/labels",  # ground truth
-        "n",  # no other volume
-        models,  # "": the default chain for 2D labels
-    ]
+    flags = ["--raw", f"{tmp_path}/apical.zarr/raw", "--labels", "labels", "--labelled", "sparsely",
+             "--untraced", "background", "--gt", "labels", "--name", "apical"]
+    flags += ["--target-mask", mask] * bool(mask) + ["--models", models] * bool(models)
 
-    return CliRunner().invoke(
-        prepare,
-        [f"{tmp_path}/round_01"],
-        input="\n".join(answers) + "\n",
-        catch_exceptions=False,
-    )
+    return CliRunner().invoke(prepare, [f"{tmp_path}/{path}", *flags], catch_exceptions=False)
 
 
 @pytest.fixture
-def dialogue(tmp_path):
+def prepared(tmp_path):
     return run_prepare(tmp_path)
+
+
+def data(tmp_path):
+    """A container with the raw at two scales, labels on one section, and a mask at two scales."""
+    labels = np.zeros((8, 64, 64), np.uint64)
+    labels[2, 10:30, 10:30] = 1
+    write(tmp_path / "apical.zarr" / "raw" / "s0", np.zeros(labels.shape, np.uint8))
+    write(tmp_path / "apical.zarr" / "raw" / "s1", np.zeros((8, 32, 32), np.uint8), voxel_size=(50, 16, 16))
+    write(tmp_path / "apical.zarr" / "labels", labels)
+    write(tmp_path / "apical.zarr" / "mask" / "s0", np.ones(labels.shape, np.uint8))
+    write(tmp_path / "apical.zarr" / "mask" / "s1", np.ones((8, 32, 32), np.uint8), voxel_size=(50, 16, 16))
 
 
 def step(tmp_path, name):
     return load(f"{tmp_path}/round_01/{name}")[0]
 
 
-def test_the_dialogue_writes_the_files_in_run_order(tmp_path, dialogue):
-    assert dialogue.exit_code == 0, dialogue.output
+def test_the_flags_line_writes_the_files_in_run_order(tmp_path, prepared):
+    assert prepared.exit_code == 0, prepared.output
+    assert prepared.output.splitlines()[:3] == [
+        "  labels: labels on 2 of 8 sampled sections, 0 with labels on the next section, so 2D labels",
+        "  apical: raw, sparsely labelled labels (2D; background around objects), ground truth labels",
+        "  2d_mtlsd → 3d_affs_from_2d_mtlsd",
+    ]
     files = sorted(
         os.path.basename(p) for p in glob.glob(f"{tmp_path}/round_01/*.toml")
     )
     assert files == FILES + ["volumes.toml"]
-    assert dialogue.output.count("wrote ") == 7
-    assert "bs run" in dialogue.output
+    assert prepared.output.count("wrote ") == 7
+    assert "bs run" in prepared.output
     for name in FILES:
         assert load(f"{tmp_path}/round_01/{name}")
 
 
-def test_each_param_says_what_it_does_and_each_example_loads(tmp_path, dialogue):
+def test_each_param_says_what_it_does_and_each_example_loads(tmp_path, prepared):
     """The step files show every key of params.KEYS, and volumes.toml each one it sets, with
     its meaning; with the commented lines on, every file still loads."""
     kinds = ["volumes", "train", "predict", "predict", "segment", "refine", "evaluate"]
@@ -111,7 +117,7 @@ def test_each_param_says_what_it_does_and_each_example_loads(tmp_path, dialogue)
         load(path)
 
 
-def test_the_volume_facts_are_recorded(tmp_path, dialogue):
+def test_the_volume_facts_are_recorded(tmp_path, prepared):
     volume = toml.load(f"{tmp_path}/round_01/volumes.toml")["volumes"]["apical"]
 
     assert volume == {
@@ -124,7 +130,121 @@ def test_the_volume_facts_are_recorded(tmp_path, dialogue):
     }
 
 
-def test_your_keys_sit_above_the_run_tail(tmp_path, dialogue):
+def test_the_dialogue_explains_goes_back_and_asks_again(tmp_path, monkeypatch):
+    """'?' explains a question, '<' goes back one answer, and a wrong answer is asked again
+    with its fix."""
+    data(tmp_path)
+    monkeypatch.setattr(PREPARE, "_terminal", lambda: True)
+    answers = ["apical.zarr", "1", "1", "1", "?", "b", "mask/s1", "mask/s0", "", "<", "labels", "segment", "", "", ""]
+
+    result = CliRunner().invoke(prepare, ["round_01"], input="\n".join(answers) + "\n", catch_exceptions=False)
+
+    assert result.output.split("\nCopying ")[0] == """\
+Set up a round: your arrays, then the models. '?' explains a question, '<' goes back, Tab completes.
+Raw image (zarr array or container, tif, image folder; globs work) > apical.zarr
+    1  raw/s0  8 64 64  uint8  50 8 8 nm
+    2  raw/s1  8 32 32  uint8  50 16 16 nm
+Raw array > 1
+    1  labels  8 64 64  uint64  50 8 8 nm
+Labels (Enter: none, only predict) > 1
+  labels: labels on 1 of 8 sampled sections, 0 with labels on the next section, so 2D labels
+    1  sparsely labelled
+    2  densely labelled
+    3  densely labelled within a mask
+Labelling > 1
+Untraced space next to a traced object: [o]ther objects / [b]ackground [o] > ?
+  other objects: as in EM neuropil, where untraced cells touch the traced ones
+  background: as in cells on an empty slide; training learns 10 voxels of it around each object
+Untraced space next to a traced object: [o]ther objects / [b]ackground [o] > b
+  1 mask at 50 8 8 nm, such as mask/s0. Tab completes.
+Target mask (Enter: none, segment everywhere) > mask/s1
+  mask/s1 has voxel 50 16 16 nm; the raw has 50 8 8 nm. Use mask/s0.
+Target mask (Enter: none, segment everywhere) > mask/s0
+Ground truth ('labels' reuses the labels; Enter: none) > 
+Volume name [apical-zarr] > <
+Ground truth ('labels' reuses the labels; Enter: none) > labels
+Volume name [apical-zarr] > segment
+  a volume cannot be named train, predict, segment, refine, evaluate, volumes, run or round. Example: segment-1
+Volume name [apical-zarr] > 
+  apical-zarr: raw/s0, sparsely labelled labels (2D; background around objects), target mask mask/s0, ground truth labels
+Another volume? [n] > 
+Models (? lists all 9) [2d_mtlsd 3d_affs_from_2d_mtlsd] > 
+  2d_mtlsd → 3d_affs_from_2d_mtlsd"""
+    c = f"{tmp_path}/apical.zarr"
+    assert toml.load("round_01/volumes.toml")["volumes"] == {"apical-zarr": {
+        "raw": f"{c}/raw/s0", "labels": f"{c}/labels", "2d_labels": True, "training_mask": "labels",
+        "mask_dilation": 10, "target_mask": f"{c}/mask/s0", "gt": f"{c}/labels"}}
+
+
+@pytest.mark.parametrize("args, error", [
+    (["round_01", "--raw", "apical.zarr"], "--raw {}/apical.zarr holds 2 image arrays; give one: raw/s0 (50 8 8 nm), "
+     "raw/s1 (50 16 16 nm). Example: --raw {}/apical.zarr/raw/s0"),
+    (["round_01", "--raw", "apical.zarr/raw/s0", "--labels", "labels"], "--labelled is needed with --labels: sparsely, "
+     "densely, or a mask path (densely labelled within it). Example: --labelled sparsely"),
+    (["round_01", "--raw", "apical.zarr/raw/s0", "--labels", "labels", "--labelled", "densely", "--target-mask", "mask/s1"],
+     "--target-mask mask/s1 has voxel 50 16 16 nm; the raw has 50 8 8 nm. Use mask/s0."),
+    (["round_01", "--raw", "apical.zarr/raw/s0"], "no volume has labels, so no model can train. Give --labels; "
+     "label arrays at 50 8 8 nm in apical.zarr: labels"),
+    (["apical.zarr"], "apical.zarr is zarr data, not a round. Give a new round folder and the raw: "
+     "bs prepare round_01 --raw apical.zarr"),
+])
+def test_without_a_terminal_a_missing_or_wrong_flag_names_its_fix(tmp_path, args, error):
+    data(tmp_path)
+
+    result = CliRunner().invoke(prepare, args)
+
+    assert result.stderr == f"Error: {error.format(tmp_path, tmp_path)}\n"
+    assert not os.path.exists("round_01")
+
+
+@pytest.mark.parametrize("sections, labelled, labels_2d", [(1, [0], True), (8, [0, 2, 4, 6], True), (8, [3, 4], False)])
+def test_labels_are_2d_unless_a_labelled_section_has_a_labelled_next_one(tmp_path, sections, labelled, labels_2d):
+    """2D labels get 2d_labels = true and the default models for them, which train 2d_mtlsd."""
+    labels = np.zeros((sections, 16, 16), np.uint64)
+    labels[labelled, 4:8, 4:8] = 1
+    raw = write(tmp_path / "v.zarr" / "raw", np.zeros(labels.shape, np.uint8))
+    write(tmp_path / "v.zarr" / "labels", labels)
+
+    CliRunner().invoke(prepare, ["round_01", "--raw", raw, "--labels", "labels", "--labelled", "densely"], catch_exceptions=False)
+
+    assert toml.load("round_01/volumes.toml")["volumes"]["v-zarr"]["2d_labels"] is labels_2d
+    assert os.path.exists(f"round_01/01_train_{'2d' if labels_2d else '3d'}_mtlsd.toml")
+
+
+def test_a_toml_path_gets_the_round_in_one_file(tmp_path):
+    result = run_prepare(tmp_path, path="round.toml")
+
+    assert f"wrote {tmp_path}/round.toml\n" in result.output
+    assert os.path.isfile("round.toml")
+    assert [s.label for _, steps in load_round("round.toml") for s in steps] == [
+        "train.2d_mtlsd", "predict.2d_mtlsd", "predict.3d_affs_from_2d_mtlsd", "segment", "refine", "evaluate"]
+    dry_run = CliRunner().invoke(cli, ["run", "round.toml", "--dry-run"]).output
+    assert dry_run.endswith("comes from an earlier step. Nothing ran.\n"), dry_run
+
+
+def test_a_glob_or_your_own_volumes_toml_makes_several_volumes(tmp_path):
+    """A glob of containers writes one volume table of globs. On a folder with your own
+    volumes.toml, bs prepare keeps it and writes the steps."""
+    labels = np.zeros((8, 16, 16), np.uint64)
+    labels[2:5, 4:8, 4:8] = 1
+    for c in ("a", "b"):
+        write(tmp_path / f"{c}.zarr" / "raw", np.zeros(labels.shape, np.uint8))
+        write(tmp_path / f"{c}.zarr" / "labels", labels)
+    CliRunner().invoke(prepare, ["round_01", "--raw", "*.zarr", "--labels", "labels", "--labelled", "densely"], catch_exceptions=False)
+    own = "# mine\n" + (tmp_path / "round_01" / "volumes.toml").read_text()
+    (tmp_path / "round_02").mkdir()
+    (tmp_path / "round_02" / "volumes.toml").write_text(own)
+
+    CliRunner().invoke(prepare, ["round_02"], catch_exceptions=False)
+
+    assert [v["labels"] for v in toml.load("round_01/volumes.toml")["volumes"].values()] == [f"{tmp_path}/*.zarr/labels"]
+    assert (tmp_path / "round_02" / "volumes.toml").read_text() == own
+    for name in ("round_01", "round_02"):
+        samples = load(f"{name}/01_train_3d_mtlsd.toml")[0].keys["samples"]
+        assert [s["labels"] for s in samples] == [f"{tmp_path}/a.zarr/labels", f"{tmp_path}/b.zarr/labels"]
+
+
+def test_your_keys_sit_above_the_run_tail(tmp_path, prepared):
     """The head holds the params; every derived key sits in a [run.*] table below them."""
     heads = {
         "01_train_2d_mtlsd.toml": {"train": {"2d_mtlsd": defaults("train.*")}},
@@ -144,7 +264,7 @@ def test_your_keys_sit_above_the_run_tail(tmp_path, dialogue):
         assert doc == head, name
 
 
-def test_bs_prepare_writes_the_tails_again_and_keeps_your_lines(tmp_path, dialogue):
+def test_bs_prepare_writes_the_tails_again_and_keeps_your_lines(tmp_path, prepared):
     """A key you set leaves the tail, and what follows from it follows; the checkpoint follows
     max_iterations and the training mask its keys. Your lines stay byte for byte, an edited
     setup stays, and a second run changes nothing."""
@@ -186,6 +306,8 @@ def test_bs_prepare_writes_the_tails_again_and_keeps_your_lines(tmp_path, dialog
     again = CliRunner().invoke(prepare, ["round_01"])
     assert again.output == "round_01 is current.\n"
     assert {f: f.read_text() for f in round_dir.glob("*.toml")} == after
+    flags = CliRunner().invoke(prepare, ["round_01", "--gt", "labels"])
+    assert flags.stderr == "Error: round_01 is a round already. Edit its files, then run: bs prepare round_01\n"
 
 
 def test_predict_covers_the_target_mask_box_and_refine_masks_to_it(tmp_path):
@@ -212,7 +334,7 @@ def test_predict_covers_the_target_mask_box_and_refine_masks_to_it(tmp_path):
     assert masked[masked.roi].sum() == 7 * 4 * 32 * 32
 
 
-def test_the_train_step_trains_a_fresh_setup_on_a_mask_in_the_round(tmp_path, dialogue):
+def test_the_train_step_trains_a_fresh_setup_on_a_mask_in_the_round(tmp_path, prepared):
     train = step(tmp_path, "01_train_2d_mtlsd.toml")
 
     assert train.keys["setup_dir"] == f"{tmp_path}/round_01/2d_mtlsd"
@@ -261,7 +383,7 @@ def test_each_labelling_trains_on_its_own_mask(tmp_path):
 
     volumes = {name: data | keys for name, (keys, _) in cases.items()}
     (tmp_path / "round_01").mkdir()
-    write_round(f"{tmp_path}/round_01", volumes, parse_chain("3M"))
+    write_round(f"{tmp_path}/round_01", Answers(volumes, parse_chain("3M")))
 
     samples = step(tmp_path, "01_train_3d_mtlsd.toml").keys["samples"]
     for (name, (_, expected)), sample in zip(cases.items(), samples):
@@ -272,7 +394,7 @@ def test_each_labelling_trains_on_its_own_mask(tmp_path):
     assert sorted(glob.glob(f"{tmp_path}/data.zarr/**", recursive=True)) == container
 
 
-def test_the_second_predict_step_reads_the_first_ones_output(tmp_path, dialogue):
+def test_the_second_predict_step_reads_the_first_ones_output(tmp_path, prepared):
     predict = step(tmp_path, "03_predict_3d_affs_from_2d_mtlsd.toml")
 
     assert predict.keys["setup_dir"].endswith(
@@ -294,7 +416,7 @@ def test_a_model_after_2d_mtlsd_reads_only_the_outputs_it_takes(tmp_path):
     ]
 
 
-def test_segment_refine_and_evaluate_follow_the_affs(tmp_path, dialogue):
+def test_segment_refine_and_evaluate_follow_the_affs(tmp_path, prepared):
     segment = step(tmp_path, "04_segment.toml")
     refine = step(tmp_path, "05_refine.toml")
     evaluate = step(tmp_path, "06_evaluate.toml")
@@ -328,7 +450,7 @@ def test_model_copy_leaves_out_pycache(tmp_path, monkeypatch):
     assert os.listdir(tmp_path / "setup") == ["train.py"]
 
 
-def test_bs_run_refuses_a_stale_run_tail_until_bs_prepare(tmp_path, dialogue):
+def test_bs_run_refuses_a_stale_run_tail_until_bs_prepare(tmp_path, prepared):
     """A bias edit renames the segmentation that refine reads. Nothing runs until bs prepare
     writes the tail again."""
     segment = tmp_path / "round_01" / "04_segment.toml"
@@ -393,7 +515,7 @@ def test_a_dry_run_prints_what_each_step_reads_and_writes(tmp_path):
     assert not os.path.exists(f"{d}/runs")
 
 
-def test_a_receipt_holds_the_keys_each_step_read_and_dry_runs_clean(tmp_path, dialogue):
+def test_a_receipt_holds_the_keys_each_step_read_and_dry_runs_clean(tmp_path, prepared):
     refine = step(tmp_path, "05_refine.toml")
     write(refine.volumes["apical"]["in_array"], np.full((8, 64, 64), 7, np.uint64))
     path = tmp_path / "round_01" / "05_refine.toml"

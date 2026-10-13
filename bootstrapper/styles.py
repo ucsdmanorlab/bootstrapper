@@ -30,15 +30,6 @@ def cli_echo(text, style="default", stype="info"):
     click.secho(text, **get_style(style, stype))
 
 
-def cli_prompt(text, style="default", stype="prompt", **kwargs):
-    style = get_style(style, stype)
-    return click.prompt(
-        click.style(text, **style),
-        prompt_suffix=click.style(" >>> ", **style),
-        **kwargs,
-    )
-
-
 def cli_confirm(text, style="default", stype="prompt", **kwargs):
     style = get_style(style, stype)
     return click.confirm(
