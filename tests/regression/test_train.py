@@ -1,17 +1,26 @@
 """Training must use only the granted GPUs and say so when it runs on the CPU; -s is the step,
-and a model script names both dirs when the setup_dir is not its own."""
+and a model script names both dirs when the setup_dir is not its own. bs train refuses a sample
+whose labels reach past the raw or whose mask reaches past the labels. The shipped trainers
+deform within sections, keep raw on labels and train on labels."""
 
 import ast
 import importlib
+import importlib.util
+import inspect
+import json
 import logging
 import os
 import runpy
 import sys
 
+import click
+import gunpowder as gp
+import numpy as np
 import pytest
 import toml
-import zarr
+import torch
 from click.testing import CliRunner
+from funlib.persistence import Array, prepare_ds
 
 import bootstrapper.training as training
 from bootstrapper.configs import MODEL_DIR, MODEL_NAMES
@@ -20,29 +29,40 @@ from bootstrapper.train import setup_train
 # bootstrapper/__init__.py rebinds the name "train" to the command
 train_module = importlib.import_module("bootstrapper.train")
 
+VOXEL_SIZE = gp.Coordinate(50, 4, 4)
 
-def write_config(tmp_path, **extra):
-    """A one-step train file, [train.setup_01], with one sample."""
+
+def write(path, data, offset=(0, 0, 0)):
+    """An array of 50 x 4 x 4 nm voxels; offset in voxels."""
+    ds = prepare_ds(
+        str(path),
+        data.shape,
+        offset=VOXEL_SIZE * gp.Coordinate(offset),
+        voxel_size=VOXEL_SIZE,
+        dtype=data.dtype,
+    )
+    ds[ds.roi] = data
+    return str(path)
+
+
+def write_config(tmp_path, arrays=None, **extra):
+    """A one-step train file, [train.setup_01], with one sample in data.zarr; arrays maps a
+    name to its (offset, shape) in voxels."""
+    arrays = arrays or {"raw": ((0, 0, 0), (4, 4, 4)), "labels": ((0, 0, 0), (4, 4, 4))}
     setup_dir = tmp_path / "setup_01"
     setup_dir.mkdir()
-    container = tmp_path / "data.zarr"
-    for array in ("raw", "labels"):
-        zarr.open(str(container / array), mode="w", shape=(4, 4, 4), dtype="uint8")[
-            :
-        ] = 1
+    sample = {
+        name: write(tmp_path / "data.zarr" / name, np.zeros(shape, np.uint8), offset)
+        for name, (offset, shape) in arrays.items()
+    }
 
     config = {
         "setup_dir": str(setup_dir),
-        "voxel_size": [50, 8, 8],
+        "voxel_size": list(VOXEL_SIZE),
         "max_iterations": 10,
         "save_checkpoints_every": 5,
         "save_snapshots_every": 5,
-        "samples": [
-            {
-                "raw": str(container / "raw"),
-                "labels": str(container / "labels"),
-            }
-        ],
+        "samples": [sample],
     }
     config.update(extra)
     config_file = tmp_path / "01_train.toml"
@@ -128,6 +148,53 @@ def test_missing_labels_is_refused_by_path(tmp_path):
     assert absent in str(error.value)
 
 
+BIG = ((0, 0, 0), (8, 192, 192))
+CROP = ((0, 32, 32), (8, 128, 128))
+CORNER = ((0, 0, 0), (8, 16, 16))
+
+
+@pytest.mark.parametrize(
+    "arrays,refused,message",
+    [
+        (
+            {"raw": CROP, "labels": BIG},
+            "labels",
+            "covers [0:400, 0:768, 0:768] (400, 768, 768) nm, past the raw at [0:400, 128:640, 128:640] "
+            "(400, 512, 512) nm; crop the labels to [0:400, 128:640, 128:640] (400, 512, 512) nm",
+        ),
+        (
+            {"raw": BIG, "labels": CROP, "mask": BIG},
+            "mask",
+            "covers [0:400, 0:768, 0:768] (400, 768, 768) nm, past the labels at [0:400, 128:640, 128:640] "
+            "(400, 512, 512) nm; crop the mask to [0:400, 128:640, 128:640] (400, 512, 512) nm",
+        ),
+        (
+            {"raw": BIG, "labels": CROP, "mask": CORNER},
+            "mask",
+            "covers [0:400, 0:64, 0:64] (400, 64, 64) nm, past the labels at [0:400, 128:640, 128:640] "
+            "(400, 512, 512) nm; they do not overlap",
+        ),
+    ],
+)
+def test_an_array_past_its_container_is_refused_with_the_crop(
+    tmp_path, arrays, refused, message
+):
+    config_file = write_config(tmp_path, arrays)
+
+    with pytest.raises(click.ClickException) as error:
+        setup_train(config_file)
+
+    path = tmp_path / "data.zarr" / refused
+    assert error.value.message == f"{refused} {path} {message}"
+
+
+def test_a_mask_inside_the_labels_is_accepted(tmp_path):
+    mask = ((0, 48, 48), (8, 64, 64))
+    config_file = write_config(tmp_path, {"raw": BIG, "labels": CROP, "mask": mask})
+
+    assert setup_train(config_file)[1] == str(tmp_path / "setup_01" / "train.toml")
+
+
 @pytest.mark.parametrize(
     "grant,why",
     [
@@ -176,3 +243,123 @@ def test_a_model_script_names_both_dirs_when_setup_dir_differs(
         runpy.run_path(script, run_name="__main__")
 
     assert "/elsewhere" in str(stop.value) and setup_dir in str(stop.value)
+
+
+REAL_DATA = ["2d_affs", "2d_lsd", "2d_mtlsd", "3d_affs", "3d_lsd", "3d_mtlsd"]
+RAW, LABELS = gp.ArrayKey("RAW"), gp.ArrayKey("LABELS")
+UNLABELLED = gp.ArrayKey("UNLABELLED")
+
+
+@pytest.fixture
+def trainer(monkeypatch):
+    """Import a model's train.py the way its setup dir runs it."""
+    monkeypatch.setattr(logging.getLogger(), "level", logging.getLogger().level)
+
+    def load(model):
+        monkeypatch.syspath_prepend(os.path.join(MODEL_DIR, model))
+        for name in ("model", "unet"):
+            monkeypatch.delitem(sys.modules, name, raising=False)
+        spec = importlib.util.spec_from_file_location(
+            f"train_{model}", os.path.join(MODEL_DIR, model, "train.py")
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    return load
+
+
+def build(module, model, samples, **shapes):
+    with open(os.path.join(MODEL_DIR, model, "net_config.json")) as f:
+        net_config = json.load(f)
+    return module.create_pipeline(VOXEL_SIZE, {**net_config, **shapes}, samples)
+
+
+@pytest.mark.parametrize("model", MODEL_NAMES)
+def test_trainer_imports_and_its_loss_runs(trainer, model):
+    loss = trainer(model).WeightedMSELoss()
+    pred, gt, weights = torch.zeros(1, 2, 2), torch.ones(1, 2, 2), torch.ones(1, 2, 2)
+    terms = len(inspect.signature(loss.forward).parameters) // 3
+
+    assert float(loss(*[pred, gt, weights] * terms)) == terms
+
+
+@pytest.fixture(scope="module")
+def ramp():
+    """Labels hold their own source voxel (1 + (z * Y + y) * X + x), raw holds (x + 1) / (X + 1)."""
+    Z, Y, X = 36, 384, 384
+    z, y, x = np.ogrid[:Z, :Y, :X]
+    labels = (1 + (z * Y + y) * X + x).astype(np.uint32)
+    raw = np.broadcast_to((x + 1) / (X + 1), labels.shape).astype(np.float32)
+    return Array(raw, voxel_size=VOXEL_SIZE), Array(labels, voxel_size=VOXEL_SIZE)
+
+
+@pytest.mark.parametrize("model", REAL_DATA)
+def test_deform_stays_in_sections_and_keeps_raw_on_labels(
+    trainer, model, ramp, tmp_path
+):
+    tiny = write(tmp_path / "tiny.zarr" / "a", np.ones((1, 1, 1), np.uint8))
+    pipeline, request, _ = build(trainer(model), model, [{"raw": tiny, "labels": tiny}])
+    nodes = []
+    pipeline.traverse(lambda p: nodes.append(p.output))
+    [deform] = [n for n in nodes if isinstance(n, gp.DeformAugment)]
+    deform.p = 1.0
+    raw, labels = ramp
+    pipeline = (
+        (gp.ArraySource(RAW, raw, True), gp.ArraySource(LABELS, labels, False))
+        + gp.MergeProvider()
+        + gp.Pad(RAW, None)
+        + gp.Pad(LABELS, None)
+        + deform
+    )
+    shift = (raw.roi.center - request[RAW].roi.center) // VOXEL_SIZE * VOXEL_SIZE
+    Z, Y, X = labels.data.shape
+
+    with gp.build(pipeline):
+        for seed in range(2):
+            draw = gp.BatchRequest(random_seed=seed)
+            for key in (RAW, LABELS):
+                draw[key] = gp.ArraySpec(roi=request[key].roi.shift(shift))
+            batch = pipeline.request_batch(draw)
+
+            source = batch[LABELS].data.astype(np.int64) - 1
+            z, x = source // (Y * X), source % X
+            first = batch[LABELS].spec.roi.begin[0] // VOXEL_SIZE[0]
+            sections = np.arange(first, first + len(z))[:, None, None]
+            on_labels = batch[RAW].crop(batch[LABELS].spec.roi).data * (X + 1) - 1
+
+            offset = float(np.abs(on_labels - x).max())
+
+            assert (z == sections).all(), "a section samples other sections"
+            assert min(len(np.unique(s)) for s in x) > 1, (
+                "a section collapses to one source point"
+            )
+            assert offset <= 0.5 + 1e-3, f"raw is {offset:.1f} voxels off the labels"
+
+
+@pytest.fixture(scope="module")
+def sparse_sample(tmp_path_factory):
+    """One labelled section in 12: a source window passes the 5 % check, an output window often has none."""
+    path = tmp_path_factory.mktemp("sparse") / "sample.zarr"
+    Z, Y, X = 48, 256, 256
+    y, x = np.ogrid[:Y, :X]
+    labels = np.broadcast_to(1 + (y // 24) * 100 + x // 24, (Z, Y, X)).astype(np.uint32)
+    mask = np.zeros((Z, Y, X), np.uint8)
+    mask[::12] = 1
+    return {
+        "raw": write(path / "raw", np.full((Z, Y, X), 128, np.uint8)),
+        "labels": write(path / "labels", labels),
+        "mask": write(path / "mask", mask),
+    }
+
+
+@pytest.mark.parametrize("model", ["3d_affs", "3d_lsd", "3d_mtlsd"])
+def test_every_output_window_is_labelled(trainer, model, sparse_sample):
+    small = {"input_shape": [12, 60, 60], "output_shape": [4, 20, 20]}
+    pipeline, request, _ = build(trainer(model), model, [sparse_sample], **small)
+    request[UNLABELLED] = request[LABELS].copy()
+
+    with gp.build(pipeline):
+        for _ in range(5):
+            labelled = pipeline.request_batch(request)[UNLABELLED].data.mean()
+            assert labelled > 0.05, f"an output window is {labelled:.0%} labelled"

@@ -15,6 +15,7 @@ from bootstrapper.gp import (
     CreateMask,
     Renumber,
     DefectAugment,
+    DeformAugment,
     GammaAugment,
     ImpulseNoiseAugment,
 )
@@ -23,6 +24,7 @@ from model import Model, WeightedMSELoss
 
 logging.getLogger().setLevel(logging.INFO)
 setup_dir = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
+MIN_MASKED = 0.05  # labelled fraction a batch needs, in the source window and in the output
 
 
 def create_pipeline(voxel_size, net_config, samples):
@@ -63,6 +65,7 @@ def create_pipeline(voxel_size, net_config, samples):
     request.add(labels, output_size)
     request.add(gt_lsds, output_size)
     request.add(lsds_weights, output_size)
+    request.add(unlabelled, output_size)
 
     # prepare pipeline
     source = tuple(
@@ -87,14 +90,14 @@ def create_pipeline(voxel_size, net_config, samples):
         + gp.Pad(raw, None)
         + gp.Pad(labels, None)
         + gp.RandomLocation()
-        + gp.Reject(mask=unlabelled, min_masked=0.05)
+        + gp.Reject(mask=unlabelled, min_masked=MIN_MASKED)
         for sample in samples
     )
 
     pipeline = source + gp.RandomProvider()
 
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
-    pipeline += gp.DeformAugment(
+    pipeline += DeformAugment(
         control_point_spacing=gp.Coordinate((voxel_size[-2] * voxel_size[0], voxel_size[-1] * voxel_size[0])),
         jitter_sigma=(2.0 * voxel_size[-2], 2.0 * voxel_size[-1]),
         spatial_dims=2,
@@ -127,6 +130,7 @@ def create_pipeline(voxel_size, net_config, samples):
         sigma=sigma,
         downsample=lsd_downsample,
     )
+    pipeline += gp.Reject(mask=unlabelled, min_masked=MIN_MASKED)
 
     pipeline += gp.IntensityScaleShift(raw, 2, -1)
 

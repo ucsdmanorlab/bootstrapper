@@ -4,6 +4,7 @@ import subprocess
 import sys
 import os
 import click
+from funlib.persistence import open_ds
 
 from .config import steps_of
 import logging
@@ -82,6 +83,9 @@ def setup_train(config_file, step=None, **kwargs):
 
         # update sample
         for labels_ds, mask_ds in zip(labels_datasets, mask_datasets):
+            check_inside("labels", labels_ds, "raw", raw)
+            if mask_ds:
+                check_inside("mask", mask_ds, "labels", labels_ds)
             out_samples.append(
                 {
                     "raw": raw,
@@ -106,6 +110,15 @@ def setup_train(config_file, step=None, **kwargs):
 
     train_script = os.path.join(config["setup_dir"], "train.py")
     return train_script, worker_config
+
+
+def check_inside(name, path, outer_name, outer_path):
+    """gunpowder Pad stops training when a request reaches past the array it pads."""
+    roi, outer = open_ds(path).roi, open_ds(outer_path).roi
+    if not outer.contains(roi):
+        crop = roi.intersect(outer)
+        fix = f"crop the {name} to {crop} nm" if not crop.empty else "they do not overlap"
+        raise click.ClickException(f"{name} {path} covers {roi} nm, past the {outer_name} at {outer} nm; {fix}")
 
 
 def run_training(config_file, step=None, **kwargs):
