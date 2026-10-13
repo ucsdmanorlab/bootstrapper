@@ -1,8 +1,10 @@
+import glob
 import os
 import platform
 import re
 import sys
 import time
+import tomllib
 import traceback
 from importlib.metadata import version
 
@@ -19,7 +21,7 @@ from . import (
     utils,
 )
 
-from .config import READS, WRITES, OPS, load_volumes, matches, numbered, ops_beside, paths, prepared_round, refuse_unknown, runs
+from .config import READS, WRITES, OPS, load, load_volumes, matches, numbered, ops_beside, paths, prepared_round, refuse_unknown, runs
 from .configs import MODEL_DIR
 from .prepare import stale
 from .refine import MORPH_OPS
@@ -61,7 +63,7 @@ class CommandGroup(click.Group):
     def invoke(self, ctx):
         try:
             return super().invoke(ctx)
-        except (click.ClickException, click.Abort, click.exceptions.Exit):
+        except (click.ClickException, click.Abort, click.exceptions.Exit, BrokenPipeError):  # click ends a closed pipe quietly
             raise
         except Exception as e:
             stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -97,7 +99,8 @@ cli.add_command(utils)
 @click.pass_context
 def run(ctx, path, only, from_, dry_run):
     """Run the steps of a config file in file order, or the numbered files of a directory. Each
-    run writes a receipt into runs/: the keys each step read, which bs run repeats."""
+    run writes a receipt into runs/: the keys each step read, which bs run repeats. A round
+    starts at its first step that is not done or that changed since it ran; --from 01 runs all."""
     todo = numbered(path)
     if from_:
         first = next((i for i, step in enumerate(todo) if matches(from_, *step)), None)
@@ -110,6 +113,13 @@ def run(ctx, path, only, from_, dry_run):
             raise click.ClickException(f"--only {' '.join(only)}: no such step")
 
     refuse_stale(path)
+    if os.path.isdir(path) and not (from_ or only) and (skip := done(path, todo)):
+        names = _name(todo, 0) + (f" to {_name(todo, skip - 1)} are" if skip > 1 else " is")
+        then = f"running from {_name(todo, skip)}" if skip < len(todo) else "nothing to run"
+        click.echo(f"{names} done and unchanged; {then} (bs run {path} --from 01 runs every step)")
+        todo = todo[skip:]
+        if not todo:
+            return
     volumes = load_volumes(todo[0][1]) if todo else {}
     lines = plan(path, todo, volumes)
     if dry_run:
@@ -124,6 +134,7 @@ def run(ctx, path, only, from_, dry_run):
     for n, f, s in todo:
         cli_echo(f"Running {s.label} from {f}", s.kind)
         name, start = f"{os.path.basename(f)} [{s.label}]", time.time()
+        write_receipt(receipt, [*notes, f"{name}: started, not finished"], volumes, [*ran, s])
         try:
             if s.kind == "refine":
                 run_refine(ctx, s)
@@ -132,12 +143,45 @@ def run(ctx, path, only, from_, dry_run):
                 ctx.invoke(command, config_file=f, step=None if s.name == s.kind else s.name)
         except Exception as e:
             error = e.message if isinstance(e, click.ClickException) else f"{type(e).__name__}: {e}"
+            error = " ".join(error.splitlines())  # a note is one comment line
             write_receipt(receipt, [*notes, f"{name}: failed after {_took(start)}: {error}"], volumes, [*ran, s])
             raise
         notes.append(f"{name}: done, {_took(start)}")
         ran.append(s)
         write_receipt(receipt, notes, volumes, ran)
         click.echo(f"View: bs view {path} {n}")
+
+
+def done(path, todo):
+    """How many leading steps of todo are done: the newest receipt in path/runs that ran each
+    says done, no earlier step ran after it, the keys it read then are the keys it reads now, and
+    every array it writes is there."""
+    last = {}  # label: (receipt number, note, step) from the newest receipt that ran it
+    for k, receipt in enumerate(sorted(glob.glob(os.path.join(path, "runs", "*.toml")))):
+        try:
+            steps = load(receipt)
+            with open(receipt) as f:
+                notes = dict(re.findall(r"^# .*? \[([^\]]+)\]: (\w+)", f.read(), re.M))
+        except (click.ClickException, tomllib.TOMLDecodeError):
+            last = {}  # an unreadable receipt may have run any step
+            continue
+        last |= {s.label: (k, notes.get(s.label), s) for s in steps}
+    newest = 0
+    for i, (_, _, s) in enumerate(todo):
+        k, note, old = last.get(s.label, (0, None, None))
+        writes = [p for _, config in runs(s) for key in WRITES[s.kind] for p in paths(config, key)]
+        there = all(glob.glob(p + "_*") if s.kind == "refine" else os.path.exists(p) for p in writes)
+        if note != "done" or k < newest or runs(old) != runs(s) or not there:
+            return i
+        newest = k
+    return len(todo)
+
+
+def _name(todo, i):
+    """The file of step i, with its label when the file holds more steps."""
+    _, f, s = todo[i]
+    one = sum(g == f for _, g, _ in todo) == 1
+    return os.path.basename(f) + ("" if one else f" [{s.label}]")
 
 
 def refuse_stale(path):
