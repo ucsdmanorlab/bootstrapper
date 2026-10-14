@@ -21,8 +21,9 @@ from . import (
     utils,
 )
 
+from .catalog import download_fix
 from .config import READS, WRITES, OPS, load, load_volumes, matches, numbered, ops_beside, paths, prepared_round, refuse_unknown, runs
-from .configs import MODEL_DIR
+from .configs import MODEL_DIR, MODEL_URLS, checkpoint_path
 from .prepare import stale
 from .refine import MORPH_OPS
 from .styles import cli_echo
@@ -220,12 +221,16 @@ def plan(path, todo, volumes):
             read = [p for key in READS[s.kind] for p in paths(config, key)]
             for r in read:
                 src = max(((len(w), m) for w, m in written if (r + "/").startswith(w)), default=None)
+                model = os.path.relpath(r, MODEL_DIR).split(os.sep)[0] if r.startswith(MODEL_DIR + os.sep) else None
                 if src:
                     reads.append(f"{r.removeprefix(base)} from {src[1]}")
-                elif r.startswith(MODEL_DIR):
+                elif model and checkpoint_path(os.path.join(MODEL_DIR, model), r):
                     reads.append(f"{os.path.basename(r)} (shipped)")
                 elif os.path.exists(r) or os.path.exists(r + ".ckpt"):  # predict adds .ckpt to a checkpoint
                     reads.append(r.removeprefix(base))
+                elif model in MODEL_URLS:
+                    raise click.ClickException(f"{os.path.basename(f)} [{s.label}]{' ' + vol if vol else ''} reads {r}: the shipped "
+                                               f"checkpoint is not there. Nothing ran. To download it, {download_fix(model, prepared_round(path))}")
                 else:
                     raise click.ClickException(f"{os.path.basename(f)} [{s.label}]{' ' + vol if vol else ''} reads {r}: "
                                                "nothing there, and no earlier step writes it. Nothing ran.")

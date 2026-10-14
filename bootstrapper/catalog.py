@@ -33,6 +33,12 @@ MODELS = {name: _model(name) for name in MODEL_NAMES}
 _BY_KEY = {key.lower(): m for m in MODELS.values() for key in (m.name, m.short)}
 
 
+def download_fix(name, round_path=None):
+    """The commands that download the checkpoint of the shipped model name."""
+    again = f"bs prepare {round_path} again, or " if round_path else ""
+    return f"run {again}bs utils download-ckpts -m {MODELS[name].short}"
+
+
 def _list(models):
     return ", ".join(f"{m.name} ({m.short})" for m in models)
 

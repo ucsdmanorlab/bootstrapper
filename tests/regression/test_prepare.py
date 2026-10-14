@@ -510,7 +510,7 @@ def test_bs_run_refuses_a_stale_run_tail_until_bs_prepare(tmp_path, prepared):
     )
     CliRunner().invoke(prepare, ["round_01"], catch_exceptions=False)
     dry_run = CliRunner().invoke(cli, ["run", "round_01", "--dry-run"]).output
-    assert " (shipped)\n" in dry_run, dry_run  # predict downloads it when missing
+    assert " (shipped)\n" in dry_run, dry_run  # bs prepare downloads it when missing
 
     train = tmp_path / "round_01" / "01_train_2d_mtlsd.toml"
     train.write_text(train.read_text().replace("= 30001", "= 20001", 1))

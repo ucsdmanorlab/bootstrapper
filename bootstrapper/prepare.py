@@ -12,9 +12,9 @@ import click
 import zarr
 
 from . import discover
-from .catalog import check_round, default_chain, describe, parse_chain, valid_chains
+from .catalog import check_round, default_chain, describe, download_fix, parse_chain, valid_chains
 from .config import RESERVED, load_round, load_volumes, volume_name
-from .configs import copy_model_scripts
+from .configs import MODEL_DIR, copy_model_scripts, download_checkpoints, find_checkpoints
 from .data.convert import convert
 from .data.mask import training_mask, write_training_mask
 from .derive import derive
@@ -455,9 +455,8 @@ def add_steps(path):
 def stale(path):
     """(file, its text, its new run tail, {table: {key: (old, new)}}) for each file of the round
     at path whose run tail differs from the one derived from the volumes and the keys above it."""
-    root = os.path.abspath(path if os.path.isdir(path) else os.path.dirname(path))
-    files = load_round(path, tail=False)
-    tails = iter(derive(load_volumes(files[0][0]), [s for _, steps in files for s in steps], root))
+    files, tails = _derived(path)
+    tails = iter(tails)
     out = []
     for f, steps in files:
         run = {}
@@ -473,11 +472,32 @@ def stale(path):
     return out
 
 
-def refresh(path):
-    """Write the run tails that stale finds. Then copy the model scripts that are missing, and
-    write the training masks. Returns (file, {table: {key: (old, new)}}) for each file whose
-    tail changed."""
+def _derived(path):
+    """The files of the round at path with your keys alone, and the run tail derived for each step."""
     root = os.path.abspath(path if os.path.isdir(path) else os.path.dirname(path))
+    files = load_round(path, tail=False)
+    return files, derive(load_volumes(files[0][0]), [s for _, steps in files for s in steps], root)
+
+
+def fetch_checkpoints(path):
+    """Download each shipped checkpoint that a predict step of the round at path reads and
+    MODEL_DIR does not have."""
+    files, tails = _derived(path)
+    for s, tail in zip([s for _, steps in files for s in steps], tails):
+        setup_dir = os.path.join(MODEL_DIR, s.name)
+        if s.kind == "predict" and tail.get("checkpoint", "").startswith(setup_dir + os.sep) and not find_checkpoints(setup_dir):
+            try:
+                download_checkpoints(s.name, setup_dir)
+            except click.ClickException as e:
+                raise click.ClickException(f"{e.message}; {download_fix(s.name, path)}") from e
+
+
+def refresh(path):
+    """Download the shipped checkpoints the round lacks, then write the run tails that stale
+    finds. Then copy the model scripts that are missing, and write the training masks. Returns
+    (file, {table: {key: (old, new)}}) for each file whose tail changed."""
+    root = os.path.abspath(path if os.path.isdir(path) else os.path.dirname(path))
+    fetch_checkpoints(path)
     changed = stale(path)
     for f, text, run, _ in changed:
         with open(f, "w") as fh:

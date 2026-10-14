@@ -13,10 +13,11 @@ from funlib.geometry import Roi, Coordinate
 from funlib.persistence import open_ds, prepare_ds
 
 from .blockwise import run_blockwise
+from .catalog import download_fix
 from .config import steps_of, runs
-from .configs import checkpoint_iteration, download_checkpoints, find_checkpoints, output_level, MODEL_URLS
+from .configs import checkpoint_iteration, checkpoint_path, find_checkpoints, output_level, MODEL_DIR, MODEL_URLS
 from .segment import parse_shape
-from .styles import cli_echo, cli_confirm
+from .styles import cli_echo
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -121,30 +122,21 @@ def refuse_incompatible_output(path, **wanted):
 
 def resolve_checkpoint(setup_dir, checkpoint):
     """The checkpoint file for a config's checkpoint path, also when the setup keeps it
-    one level down or has to download it first."""
-    for path in (checkpoint, checkpoint + ".ckpt"):
-        if os.path.exists(path):
-            return path
-    iteration = checkpoint_iteration(checkpoint)
-    if iteration is None:
+    one level down."""
+    if path := checkpoint_path(setup_dir, checkpoint):
+        return path
+    if checkpoint_iteration(checkpoint) is None:
         raise click.ClickException(
             f"cannot read a training iteration from checkpoint {checkpoint}; "
             "name it model_checkpoint_<iteration>[.ckpt]"
         )
-    found = find_checkpoints(setup_dir)
     model_name = os.path.basename(setup_dir)
-    if iteration not in found and model_name in MODEL_URLS and cli_confirm(
-        f"{checkpoint} not found; download the pretrained checkpoints for {model_name}?",
-        "predict", default=True,
-    ):
-        download_checkpoints(model_name, setup_dir)
-        found = find_checkpoints(setup_dir)
-    if iteration not in found:
-        raise click.ClickException(
-            f"checkpoint {checkpoint} not found in {setup_dir}; "
-            f"iterations there: {sorted(found) or 'none'}"
-        )
-    return found[iteration]
+    shipped = os.path.dirname(os.path.abspath(setup_dir)) == MODEL_DIR and model_name in MODEL_URLS
+    raise click.ClickException(
+        f"checkpoint {checkpoint} not found in {setup_dir}; "
+        f"iterations there: {sorted(find_checkpoints(setup_dir)) or 'none'}"
+        + (f"; {download_fix(model_name)}" if shipped else "")
+    )
 
 
 def get_pred_config(config, **kwargs):

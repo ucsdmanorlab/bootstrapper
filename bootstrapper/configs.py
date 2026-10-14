@@ -3,7 +3,6 @@ import os
 from glob import glob
 from shutil import copytree, ignore_patterns
 import requests
-from tqdm import tqdm
 import zipfile
 
 
@@ -73,32 +72,30 @@ def download_checkpoints(model_name, setup_dir, style="prepare"):
 
     url = MODEL_URLS[model_name]
     file_path = os.path.join(setup_dir, "checkpoints.zip")
-
-    cli_echo(f"Downloading {model_name} checkpoints zip to {setup_dir}...", style)
     try:
         response = requests.get(url, stream=True, timeout=60)
         response.raise_for_status()
+        with open(file_path, "wb") as file:
+            for data in response.iter_content(chunk_size=1 << 20):
+                file.write(data)
     except requests.RequestException as e:
         raise click.ClickException(f"download of {model_name} checkpoints from {url} failed: {e}")
-    total_size = int(response.headers.get("content-length", 0))
-
-    with open(file_path, "wb") as file, tqdm(
-        desc=model_name,
-        total=total_size,
-        unit="iB",
-        unit_scale=True,
-        unit_divisor=1024,
-    ) as progress_bar:
-        for data in response.iter_content(chunk_size=1024):
-            size = file.write(data)
-            progress_bar.update(size)
-
-    # unzip checkpoints
-    cli_echo(f"Unzipping {model_name} checkpoints in {setup_dir}...", style)
     with zipfile.ZipFile(file_path, "r") as zip_ref:
         zip_ref.extractall(setup_dir)
-
-    # clean up
+        checkpoints = [n for n in zip_ref.namelist() if os.path.basename(n).startswith("model_checkpoint_")]
     os.remove(file_path)
-    if not find_checkpoints(setup_dir):
+
+    if not checkpoints:
         raise click.ClickException(f"{url} holds no model_checkpoint_* file for {setup_dir}")
+    for name in checkpoints:
+        size = os.path.getsize(os.path.join(setup_dir, name)) / 1e6
+        cli_echo(f"Downloaded the {model_name} checkpoint ({size:.0f} MB)", style)
+
+
+def checkpoint_path(setup_dir, checkpoint):
+    """The file of a checkpoint: the path, the path with .ckpt, or the setup's checkpoint of
+    the same iteration, one level down as well. None when there is none."""
+    for path in (checkpoint, checkpoint + ".ckpt"):
+        if os.path.exists(path):
+            return path
+    return find_checkpoints(setup_dir).get(checkpoint_iteration(checkpoint))

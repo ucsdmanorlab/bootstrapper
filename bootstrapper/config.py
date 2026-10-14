@@ -291,7 +291,33 @@ def _step(kind, name, table, volumes, path, tail=None):
         for vol, t in vols.items():
             _check(path, f"{label}.{vol}", kind, t, volumes)
     step = Step(kind, name, keys, vols)
-    return with_tail(step, _step(kind, name, tail, volumes, path)) if tail else step
+    full = with_tail(step, _step(kind, name, tail, volumes, path)) if tail else step
+    if kind != "train":
+        _refuse_one_path(path, step, full.volumes)
+    return full
+
+
+def _refuse_one_path(path, step, volumes):
+    """Refuse an output key at step level that several volumes take: they would all write one
+    path. evaluate adds the volume to out_result, so that one may stay."""
+    outs = [(k,) for k in WRITES[step.kind] if k != "out_result"]
+    outs += [("ops", op, "out_array") for op in step.keys.get("ops", {})]
+    for keys in outs:
+        takers = [v for v in volumes if not _has(step.volumes.get(v, {}), keys)]
+        if not _has(step.keys, keys) or len(takers) < 2:
+            continue
+        key, where = keys[-1], "".join(f".{k}" for k in keys[1:-1])
+        tables = [f"[{step.label}.{v}{where}]" for v in takers]
+        under = " and ".join(tables) if len(tables) == 2 else f"{', '.join(tables[:2])} and {len(tables) - 2} more"
+        raise click.ClickException(
+            f"{path}: [{step.label}{where}] sets {key} for {len(takers)} volumes, so {'both' if len(takers) == 2 else 'all'} "
+            f"write one path. Set {key} under {under}, one per volume.")
+
+
+def _has(table, keys):
+    for k in keys[:-1]:
+        table = table.get(k, {})
+    return keys[-1] in table
 
 
 def _check(path, label, kind, keys, volumes):
