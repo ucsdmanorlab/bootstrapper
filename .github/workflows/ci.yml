@@ -18,7 +18,7 @@ jobs:
       CUDA_VISIBLE_DEVICES: ""  # the suite is verified with an empty grant
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           python-version: ${{ matrix.python }}
           activate-environment: true
