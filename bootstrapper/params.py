@@ -39,7 +39,7 @@ KEYS = {
         "method": Key("mws", "mws (mutex watershed), ws (watershed, needs the waterz extra) or cc (connected components)."),
         "blockwise": Key(True, "Segments in blocks with several workers. false segments the whole array as one block."),
         "num_workers": Key(10, "Block workers. SQLite locks above 10; use PostgreSQL in [segment.db] for more."),
-        "block_shape": Key([32, 512, 512], "Block shape in voxels, z y x. Default: the affinities' chunks.", off=True),
+        "block_shape": Key([32, 512, 512], "Block shape in voxels, z y x. Default: the affinities' chunks, made at least 16 sections deep.", off=True),
     },
     "segment.params": {
         "bias": Key(MWS["bias"], "Added to each affinity channel, one value per offset. More negative splits more."),

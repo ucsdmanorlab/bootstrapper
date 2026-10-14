@@ -112,6 +112,8 @@ def mutex_watershed_segmentation(config):
         block_size = (
             Coordinate(block_shape) if block_shape else Coordinate(affs.chunk_shape[1:])
         )
+        # a 3D model's chunks can be 4 sections deep; a block face every 4 sections cuts objects
+        block_size = block_size if block_shape else block_size * Coordinate(-(-16 // block_size[0]), 1, 1)
         ctx = (
             Coordinate(context)
             if context

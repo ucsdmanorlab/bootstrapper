@@ -142,6 +142,8 @@
 
 ### Changed
 
+- Segment blocks are at least 16 sections deep by default, so a 3D model's
+  4-section chunks no longer put a block face every 4 sections.
 - `bs view` shows affinities and LSDs as RGB of channels 0 to 2, and ids and
   masks as segmentation layers. It opens on the volume with ground truth, with
   a section in the main panel.
@@ -206,6 +208,8 @@
 
 ### Fixed
 
+- A `*` that matches more than one array stops `bs prepare` with the fix:
+  give one array in full.
 - `bs predict` asks no question. A missing checkpoint stops `bs run` and its
   dry run before the first step, with the command that downloads it.
 - A refine mask op runs only on the volumes that have a target mask.

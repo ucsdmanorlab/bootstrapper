@@ -406,3 +406,18 @@ def test_a_quantile_scorer_runs_with_no_compiler(tmp_path, monkeypatch):
     score = score_of_the_edge_between_1_and_2(tmp_path, "hist_quant_50")
 
     assert score == pytest.approx(1 - 0.1, abs=0.01)
+
+
+def test_default_blocks_are_at_least_16_sections_deep(tmp_path, bs):
+    """A 3D model writes affinities in chunks 4 sections deep; blocks that deep put a seam every 4 sections."""
+    path = str(tmp_path / "v.zarr" / "3d_affs")
+    ds = prepare_ds(path, shape=(3, 32, 64, 64), offset=(0, 0, 0), voxel_size=(50, 8, 8),
+                    axis_names=["c^", "z", "y", "x"], units=["nm", "nm", "nm"], dtype=np.uint8, chunk_shape=(3, 4, 32, 32))
+    ds[ds.roi] = np.full(ds.shape, 255, np.uint8)
+    step = mws_step(tmp_path, path, blockwise=True, num_workers=2, roi_shape=[1600, 512, 512])
+
+    r = bs("segment", write_step(tmp_path, "03_mws_deep", step))
+
+    assert r.returncode == 0, r.stderr
+    (seg,) = glob.glob(f"{tmp_path}/o.zarr/segs/*")
+    assert zarr.open(seg, mode="r").attrs["bs_params"]["block_shape"] == [16, 32, 32]

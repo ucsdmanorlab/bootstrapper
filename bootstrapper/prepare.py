@@ -536,12 +536,16 @@ def _flags(command):
 
 @click.command()
 @click.argument("path", type=click.Path())
+@click.argument("extra", nargs=-1, metavar="")
 @_flags
-def prepare(path, **given):
+def prepare(path, extra, **given):
     """Write the round PATH from the facts of your data: a short dialogue asks them, or flags give
     them. A PATH ending in .toml holds the round in one file. On a round, add the volume that
     flags give, then write each file's run tail again from your edits. Example: bs prepare
     round_01 --raw data.zarr/raw/s0 --labels labels/s0 --labelled sparsely"""
+    if extra:
+        raise click.ClickException(f"{extra[0]}: one argument too many. A * that matches more than one array gives "
+                                   "one argument per match; give one array in full")
     given = {f"--{k.replace('_', '-')}": v for k, v in given.items()}
     for flag, values in given.items():
         if len(values) > 1:

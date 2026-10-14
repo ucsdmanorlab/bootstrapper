@@ -576,3 +576,18 @@ def test_a_receipt_holds_the_keys_each_step_read_and_dry_runs_clean(tmp_path, pr
     assert load(receipt) == [step(tmp_path, "05_refine.toml")]
     dry_run = CliRunner().invoke(cli, ["run", receipt, "--dry-run"]).output
     assert dry_run.endswith("comes from an earlier step. Nothing ran.\n"), dry_run
+
+
+def test_a_glob_that_matches_two_labels_names_the_fix(tmp_path):
+    """The shell expands an unquoted * into one argument per match; bs prepare says so and writes nothing."""
+    write(tmp_path / "a.zarr" / "raw", np.zeros((8, 16, 16), np.uint8))
+    for name in ("seg_rd64_fill_holes", "seg_rd100_fill_holes"):
+        write(tmp_path / "a.zarr" / name, np.ones((8, 16, 16), np.uint64))
+    matches = sorted(glob.glob(f"{tmp_path}/a.zarr/*_fill_holes"))
+
+    result = CliRunner().invoke(prepare, ["round_02", "--raw", "a.zarr/raw", "--labels", *matches, "--labelled", "densely"])
+
+    assert result.exit_code == 1
+    assert f"{matches[1]}: one argument too many" in result.output
+    assert "give one array in full" in result.output
+    assert not (tmp_path / "round_02").exists()
