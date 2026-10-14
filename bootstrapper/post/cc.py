@@ -10,6 +10,7 @@ def compute_connected_component_segmentation(hard_aff: np.ndarray) -> np.ndarray
 
     Args:
         hard_aff: The (thresholded, boolean) short range affinities. Shape: (3, x, y, z).
+            Offset -1 per axis, as bs trains them: the edge between x and x + 1 sits at x + 1.
 
     Returns:
         The segmentation. Shape: (x, y, z).
@@ -30,42 +31,42 @@ def compute_connected_component_segmentation(hard_aff: np.ndarray) -> np.ndarray
                         # Check all neighbors
                         if (
                             x + 1 < visited.shape[0]
-                            and hard_aff[0, x, y, z]
+                            and hard_aff[0, x + 1, y, z]
                             and not visited[x + 1, y, z]
                         ):
                             cur_to_visit.append((x + 1, y, z))
                             visited[x + 1, y, z] = True
                         if (
                             y + 1 < visited.shape[1]
-                            and hard_aff[1, x, y, z]
+                            and hard_aff[1, x, y + 1, z]
                             and not visited[x, y + 1, z]
                         ):
                             cur_to_visit.append((x, y + 1, z))
                             visited[x, y + 1, z] = True
                         if (
                             z + 1 < visited.shape[2]
-                            and hard_aff[2, x, y, z]
+                            and hard_aff[2, x, y, z + 1]
                             and not visited[x, y, z + 1]
                         ):
                             cur_to_visit.append((x, y, z + 1))
                             visited[x, y, z + 1] = True
                         if (
                             x - 1 >= 0
-                            and hard_aff[0, x - 1, y, z]
+                            and hard_aff[0, x, y, z]
                             and not visited[x - 1, y, z]
                         ):
                             cur_to_visit.append((x - 1, y, z))
                             visited[x - 1, y, z] = True
                         if (
                             y - 1 >= 0
-                            and hard_aff[1, x, y - 1, z]
+                            and hard_aff[1, x, y, z]
                             and not visited[x, y - 1, z]
                         ):
                             cur_to_visit.append((x, y - 1, z))
                             visited[x, y - 1, z] = True
                         if (
                             z - 1 >= 0
-                            and hard_aff[2, x, y, z - 1]
+                            and hard_aff[2, x, y, z]
                             and not visited[x, y, z - 1]
                         ):
                             cur_to_visit.append((x, y, z - 1))

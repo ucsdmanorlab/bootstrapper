@@ -221,6 +221,8 @@
 
 ### Fixed
 
+- `method = "cc"` read the affinities one voxel off. Boundaries moved by one voxel, and
+  touching objects joined. It now reads them as bs trains them.
 - A `*` that matches more than one array stops `bs prepare` with the fix:
   give one array in full.
 - `bs predict` asks no question. A missing checkpoint stops `bs run` and its
