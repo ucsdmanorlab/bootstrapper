@@ -93,7 +93,8 @@ def setup_train(config_file, step=None, **kwargs):
             check_inside("labels", labels_ds, "raw", raw)
             if mask_ds:
                 check_inside("mask", mask_ds, "labels", labels_ds)
-            out_samples.append(sample | {"labels": labels_ds, "mask": mask_ds})
+            out_samples.append(sample | {"labels": labels_ds, "mask": mask_ds,
+                                         "labelled_sections": labelled_sections(mask_ds or labels_ds)})
 
     # update samples in config
     sampling = config.pop("sampling", "labels")
@@ -142,7 +143,23 @@ def _name(sample):
 
 def labelled_voxels(sample):
     """The voxels a sample trains on: those of its training mask, else of its labels."""
-    return int(np.count_nonzero(open_ds(sample["mask"] or sample["labels"]).data))
+    return sum(n for *_, n in sample["labelled_sections"])
+
+
+def labelled_sections(path):
+    """[first z, end z, labelled voxels], z in nm, for each run of adjacent sections with a nonzero voxel.
+    The trainers draw only there: fluo labels 1 of its 30 frames, and Reject threw away 30 to 42 draws per sample."""
+    ds = open_ds(path)
+    counts = np.asarray((ds.data != 0).sum(axis=tuple(range(1, ds.data.ndim))))
+    z0, vz = ds.roi.begin[0], ds.voxel_size[0]
+    runs = []
+    for z in np.flatnonzero(counts):
+        if runs and runs[-1][1] == z0 + z * vz:
+            runs[-1][1] += vz
+            runs[-1][2] += int(counts[z])
+        else:
+            runs.append([int(z0 + z * vz), int(z0 + (z + 1) * vz), int(counts[z])])
+    return runs
 
 
 def check_inside(name, path, outer_name, outer_path):

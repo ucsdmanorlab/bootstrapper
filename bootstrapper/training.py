@@ -9,6 +9,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import zarr
+from funlib.persistence import open_ds
 from natsort import natsorted
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint, RichProgressBar
 from torch.utils.data import DataLoader, IterableDataset
@@ -21,6 +22,20 @@ def device_warning():
     grant = os.environ.get("CUDA_VISIBLE_DEVICES")
     why = "CUDA_VISIBLE_DEVICES is set but empty" if grant == "" else "no CUDA device is visible"
     return f"WARNING: training on the CPU: {why}. Set CUDA_VISIBLE_DEVICES to the GPUs you were granted."
+
+
+def labelled_crops(samples, output_size):
+    """(sample, roi, probability) for each run of labelled sections that bs train found in a sample.
+    The roi holds every window whose output touches the run; the run takes its share of the sample's labelled voxels."""
+    crops = []
+    for sample in samples:
+        ds = open_ds(sample.get("mask") or sample["labels"])
+        runs = sample.get("labelled_sections") or [[ds.roi.begin[0], ds.roi.end[0], 1]]
+        grow = output_size[0] - ds.voxel_size[0]
+        for begin, end, voxels in runs:
+            roi = gp.Roi((begin - grow, *ds.roi.begin[1:]), (end - begin + 2 * grow, *ds.roi.shape[1:]))
+            crops.append((sample, roi.intersect(ds.roi), sample["probability"] * voxels / sum(n for *_, n in runs)))
+    return crops
 
 
 class GunpowderDataset(IterableDataset):

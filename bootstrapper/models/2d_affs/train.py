@@ -19,7 +19,7 @@ from bootstrapper.gp import (
     GammaAugment,
     ImpulseNoiseAugment,
 )
-from bootstrapper.training import GunpowderDataset, SnapshotCallback, fit
+from bootstrapper.training import GunpowderDataset, SnapshotCallback, fit, labelled_crops
 from model import Model, WeightedMSELoss
 
 logging.getLogger().setLevel(logging.INFO)
@@ -34,6 +34,7 @@ def create_pipeline(voxel_size, net_config, samples):
     raw = gp.ArrayKey("RAW")
     labels = gp.ArrayKey("LABELS")
     unlabelled = gp.ArrayKey("UNLABELLED")
+    sampling_mask = gp.ArrayKey("SAMPLING_MASK")  # the mask at output size, cropped to a labelled run
 
     gt_affs = gp.ArrayKey("GT_AFFS")
     affs_weights = gp.ArrayKey("AFFS_WEIGHTS")
@@ -69,14 +70,17 @@ def create_pipeline(voxel_size, net_config, samples):
     request.add(gt_affs, output_size)
     request.add(affs_weights, output_size)
     request.add(unlabelled, output_size)
+    request.add(sampling_mask, output_size)
 
     # prepare pipeline
+    crops = labelled_crops(samples, output_size)
     source = tuple(
         (
             (
                 gp.ArraySource(raw, open_ds(sample["raw"]), True),
                 gp.ArraySource(labels, open_ds(sample["labels"]), False),
                 gp.ArraySource(unlabelled, open_ds(sample["mask"]), False),
+                gp.ArraySource(sampling_mask, open_ds(sample["mask"]), False),
             )
             + gp.MergeProvider()
             if "mask" in sample and sample["mask"] is not None
@@ -86,18 +90,20 @@ def create_pipeline(voxel_size, net_config, samples):
             )
             + gp.MergeProvider()
             + CreateMask(labels, unlabelled)
+            + CreateMask(labels, sampling_mask)
         )
         + gp.Normalize(raw)
         + Renumber(labels)
         + gp.AsType(labels, "uint32")
         + gp.Pad(raw, None)
         + gp.Pad(labels, None)
+        + gp.Crop(sampling_mask, roi=roi)
         + gp.RandomLocation()
-        + gp.Reject(mask=unlabelled, min_masked=MIN_MASKED)
-        for sample in samples
+        + gp.Reject(mask=sampling_mask, min_masked=MIN_MASKED)
+        for sample, roi, _ in crops
     )
 
-    pipeline = source + gp.RandomProvider(probabilities=[s["probability"] for s in samples])
+    pipeline = source + gp.RandomProvider(probabilities=[p for _, _, p in crops])
 
     pipeline += gp.SimpleAugment(transpose_only=[1, 2])
     pipeline += DeformAugment(
