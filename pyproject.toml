@@ -57,7 +57,7 @@ dependencies = [
 
 [project.optional-dependencies]
 waterz = [
-    "waterz==0.10.0rc1",
+    "waterz==0.10.1",
     "funlib.segment @ git+https://github.com/funkelab/funlib.segment@cdf607f0bde3b27f16cec39b9874e266be80bda9",
 ]
 

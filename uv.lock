@@ -306,7 +306,7 @@ requires-dist = [
     { name = "torch" },
     { name = "tqdm" },
     { name = "volara", specifier = "<1.0.3" },
-    { name = "waterz", marker = "extra == 'waterz'", specifier = "==0.10.0rc1" },
+    { name = "waterz", marker = "extra == 'waterz'", specifier = "==0.10.1" },
     { name = "zarr", specifier = "<3" },
 ]
 provides-extras = ["waterz"]
@@ -3279,19 +3279,19 @@ wheels = [
 
 [[package]]
 name = "waterz"
-version = "0.10.0rc1"
+version = "0.10.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "witty", extra = ["cython"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/c6/1840fa4085a9819a06e5fbd757f1cda8cad7f4b2df1477fd18bf1b62f4c9/waterz-0.10.0rc1.tar.gz", hash = "sha256:f82a3f6e5723f709fe47d74e5529a7f017edf026f7b73117198c9dfcbad0e6ca", size = 39650, upload-time = "2026-10-01T08:23:39.247Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bb/f2/6a3793d12d6fc6319357ebb0e4d1ecba39bc9786dfc60cfa05bee74244f9/waterz-0.10.1.tar.gz", hash = "sha256:31e116670399b074c7defedd7ba9234fb1cd9d1613edc641a8032c5d2ba2b2e4", size = 42352, upload-time = "2026-10-06T14:24:24.403Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/95/6e/702922559f7c2e52eb27367cf6f5a23fccfa8c68a0d7a200dff3c9d450fc/waterz-0.10.0rc1-cp311-abi3-macosx_10_9_x86_64.whl", hash = "sha256:bdc6a3acf2d441ce3c85d874d683ef9d03e790c3f5cba0d1781af4ccc9a64ff3", size = 421025, upload-time = "2026-10-01T08:23:32.836Z" },
-    { url = "https://files.pythonhosted.org/packages/84/5f/6e09b4fcfeef699ef55d7f68688c20497d6b3d190a92c88f3a7395d88a0d/waterz-0.10.0rc1-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:8b5413f4828f41e648af6aaf9226d773c6b0109579f7a3f2f852e8754f235f96", size = 407643, upload-time = "2026-10-01T08:23:34.267Z" },
-    { url = "https://files.pythonhosted.org/packages/d0/3d/3d819fbe4508952f442b4c595f6b484235a1cd4168c3d44ec7af97eca69e/waterz-0.10.0rc1-cp311-abi3-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ff883968418113f1980dc1f26ef07fb81bf03545c2bf1dab7fde6d0b226690be", size = 439587, upload-time = "2026-10-01T08:23:35.477Z" },
-    { url = "https://files.pythonhosted.org/packages/84/76/5075aa7cfb48154f9444ce131552e0f6d6677e81de7dc1d46a3589d08e63/waterz-0.10.0rc1-cp311-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:510351f97be111308826cf6aadd65cc9bffd3917a62e5bde688382aced7325cd", size = 463668, upload-time = "2026-10-01T08:23:36.716Z" },
-    { url = "https://files.pythonhosted.org/packages/eb/78/7fadf9015ae565d8ed71cab6d15663c778d13c4468aef46c51f49593561a/waterz-0.10.0rc1-cp311-abi3-win_amd64.whl", hash = "sha256:d4cffcf21b7ef1306fbabafcb071cf6b289dea65dc1048341ac2c15a2a2efea6", size = 508215, upload-time = "2026-10-01T08:23:37.886Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/72/895d352779d6c9bb4835418ace33cb1df5a0b36c02ee8677c0965df9f176/waterz-0.10.1-cp311-abi3-macosx_10_9_x86_64.whl", hash = "sha256:3379d37fd835dba9b8f282fc677e0fd53ce5116e54c58ab4730cedba81cd8463", size = 427925, upload-time = "2026-10-06T14:24:17.83Z" },
+    { url = "https://files.pythonhosted.org/packages/90/14/b68268920b1e2879025aedf3ef016fb2c228df948f147409fc44b57d3785/waterz-0.10.1-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:b2f41adacd8189b575e3290db25f75805d5970c74a59333432da0dc88e2bdf15", size = 415864, upload-time = "2026-10-06T14:24:19.261Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/3f/f663b079d52dd82c3394654cf212361aa5d21eb1d4fc8a470122a8567163/waterz-0.10.1-cp311-abi3-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:1aa56db0db1e939ac215d3b92e6a496b99de8663a7628adf26fe9e8af08ff3f3", size = 440235, upload-time = "2026-10-06T14:24:20.549Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/d4/1a9081314ef017ad762df7d39a3dae32984336f8caa43487ef9e1df92814/waterz-0.10.1-cp311-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5f696befbc48730f2a3b3052cccf32359eb519d468e6a8db336b12e07c3b63cf", size = 466209, upload-time = "2026-10-06T14:24:21.817Z" },
+    { url = "https://files.pythonhosted.org/packages/01/d4/e3f7f2ef9d3c813292c322f182baddfdc1d933143f6a990695dec644c589/waterz-0.10.1-cp311-abi3-win_amd64.whl", hash = "sha256:c95ad21bddb1dd5607f5aa0752832c704be491527deaefc77f6e4069f384851a", size = 510660, upload-time = "2026-10-06T14:24:23.166Z" },
 ]
 
 [[package]]
