@@ -4,6 +4,15 @@
 
 ### Breaking changes
 
+- Predictions, fragments, segmentations and error maps go into the round, in a
+  container named like the raw's, such as `round_01/data.zarr`. Your data
+  containers stay as they are. To write next to the raw, set `outputs` in
+  `volumes.toml`.
+- `bs view PATH` takes array paths and opens a scale-pyramid group at its
+  `s0`. Slices such as `raw[0:10]` are refused.
+- An output key such as `seg_dataset_prefix` at step level is refused when the
+  step runs two or more volumes. Set it in the table of each volume, such as
+  `[segment.volume_2-zarr]`.
 - Python 3.12 or later is necessary.
 - Config files from 0.3.x do not load. Each step is now a table such as
   `[segment]` or `[train.<name>]`. The loader names the fix for an old key.
@@ -58,6 +67,16 @@
 
 ### Added
 
+- `bs prepare round_01 --raw ...` on an existing round adds a volume. It writes
+  the step files the round now needs, such as an evaluate step for a volume
+  with ground truth.
+- `bs run round_01` starts at the first step that is not done or that changed.
+  After an edit in `04_segment.toml`, it runs steps 04 to 06 only.
+  `--from 01` runs every step.
+- `bs view round_01` opens the raw and every array the round wrote, with short
+  layer names such as `03 3d_affs (z y x)`. `bs view round_01 04` opens one
+  step. After each step, `bs run` prints its `bs view` command.
+- `bs prepare` downloads the pretrained checkpoints that the round needs.
 - `bs prepare round_01 --raw data.zarr/raw/s0 --labels labels/s0 --labelled sparsely`
   writes a round with no questions. Every question has a flag, and
   `bs prepare --help` gives an example of each.
@@ -123,6 +142,17 @@
 
 ### Changed
 
+- `bs view` shows affinities and LSDs as RGB of channels 0 to 2, and ids and
+  masks as segmentation layers. It opens on the volume with ground truth, with
+  a section in the main panel.
+- `bs evaluate` ends with one line per volume and segmentation, such as
+  `volume_2-zarr  mws/fill_holes  NVI split 0.115 merge 0.145`.
+- Each blockwise task prints one line when it ends. A failed block still
+  prints the full daisy summary. A CPU smoke round prints 73 lines in place of
+  257.
+- Training prints its iterations, data workers and GPUs before it starts. It
+  sets the float32 matmul precision to "high".
+- `bs run --only` and `--from` take a step number, such as `04`.
 - The labels question has three answers: sparsely labelled, densely
   labelled, or densely labelled within a mask. `bs prepare` finds 2D labels
   itself and prints why.
@@ -156,7 +186,8 @@
   the crop to use.
 - `bs train` names the `bs prepare` command to run when the setup has no
   `train.py` or a training mask is missing.
-- `num_gpus = 0` runs prediction on the CPU.
+- `num_gpus = 0` runs prediction on the CPU, also when `CUDA_VISIBLE_DEVICES`
+  is set but empty.
 - One prediction worker runs on the first granted GPU. If
   `CUDA_VISIBLE_DEVICES` is not set, `bs predict` warns that it uses GPU 0.
 - A prediction ROI smaller than one output block is refused with a message.
@@ -175,6 +206,10 @@
 
 ### Fixed
 
+- `bs predict` asks no question. A missing checkpoint stops `bs run` and its
+  dry run before the first step, with the command that downloads it.
+- A refine mask op runs only on the volumes that have a target mask.
+- `bs prepare ... | head` ends quietly, with no traceback file.
 - The 3D trainers (`3d_affs`, `3d_lsd`, `3d_mtlsd`) deform each section in y
   and x only. Before, one output section could mix up to 18 source sections.
 - The six trainers that read your data keep raw on its labels. Before, raw
