@@ -63,6 +63,7 @@ def watershed_segmentation(config):
     context = config.get("context")
 
     set_log_basedir(volara_log_dir(seg_dataset_prefix))
+    step = " ".join(filter(None, ("segment", config.get("volume"))))
 
     affs = open_ds(affs_dataset)
 
@@ -150,7 +151,7 @@ def watershed_segmentation(config):
     warning = inputs_differ(frags_ds_name, run_params)
     if warning:
         logger.warning(warning)
-    run_volara_task(frags_task, blockwise)
+    run_volara_task(frags_task, blockwise, f"{step} fragments")
     dump_params(frags_ds_name, {**run_params, **frag_params})
 
     # score RAG edges with waterz
@@ -166,6 +167,7 @@ def watershed_segmentation(config):
             merge_function=waterz_merge_function,
         ),
         blockwise,
+        f"{step} edges",
     )
 
     # global segmentation: thresholded connected components -> LUT -> relabel
@@ -215,5 +217,6 @@ def watershed_segmentation(config):
                 num_workers=num_workers,
             ),
             blockwise,
+            f"{step} segmentation {threshold}",
         )
         dump_params(seg_store, recorded)

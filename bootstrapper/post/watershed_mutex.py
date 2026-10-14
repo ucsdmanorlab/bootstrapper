@@ -68,6 +68,7 @@ def mutex_watershed_segmentation(config):
         )
 
     set_log_basedir(volara_log_dir(seg_dataset_prefix))
+    step = " ".join(filter(None, ("segment", config.get("volume"))))
 
     affs = open_ds(affs_dataset)
     if affs.shape[0] != len(neighborhood):
@@ -202,7 +203,7 @@ def mutex_watershed_segmentation(config):
     warning = inputs_differ(frags_ds_name, run_params)
     if warning:
         logger.warning(warning)
-    run_volara_task(extract_frags, blockwise)
+    run_volara_task(extract_frags, blockwise, f"{step} fragments")
     dump_params(frags_ds_name, {**run_params, **frag_params})
 
     aff_agglom = AffAgglom(
@@ -215,7 +216,7 @@ def mutex_watershed_segmentation(config):
         num_workers=num_workers,
         roi=roi,
     )
-    run_volara_task(aff_agglom, blockwise)
+    run_volara_task(aff_agglom, blockwise, f"{step} edges")
 
     weights = {"zyx_aff": global_bias}
     if seeds_dataset:
@@ -228,7 +229,7 @@ def mutex_watershed_segmentation(config):
         weights=weights,
         roi=roi,
     )
-    run_volara_task(global_mws, multiprocessing=False)
+    run_volara_task(global_mws, False, f"{step} graph")
     if seeds_dataset:
         seed_lut(db, lut, roi, max_seed)
     dump_lut_params(lut_name, {**run_params, **seg_params})
@@ -241,5 +242,5 @@ def mutex_watershed_segmentation(config):
         roi=roi,
         num_workers=num_workers * 2,
     )
-    run_volara_task(relabel, blockwise)
+    run_volara_task(relabel, blockwise, f"{step} segmentation")
     dump_params(seg_name, {**run_params, **seg_params})

@@ -206,7 +206,7 @@ def round_layers(path, chosen):
     """For each volume: the raw, then what the chosen steps wrote (all steps: also the
     volume's own arrays). An array belongs to the last step that writes it, so a refine
     output beside a segmentation is the refine step's. The raw and the newest array of the
-    first volume start visible."""
+    first volume with gt start visible, else those of the first volume."""
     todo = numbered(path)
     numbers = [n for n, f, s in todo if not chosen or any(matches(c, n, f, s) for c in chosen)]
     if not numbers:
@@ -222,15 +222,16 @@ def round_layers(path, chosen):
         if n in numbers and _is_array(p):
             shown.setdefault(vol, []).append((f"{n} {name}", p))
 
+    first = next((v for v in shown if v in volumes and "gt" in volumes[v].keys), next(iter(shown), None))
     layers = []
-    for i, (vol, rows) in enumerate(shown.items()):
+    for vol, rows in shown.items():
         keys = volumes[vol].keys if vol in volumes else {}
         own = [(k, p) for k, p in keys.items() if k != "raw" and isinstance(p, str) and "/" in p and not chosen and _is_array(p)]
         rows = ([("raw", keys["raw"])] if keys else []) + own + rows
         prefix = f"{vol} " if vol and len(shown) > 1 else ""
         names = _unique([prefix + name for name, _ in rows])
         for j, (label, (name, p)) in enumerate(zip(names, rows)):
-            visible = i == 0 and (name == "raw" or j == len(rows) - 1)
+            visible = vol == first and (name == "raw" or j == len(rows) - 1)
             layers.append((label, p, *_array(name, p), visible))
     return layers
 

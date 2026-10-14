@@ -144,6 +144,33 @@ def test_bs_view_of_a_round_shows_each_array_the_round_wrote_with_its_layer(roun
     assert viewer.bind == ["0.0.0.0"]
 
 
+def test_bs_view_of_two_volumes_shows_the_one_with_gt_and_hides_the_other(tmp_path, viewer):
+    """The metrics describe the volume with gt, so its layers start visible, though it comes second."""
+    paths = {}
+    for vol in ("trained", "held"):
+        v = tmp_path / f"{vol}.zarr"
+        paths[vol] = {"raw": array(v / "raw", np.zeros((8, 32, 32), np.uint8)),
+                      "affs": array(v / "3d_affs", np.zeros((3, 8, 32, 32), np.uint8))}
+        array(v / "fragments_mws", np.zeros((8, 32, 32), np.uint64))
+        array(v / "segmentations_mws" / "gb1_-0.5", np.zeros((8, 32, 32), np.uint64))
+    gt = array(tmp_path / "held.zarr" / "labels", np.zeros((8, 32, 32), np.uint64))
+    path = tmp_path / "round_01"
+    path.mkdir()
+    (path / "volumes.toml").write_text(
+        f'[volumes.trained]\nraw = "{paths["trained"]["raw"]}"\n[volumes.held]\nraw = "{paths["held"]["raw"]}"\ngt = "{gt}"\n'
+    )
+    (path / "01_segment.toml").write_text("[segment]\nmethod = \"mws\"\n" + "".join(
+        f'[segment.{vol}]\naffs_dataset = "{p["affs"]}"\nfragments_dataset = "{tmp_path}/{vol}.zarr/fragments_mws"\n'
+        f'seg_dataset_prefix = "{tmp_path}/{vol}.zarr/segmentations_mws"\n' for vol, p in paths.items()))
+
+    result = CliRunner().invoke(view_module.view, [str(path)])
+
+    assert result.exit_code == 0, result.output
+    assert [name for name, v in viewer.layers.items() if v.visible] == ["held raw", "held 01 segmentation"]
+    assert [name for name in viewer.layers if name.startswith("trained ")] == [
+        "trained raw", "trained 01 fragments", "trained 01 segmentation"]
+
+
 @pytest.mark.parametrize("step", ["02", "02_predict_3d_affs_from_2d_lsd.toml"])
 def test_bs_view_of_one_step_shows_the_raw_and_what_that_step_wrote(round_dir, viewer, step):
     path, paths = round_dir

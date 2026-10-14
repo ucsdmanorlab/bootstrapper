@@ -142,15 +142,26 @@ def fit(
     warning = device_warning()
     if warning:
         click.secho(warning, fg="red", bold=True, err=True)
+    devices = 1 if devices is None else devices
+    if isinstance(devices, (list, tuple)):
+        gpus = len(devices)
+    elif isinstance(devices, int) and devices >= 0:
+        gpus = devices
+    else:
+        gpus = torch.cuda.device_count()
+    where = f"{gpus} GPU{'' if gpus == 1 else 's'}" if torch.cuda.is_available() else "the CPU"
+    click.echo(f"Training {os.path.basename(os.path.normpath(setup_dir))}: {max_iterations} iterations, "
+               f"{num_workers} data workers, {where}")
 
     torch.set_float32_matmul_precision("high")
     # setup_dir holds the model files, and fit resumes from its newest checkpoint on purpose
     warnings.filterwarnings("ignore", message="Checkpoint directory .* exists and is not empty")
+    warnings.filterwarnings("ignore", message=r"`isinstance\(treespec, LeafSpec\)` is deprecated", category=FutureWarning)
     logging.getLogger("pytorch_lightning.utilities.rank_zero").addFilter(lambda r: not r.getMessage().startswith("💡 Tip"))
 
     # indices are positions within the inherited CUDA_VISIBLE_DEVICES set
     trainer = pl.Trainer(
-        devices=1 if devices is None else devices,
+        devices=devices,
         max_steps=max_iterations,
         max_epochs=1,
         use_distributed_sampler=False,

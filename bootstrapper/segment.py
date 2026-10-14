@@ -236,4 +236,4 @@ def segment(config_file, step, ws, mws, cc, **kwargs):
             raise click.ClickException(f"{config_file}: [{s.label}] has no method; set method = \"ws\", \"mws\" or \"cc\", or pass -ws, -mws or -cc")
         for volume, config in runs(s):
             for method in methods:
-                run_segmentation(config, method, **kwargs)
+                run_segmentation(config | {"volume": volume}, method, **kwargs)

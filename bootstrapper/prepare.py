@@ -481,7 +481,7 @@ def refresh(path):
     changed = stale(path)
     for f, text, run, _ in changed:
         with open(f, "w") as fh:
-            fh.write(splice(text, tail_text(os.path.abspath(path), run) if run else ""))
+            fh.write(splice(text, tail_text(path, run) if run else ""))
     files = load_round(path)
     for _, steps in files:
         for s in steps:

@@ -1,18 +1,23 @@
 """A run prints progress, warnings, errors and results, not the input it was given: predict and
 segment print no config dict, evaluate no bare ROI, training no Lightning tip and no warning about
-the setup dir it resumes from. Evaluate ends with one line per volume and segmentation."""
+the setup dir it resumes from. Evaluate ends with one line per volume and segmentation. A
+blockwise task prints one line under a short name, unless a block failed. Training starts with
+one line of what it runs on."""
 
 import json
 import os
+import re
 import subprocess
 import sys
 
+import daisy
 import numpy as np
 import pytest
 import toml
 from funlib.persistence import prepare_ds
 
 import bootstrapper.post.watershed_mutex as watershed_mutex
+from bootstrapper.blockwise import run_blockwise
 from bootstrapper.predict import run_prediction
 from bootstrapper.segment import run_segmentation
 
@@ -157,5 +162,56 @@ def test_training_prints_no_lightning_tip_and_no_setup_dir_warning(tmp_path, res
 
     assert r.returncode == 0, r.stderr
     assert "matmul precision high" in r.stdout.splitlines()
-    for noise in ("Tip:", "Checkpoint directory"):
+    assert "Training setup: 2 iterations, 0 data workers, the CPU" in r.stdout.splitlines()
+    for noise in ("Tip:", "Checkpoint directory", "LeafSpec"):
         assert noise not in r.stdout + r.stderr
+
+
+LONG_ID = "eps0.001--b-0.4_-0.4_-0.4_-0.7_-0.7_-0.7--st1_1_1_2.9.9_2.9.9--rs--ff0.1--rd64-extract-frags"
+
+
+def two_blocks(process):
+    roi = daisy.Roi((0,), (4,))
+    return daisy.Task(LONG_ID, roi, daisy.Roi((0,), (2,)), daisy.Roi((0,), (2,)), process_function=process,
+                      num_workers=1, max_retries=0)
+
+
+def test_a_blockwise_task_prints_one_line_under_its_short_name(capsys):
+    run_blockwise([two_blocks(lambda block: None)], multiprocessing=False, name="segment v fragments")
+
+    out = capsys.readouterr()
+    assert re.fullmatch(r"segment v fragments: 2 of 2 blocks done, 0 failed, \d+\.\d s\n", out.out)
+    assert LONG_ID not in out.out + out.err
+
+
+def test_a_failed_block_keeps_the_full_summary(capsys):
+    def fail(block):
+        block.status = daisy.BlockStatus.FAILED
+
+    with pytest.raises(RuntimeError, match="2 failed"):
+        run_blockwise([two_blocks(fail)], multiprocessing=False, name="segment v fragments")
+
+    out = capsys.readouterr().out
+    assert "Execution Summary" in out
+    assert "  Task segment v fragments:" in out.splitlines()
+    assert "    failed    ✗: 2" in out.splitlines()
+
+
+def test_bs_segment_names_each_task_by_its_step_volume_and_output(tmp_path, affs, bs):
+    (tmp_path / "04_segment.toml").write_text(toml.dumps({
+        "volumes": {"v": {"raw": affs}},
+        "segment": {
+            "method": "mws",
+            "params": {"aff_neighborhood": [[-1, 0, 0], [0, -1, 0], [0, 0, -1]], "bias": [-0.5] * 3},
+            "v": {"affs_dataset": affs, "fragments_dataset": f"{tmp_path}/o.zarr/frags",
+                  "seg_dataset_prefix": f"{tmp_path}/o.zarr/segs"},
+        },
+    }))
+
+    r = bs("segment", tmp_path / "04_segment.toml")
+
+    assert r.returncode == 0, r.stderr
+    tasks = [line.split(":")[0] for line in r.stdout.splitlines() if " blocks done, 0 failed, " in line]
+    assert tasks == ["segment v fragments", "segment v edges", "segment v graph", "segment v segmentation"]
+    assert "Execution Summary" not in r.stdout + r.stderr
+    assert "-extract-frags" not in r.stdout + r.stderr

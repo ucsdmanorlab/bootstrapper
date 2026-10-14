@@ -139,7 +139,7 @@ def test_the_dialogue_explains_goes_back_and_asks_again(tmp_path, monkeypatch):
 
     result = CliRunner().invoke(prepare, ["round_01"], input="\n".join(answers) + "\n", catch_exceptions=False)
 
-    assert result.output.split("\nCopying ")[0] == """\
+    assert result.output.split("\nCopied ")[0] == """\
 Set up a round: your arrays, then the models. '?' explains a question, '<' goes back, Tab completes.
 Raw image (zarr array or container, tif, image folder; globs work) > apical.zarr
     1  raw/s0  8 64 64  uint8  50 8 8 nm
@@ -294,7 +294,8 @@ def test_bs_prepare_writes_the_tails_again_and_keeps_your_lines(tmp_path, prepar
     for f, text in before.items():
         assert after[f].startswith(text.split("\n# Below: the run tail.")[0]), f
     predict = round_dir / "02_predict_2d_mtlsd.toml"
-    assert after[predict] == before[predict].replace("_30000.ckpt", "_20000.ckpt")
+    # the refreshed tail names the round as this run typed it
+    assert after[predict] == before[predict].replace("_30000.ckpt", "_20000.ckpt").replace(f"prepare {round_dir}", "prepare round_01")
     third = toml.load(round_dir / "03_predict_3d_affs_from_2d_mtlsd.toml")
     assert "checkpoint" not in third["run"]["predict"]["3d_affs_from_2d_mtlsd"]
     affs = step(tmp_path, "04_segment.toml").volumes["apical"]["affs_dataset"]
@@ -462,6 +463,21 @@ def test_segment_refine_and_evaluate_follow_the_affs(tmp_path, prepared):
         == f"{tmp_path}/apical.zarr/labels"
     )
     assert evaluate.keys["thresholds"] == [0.1, 1.0]
+
+
+def test_bs_prepare_names_the_round_and_the_scripts_as_you_typed_them(tmp_path):
+    labels = np.zeros((8, 64, 64), np.uint64)
+    labels[2, 10:30, 10:30] = 1
+    write(tmp_path / "apical.zarr" / "raw", np.zeros(labels.shape, np.uint8))
+    write(tmp_path / "apical.zarr" / "labels", labels)
+
+    result = CliRunner().invoke(prepare, ["round_01", "--raw", "apical.zarr/raw", "--labels", "labels", "--labelled",
+                                          "sparsely", "--untraced", "background"], catch_exceptions=False)
+
+    assert result.exit_code == 0, result.output
+    assert "Copied the 2d_mtlsd scripts into round_01/2d_mtlsd" in result.output.splitlines()
+    tail = "# Edit the keys above, not these; then run: bs prepare round_01"
+    assert tail in (tmp_path / "round_01" / "01_train_2d_mtlsd.toml").read_text().splitlines()
 
 
 def test_model_copy_leaves_out_pycache(tmp_path, monkeypatch):
