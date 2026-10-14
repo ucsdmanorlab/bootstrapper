@@ -145,8 +145,8 @@
 - Segment blocks are at least 16 sections deep by default, so a 3D model's
   4-section chunks no longer put a block face every 4 sections.
 - `bs view` shows affinities and LSDs as RGB of channels 0 to 2, and ids and
-  masks as segmentation layers. It opens on the volume with ground truth, with
-  a section in the main panel.
+  masks as segmentation layers. It opens on the centre of the volume with
+  ground truth, with a section in the main panel.
 - `bs evaluate` ends with one line per volume and segmentation, such as
   `volume_2-zarr  mws/fill_holes  NVI split 0.115 merge 0.145`.
 - Each blockwise task prints one line when it ends. A failed block still
@@ -157,7 +157,8 @@
 - `bs run --only` and `--from` take a step number, such as `04`.
 - The labels question has three answers: sparsely labelled, densely
   labelled, or densely labelled within a mask. `bs prepare` finds 2D labels
-  itself and prints why.
+  itself and prints why. Before it calls the labels 2D, it reads every
+  section, so it also finds labels between the sampled sections.
 - Labels on one section, or on every second section, count as 2D. The default
   models are then `2d_mtlsd` and `3d_affs_from_2d_mtlsd`.
 - The default volume name is the container file name with the dot as a dash:
@@ -170,10 +171,20 @@
 - The thresholds of the prediction check are in `[evaluate]`, once for all
   volumes.
 - With a target mask, predict covers only the box of the mask. Refine ends with
-  a mask op that sets labels outside the mask to 0.
+  a mask op that sets labels outside the mask to 0. One volume with a target
+  mask is enough. `bs prepare` also adds the op when it adds a volume with
+  `--target-mask` to a round.
 - With several volumes, training draws each volume by its labelled voxels.
   Before, each volume was drawn equally often. `sampling = "equal"` restores
   that.
+- Inside a volume, training draws each run of adjacent labelled sections by
+  its labelled voxels. So a section with a small labelled patch is drawn less
+  often than a fully labelled section.
+- `bs train` reads each training mask once before training, to find the
+  labelled sections. On a 200-section volume this takes 0.35 s.
+- The 2D LSD sigma is 10 voxels at all voxel sizes (`"sigma": 10` in
+  `net_config.json`). Before, it was 80 nm: 0.48 voxels at 168 nm and 80
+  voxels at 1 nm. At 8 nm voxels nothing changes.
 - The tables of a volume merge key by key over the tables of the step.
 - `num_workers` in `[refine]` is the default of each op, and an op table can
   set its own.
@@ -186,6 +197,8 @@
 - `bs train` stops before training when the labels of a sample reach past its
   raw. It also stops when the mask reaches past the labels. The message gives
   the crop to use.
+- `bs prepare` stops when a training mask does not overlap the labels. The
+  message names a mask that overlaps, if one exists.
 - `bs train` names the `bs prepare` command to run when the setup has no
   `train.py` or a training mask is missing.
 - `num_gpus = 0` runs prediction on the CPU, also when `CUDA_VISIBLE_DEVICES`
@@ -212,6 +225,12 @@
   give one array in full.
 - `bs predict` asks no question. A missing checkpoint stops `bs run` and its
   dry run before the first step, with the command that downloads it.
+- `bs run` predicts with the last checkpoint that training saves. With
+  `max_iterations = 12001`, this is `model_checkpoint_10000`.
+- `bs prepare` stops when `max_iterations` is under `save_checkpoints_every`,
+  because training then saves no checkpoint. Example: `max_iterations = 5001`.
+- `bs prepare` on a round directory with only `volumes.toml` uses the
+  `models` key of that file.
 - A refine mask op runs only on the volumes that have a target mask.
 - `bs prepare ... | head` ends quietly, with no traceback file.
 - The 3D trainers (`3d_affs`, `3d_lsd`, `3d_mtlsd`) deform each section in y
@@ -222,6 +241,18 @@
   5 % labelled. Before, a batch could reach the loss with no labelled voxel.
 - The gamma augmentation changes the image. The defect augmentation uses its
   deformation probability.
+- A raw with a channel axis (c z y x) trains and predicts with the 6 models
+  that read raw. Before, training stopped with "array shift axis length ...
+  is not divisible" or a conv3d input error. `bs prepare` writes the channel
+  count as `in_channels` in `net_config.json`. All raws of one round need the
+  same channel count. The defect augmentation changes whole sections of such
+  a raw. Shift augment is off for it.
+- Training draws its windows only on the sections that hold labels. Before,
+  it drew over the whole volume and rejected the windows without labels. With
+  labels on 1 of 30 sections, a window took 25 draws. With labels on every
+  21st of 200 sections, it took 20. Now each window takes 1 draw. On one CPU
+  process, a batch of 10 windows from the 30-section volume takes 0.75 s, not
+  11.3 s.
 - Densely labelled volumes also train on the space between objects.
   `mask_dilation` grows the training mask of sparsely labelled volumes.
   `training_mask = "<path>"` trains on that mask.
@@ -241,6 +272,9 @@
   as `-i pyr.zarr/raw/s1`.
 - A zarr container given as the raw image does not crash the converter.
 - `bs view --snapshot` works when the snapshot container holds a group.
+- `bs view` sets the contrast of a raw with channels from its data. Channels 0
+  to 2 each map their 1st to 99.5th percentile on the centre section to black
+  and white. Before, a dim raw showed near black.
 - A model copy from `bs prepare` or `bs utils download-ckpts` has no
   `__pycache__`.
 - A setup `train.py` run with the config of another setup names both

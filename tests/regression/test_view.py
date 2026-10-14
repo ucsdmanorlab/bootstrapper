@@ -253,3 +253,44 @@ def test_bs_view_puts_x_y_z_first_so_the_xy_panel_shows_a_section(round_dir, vie
     assert result.exit_code == 0, result.output
     assert list(viewer.txn.dimensions.names) == ["x", "y", "z"]
     assert list(viewer.txn.dimensions.scales) == pytest.approx([8e-9, 8e-9, 40e-9])
+
+
+def test_bs_view_opens_on_the_shown_volume_when_another_volume_is_larger(tmp_path, viewer):
+    """As in harris15: the trained volume has 194 sections, the held-out one 91. The centre of
+    both is past the end of the held-out volume, so the panels must open on the shown arrays."""
+    trained = array(tmp_path / "trained.zarr" / "raw", np.zeros((24, 64, 64), np.uint8))
+    held = array(tmp_path / "held.zarr" / "raw", np.zeros((8, 32, 32), np.uint8))
+    seg = array(tmp_path / "held.zarr" / "segmentations_mws" / "gb1_-0.5", np.zeros((8, 32, 32), np.uint64))
+    gt = array(tmp_path / "held.zarr" / "labels", np.zeros((8, 32, 32), np.uint64))
+    path = tmp_path / "round_01"
+    path.mkdir()
+    (path / "volumes.toml").write_text(
+        f'[volumes.trained]\nraw = "{trained}"\n[volumes.held]\nraw = "{held}"\ngt = "{gt}"\n')
+    (path / "01_segment.toml").write_text(
+        '[segment]\nmethod = "mws"\n'
+        f'[segment.held]\naffs_dataset = "{tmp_path}/held.zarr/3d_affs"\nseg_dataset_prefix = "{tmp_path}/held.zarr/segmentations_mws"\n')
+
+    result = CliRunner().invoke(view_module.view, [str(path)])
+
+    assert result.exit_code == 0, result.output
+    assert "held 01 segmentation" in [name for name, v in viewer.layers.items() if v.visible]
+    assert list(viewer.txn.position) == [16.5, 16.5, 4.5]
+
+
+def test_bs_view_sets_the_contrast_of_a_multichannel_raw_from_its_centre_section(tmp_path, viewer):
+    """As in prism: an 18-channel raw of mean 9 of 255 shows near black over 0 to 255.
+    Each shown channel maps its 1st to 99.5th percentile on the centre section to black..white."""
+    data = np.full((6, 8, 32, 32), 255, np.uint8)
+    for c in range(3):
+        data[c, 4, :16] = 10 + c
+        data[c, 4, 16:] = 40 + c
+    data[0, 4, 0, 0] = 255
+    raw = array(tmp_path / "v.zarr" / "raw", data)
+
+    result = CliRunner().invoke(view_module.view, [raw])
+
+    assert result.exit_code == 0, result.output
+    shader = viewer.layers["raw"].layer.shader
+    for c in range(3):
+        assert f"range=[{10 + c}, {40 + c}], channel={c})" in shader
+    assert "emitRGB(vec3(c0(), c1(), c2()))" in shader

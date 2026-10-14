@@ -53,11 +53,13 @@ def view(snapshot, bind, path):
     with viewer.txn() as s:
         for name, array_path, kind, source, visible in layers:
             click.echo(f"{name:<{width}}  {array_path}  {kind}")
-            s.layers.append(name=name, layer=_layer(kind, source), visible=visible)
+            raw = kind == "rgb image" and not snapshot and name.split()[-1] == "raw"
+            s.layers.append(name=name, layer=_layer(kind, source, _ranges(array_path) if raw else None), visible=visible)
         if snapshot:
             s.layout = "yz"
         elif layers:
             s.dimensions = _xyz_first(layers[0][3].dimensions)
+            s.position = _centre([p for _, p, _, _, visible in layers if visible][-1], s.dimensions)
     click.echo(viewer)
     click.pause("Press any key to exit...")
 
@@ -155,9 +157,33 @@ def _xyz_first(dims):
     return neuroglancer.CoordinateSpace(names=order, units=[dims.units[k] for k in i], scales=[dims.scales[k] for k in i])
 
 
-def _layer(kind, source):
+def _centre(path, dims):
+    """The centre of an array in the voxels of dims, so the panels open on it, not on the centre of all volumes."""
+    a = open_ds(path)
+    nm = dict(zip([n for n in a.axis_names if "^" not in n], a.roi.center))
+    return [int(nm[n] * 1e-9 / scale) + 0.5 for n, scale in zip(dims.names, dims.scales)]
+
+
+def _ranges(path):
+    """The 1st and 99.5th percentile of channels 0 to 2 on the centre section, so a dim
+    multichannel raw does not show near black."""
+    a = open_ds(path)
+    spatial = [i for i, n in enumerate(a.axis_names) if "^" not in n]
+    c = a.axis_names.index(next(n for n in a.axis_names if "^" in n))
+    index = [slice(None)] * len(a.shape)
+    index[c] = slice(0, 3)
+    if len(spatial) == 3:
+        index[spatial[0]] = a.shape[spatial[0]] // 2
+    section = np.moveaxis(zarr.open(path, mode="r")[tuple(index)], c, 0)
+    return [np.percentile(channel, [1, 99.5]).astype(section.dtype).tolist() for channel in section.reshape(len(section), -1)]
+
+
+def _layer(kind, source, ranges=None):
     if kind == "segmentation":
         return neuroglancer.SegmentationLayer(source=source)
+    if ranges:
+        controls = "".join(f"#uicontrol invlerp c{i}(range=[{lo}, {hi if hi > lo else lo + 1}], channel={i})\n" for i, (lo, hi) in enumerate(ranges))
+        return neuroglancer.ImageLayer(source=source, shader=controls + "void main() {\n  emitRGB(vec3(c0(), c1(), c2()));\n}")
     return neuroglancer.ImageLayer(source=source, **({"shader": RGB} if kind == "rgb image" else {}))
 
 
