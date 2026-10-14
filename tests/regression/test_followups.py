@@ -5,6 +5,7 @@ mask op. A glob added to a round prints the volume names that the round gives.""
 import subprocess
 
 import numpy as np
+import pytest
 import toml
 from click.testing import CliRunner
 from funlib.persistence import open_ds
@@ -88,3 +89,26 @@ def test_a_glob_added_to_a_round_prints_the_names_the_round_gives(tmp_path):
 
     assert list(load_volumes("round_01/volumes.toml")) == ["apical-zarr", "apical-zarr-2", "basal-zarr"]
     assert "2 volumes (apical-zarr-2, basal-zarr)" in out
+
+
+@pytest.mark.parametrize("max_iterations,last", [(10000, 10000), (12001, 10000), (30001, 30000)])
+def test_predict_reads_the_last_checkpoint_that_training_saves(tmp_path, max_iterations, last):
+    run_prepare(tmp_path)
+    train = tmp_path / "round_01" / "01_train_2d_mtlsd.toml"
+    train.write_text(train.read_text().replace("max_iterations = 30001", f"max_iterations = {max_iterations}"))
+    CliRunner().invoke(prepare, [f"{tmp_path}/round_01"], catch_exceptions=False)
+
+    lines = CliRunner().invoke(cli, ["run", "round_01", "--dry-run"]).output.splitlines()
+
+    assert lines[5] == f"   reads  {tmp_path}/apical.zarr/raw, 2d_mtlsd/model_checkpoint_{last}.ckpt from 01"
+
+
+def test_fewer_iterations_than_one_checkpoint_stop_prepare(tmp_path):
+    run_prepare(tmp_path)
+    train = tmp_path / "round_01" / "01_train_2d_mtlsd.toml"
+    train.write_text(train.read_text().replace("max_iterations = 30001", "max_iterations = 4000"))
+
+    result = CliRunner().invoke(prepare, [f"{tmp_path}/round_01"])
+
+    assert result.exit_code != 0
+    assert "max_iterations 4000 is under save_checkpoints_every 5000" in result.output

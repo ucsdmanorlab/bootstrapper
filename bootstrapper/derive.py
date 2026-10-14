@@ -12,6 +12,7 @@ from .catalog import MODELS, check_round
 from .config import Step, ops_beside, runs, unset, with_tail
 from .configs import MODEL_DIR, checkpoint_iteration, find_checkpoints, output_level
 from .data.mask import training_mask
+from .params import defaults
 from .post.naming import mws_segmentation_name
 from .segment import DEFAULTS as SEG_DEFAULTS
 
@@ -37,7 +38,13 @@ def derive(volumes, steps, root):
                    "voxel_size": first.get("voxel_size") or [int(x) for x in zarr.open(first["raw"], "r").attrs["voxel_size"]],
                    "samples": [_sample(n, keys, os.path.join(root, "training_mask.zarr", n)) for n, keys in labelled.items()]}
             run = _over(step, own, per)[0].keys
-            last = os.path.join(run["setup_dir"], f"model_checkpoint_{run['max_iterations'] - 1}.ckpt")
+            every = run.get("save_checkpoints_every", defaults("train.*")["save_checkpoints_every"])
+            if run["max_iterations"] < every:
+                raise click.ClickException(
+                    f"[{step.label}] max_iterations {run['max_iterations']} is under save_checkpoints_every {every}, "
+                    f"so training saves no checkpoint. Example: max_iterations = {every + 1}")
+            # training saves a checkpoint at each multiple of save_checkpoints_every up to max_iterations
+            last = os.path.join(run["setup_dir"], f"model_checkpoint_{run['max_iterations'] // every * every}.ckpt")
             trained[step.name] = {"setup_dir": run["setup_dir"], "checkpoint": last}
         elif step.kind == "predict":
             model = _model(step)
