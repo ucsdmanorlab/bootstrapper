@@ -29,7 +29,7 @@ KEYS = {
         "save_checkpoints_every": Key(5000, "Iterations between checkpoints."),
         "save_snapshots_every": Key(1000, "Iterations between snapshots: training batches you can view."),
         "devices": Key(1, "GPUs for training: a count such as 1, or a list such as [0]."),
-        "sampling": Key("labels", 'Volumes drawn by labelled voxels; or "equal", "inv" or [3, 1].', off=True),
+        "sampling": Key("equal", 'Each volume gives an equal share of batches; or "labels" (by labelled voxels), "inv" or [3, 1].', off=True),
     },
     "predict.*": {
         "num_gpus": Key(1, "GPUs for prediction. More than one runs blocks through daisy."),

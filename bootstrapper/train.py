@@ -97,7 +97,7 @@ def setup_train(config_file, step=None, **kwargs):
                                          "labelled_sections": labelled_sections(mask_ds or labels_ds)})
 
     # update samples in config
-    sampling = config.pop("sampling", "labels")
+    sampling = config.pop("sampling", "equal")
     if samples:
         for sample, p in zip(out_samples, probabilities(out_samples, sampling)):
             sample["probability"] = p

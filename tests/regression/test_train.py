@@ -268,7 +268,7 @@ def two_volumes(tmp_path):
 
 @pytest.mark.parametrize(
     "sampling,expected",
-    [(None, [0.75, 0.25]), ("equal", [0.5, 0.5]), ("inv", [0.25, 0.75]), ([1, 4], [0.2, 0.8]), ({"b": 4, "a": 1}, [0.2, 0.8])],
+    [(None, [0.5, 0.5]), ("labels", [0.75, 0.25]), ("equal", [0.5, 0.5]), ("inv", [0.25, 0.75]), ([1, 4], [0.2, 0.8]), ({"b": 4, "a": 1}, [0.2, 0.8])],
 )
 def test_volumes_are_drawn_by_labelled_voxels_equally_inversely_or_as_given(tmp_path, capsys, sampling, expected):
     extra = {} if sampling is None else {"sampling": sampling}

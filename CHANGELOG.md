@@ -105,7 +105,7 @@
   container: `crop1.zarr` gives `crop1-zarr`.
 - A volume can name arrays of its own, such as `pgt = ".../pgt/s0"`.
 - The train step key `sampling` sets how often each volume is drawn. It takes
-  `"labels"` (default), `"equal"` or `"inv"`. It also takes numbers, as a list
+  `"equal"` (default), `"labels"` or `"inv"`. It also takes numbers, as a list
   such as `[3, 1]` or a table such as `{a-zarr = 3, b-zarr = 1}`. `bs train`
   prints the draw.
 - User seeds for mutex watershed. Set `seeds_dataset` in `[segment]` to an
@@ -174,9 +174,6 @@
   a mask op that sets labels outside the mask to 0. One volume with a target
   mask is enough. `bs prepare` also adds the op when it adds a volume with
   `--target-mask` to a round.
-- With several volumes, training draws each volume by its labelled voxels.
-  Before, each volume was drawn equally often. `sampling = "equal"` restores
-  that.
 - Inside a volume, training draws each run of adjacent labelled sections by
   its labelled voxels. So a section with a small labelled patch is drawn less
   often than a fully labelled section.
