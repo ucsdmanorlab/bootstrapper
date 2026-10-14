@@ -147,7 +147,7 @@ def predict(
         + gp.Normalize(raw)
         + gp.Pad(raw, None, mode="reflect")
         + gp.IntensityScaleShift(raw, 2, -1)
-        + gp.Unsqueeze([raw])
+        + gp.Unsqueeze([raw] if len(in_ds.shape) == 3 else [])  # the channel axis
         + gp.Unsqueeze([raw])
         + predict
         + gp.Squeeze([pred_lsds])

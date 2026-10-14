@@ -108,7 +108,7 @@ def create_pipeline(voxel_size, net_config, samples):
         scale_interval=(0.9, 1.1),
         p=0.5,
     )
-    if adj_slices > 1:
+    if adj_slices > 1 and net_config["in_channels"] == 1:  # gp.ShiftAugment cannot shift a raw with channels
         pipeline += gp.ShiftAugment(prob_slip=0.2, prob_shift=0.2, sigma=3)
     pipeline += gp.NoiseAugment(raw, p=0.5)
     pipeline += gp.IntensityAugment(

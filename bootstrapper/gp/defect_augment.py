@@ -200,7 +200,7 @@ class DefectAugment(BatchFilter):
         raw_voxel_size = self.spec[self.intensities].voxel_size
 
         for c, augmentation_type in self.slice_to_augmentation.items():
-            section_selector = tuple(
+            section_selector = (Ellipsis,) + tuple(  # after the channel axis of a raw that has one
                 slice(None if d != self.axis else c, None if d != self.axis else c + 1)
                 for d in range(raw.spec.roi.dims)
             )
