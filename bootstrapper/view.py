@@ -56,6 +56,8 @@ def view(snapshot, bind, path):
             s.layers.append(name=name, layer=_layer(kind, source), visible=visible)
         if snapshot:
             s.layout = "yz"
+        elif layers:
+            s.dimensions = _xyz_first(layers[0][3].dimensions)
     click.echo(viewer)
     click.pause("Press any key to exit...")
 
@@ -144,6 +146,13 @@ def layer_type(name, dtype, channels):
     if np.issubdtype(dtype, np.integer) and ("label" in name or "mask" in name or np.dtype(dtype).itemsize >= 4):
         return "segmentation"
     return "image"
+
+
+def _xyz_first(dims):
+    """The dimensions with x, y, z first, so the xy panel shows a section the right way round."""
+    order = [n for n in ("x", "y", "z") if n in dims.names] + [n for n in dims.names if n not in "xyz" and "^" not in n]
+    i = [dims.names.index(n) for n in order]
+    return neuroglancer.CoordinateSpace(names=order, units=[dims.units[k] for k in i], scales=[dims.scales[k] for k in i])
 
 
 def _layer(kind, source):

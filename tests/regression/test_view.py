@@ -52,6 +52,7 @@ def viewer(monkeypatch):
         state.layers[name] = SimpleNamespace(layer=layer, visible=visible)
 
     txn = SimpleNamespace(layers=SimpleNamespace(append=append), layout=None)
+    state.txn = txn
     monkeypatch.setattr(view_module.neuroglancer, "set_server_bind_address", state.bind.append)
     monkeypatch.setattr(
         view_module.neuroglancer,
@@ -216,3 +217,12 @@ def test_the_raw_of_a_2d_batch_shows_its_sections_as_rgb(tmp_path, viewer):
 
     assert result.exit_code == 0, result.output
     assert ("raw", f"{path}/raw", "rgb image") in printed(result.output)
+
+
+def test_bs_view_puts_x_y_z_first_so_the_xy_panel_shows_a_section(round_dir, viewer):
+    path, _ = round_dir
+    result = CliRunner().invoke(view_module.view, [str(path), "--bind", "127.0.0.1"])
+
+    assert result.exit_code == 0, result.output
+    assert list(viewer.txn.dimensions.names) == ["x", "y", "z"]
+    assert list(viewer.txn.dimensions.scales) == pytest.approx([8e-9, 8e-9, 40e-9])
