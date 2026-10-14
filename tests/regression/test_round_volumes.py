@@ -13,7 +13,8 @@ from test_prepare import write
 
 from bootstrapper.cli import cli
 from bootstrapper.config import WRITES, load_round, load_volumes, paths, runs
-from bootstrapper.prepare import Draft, parse_gt, parse_raw, prepare
+from bootstrapper.catalog import parse_chain
+from bootstrapper.prepare import Answers, Draft, parse_gt, parse_raw, prepare, write_round
 
 
 def data(tmp_path):
@@ -193,3 +194,37 @@ def test_a_flag_error_puts_a_colon_after_the_flag(tmp_path):
     result = CliRunner().invoke(prepare, ["round_01", "--raw", "volume_2.zarr/raw", "--gt", "dense"])
 
     assert result.stderr == f"Error: --gt: dense: no zarr array there or in {tmp_path}/volume_2.zarr\n"
+
+
+def test_a_held_out_volume_with_a_target_mask_gets_the_refine_mask_op(tmp_path):
+    """As in harris15: the training volume has no target mask, and the held-out volume has its
+    gt mask. mws leaves objects up to 27 voxels outside the mask; the refine mask op clears them."""
+    data(tmp_path)
+    write(tmp_path / "volume_2.zarr" / "labels_mask", np.ones((4, 16, 16), np.uint8))
+    CliRunner().invoke(prepare, FIRST, catch_exceptions=False)
+
+    result = CliRunner().invoke(prepare, ["round_01", "--raw", "volume_2.zarr/raw", "--gt", "labels",
+                                          "--target-mask", "labels_mask"], catch_exceptions=False)
+
+    assert result.exit_code == 0, result.output
+    assert "added [refine.mask] to round_01/05_refine.toml\n" in result.output
+    refine = load_round("round_01")[4][1][0]
+    assert list(refine.keys["ops"]) == ["fill-holes", "mask"]
+    assert dict(runs(refine))["volume_2-zarr"]["ops"]["mask"] == {"mask_array": f"{tmp_path}/volume_2.zarr/labels_mask"}
+    dry_run = CliRunner().invoke(cli, ["run", "round_01", "--dry-run"]).output
+    assert dry_run.endswith("Nothing ran.\n"), dry_run
+    assert "05 refine on volume_1-zarr: fill-holes\n" in dry_run
+    assert "05 refine on volume_2-zarr: fill-holes, mask\n" in dry_run
+
+
+def test_one_volume_with_a_target_mask_is_enough_for_the_refine_mask_op(tmp_path):
+    """The dialogue gives both volumes at once; the first has no target mask."""
+    data(tmp_path)
+    write(tmp_path / "volume_2.zarr" / "labels_mask", np.ones((4, 16, 16), np.uint8))
+    volumes = {"v1": {"raw": f"{tmp_path}/volume_1.zarr/raw", "labels": f"{tmp_path}/volume_1.zarr/sparse_labels",
+                      "2d_labels": True, "training_mask": "labels"},
+               "v2": {"raw": f"{tmp_path}/volume_2.zarr/raw", "target_mask": f"{tmp_path}/volume_2.zarr/labels_mask"}}
+
+    write_round("round_01", Answers(volumes, tuple(parse_chain("2M 3Af2M"))))
+
+    assert list(load_round("round_01")[4][1][0].keys["ops"]) == ["fill-holes", "mask"]

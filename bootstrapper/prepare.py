@@ -1,6 +1,7 @@
 """bs prepare: ask the facts of your data in a short dialogue, or take them as flags, then
 write the round; on a round, add the volume that flags give and write its run tails again."""
 import glob
+import json
 import os
 import re
 import sys
@@ -9,6 +10,7 @@ from dataclasses import dataclass, field, replace
 from typing import Callable
 
 import click
+import numpy as np
 import zarr
 
 from . import discover
@@ -35,6 +37,7 @@ class Draft:
     images: tuple = ()  # a container's image arrays, until an answer picks one
     source: str = ""  # a tif or a folder of 2D images, until it converts into the round
     labels_read: str = ""  # what the 2D check read
+    labels: discover.Array = None  # the labels the answer picked
     taken: frozenset = frozenset()  # the names of the round's other volumes
     round: str = ""  # the folder an image source converts into
 
@@ -103,17 +106,21 @@ def parse_labels(text, d):
         return d
     path, labels = _array(text, d, _candidates(d, "labels"))
     flat, read = labels_2d(labels)
-    return replace(d, keys=d.keys | {"labels": path, "2d_labels": flat}, labels_read=read)
+    return replace(d, keys=d.keys | {"labels": path, "2d_labels": flat}, labels_read=read, labels=labels)
 
 
 def labels_2d(labels):
-    """2D when no sampled labelled section has a labelled next section. Reads the coarsest scale:
-    the answer is the same, and the read smaller."""
+    """2D when no labelled section has a labelled next section. A sample of 16 sections can find
+    3D labels; a 2D answer reads every section. Reads the coarsest scale: the answer is the same,
+    and the read smaller."""
     coarse = max((s for s in discover.scales(labels) if s.dtype == labels.dtype and s.voxel_size[0] == labels.voxel_size[0]), key=lambda s: s.voxel_size)
     arr = zarr.open_array(coarse.path, mode="r")
     n = arr.shape[0]
     zs = range(0, n, max(1, n // 16))
     labelled = [z for z in zs if arr[z].any()]
+    if not any(z + 1 < n and arr[z + 1].any() for z in labelled):  # labelled sections can fall between the samples: read all, one chunk of sections at a time
+        zs, step = range(n), arr.chunks[0]
+        labelled = [z0 + int(i) for z0 in range(0, n, step) for i in np.flatnonzero(arr[z0 : z0 + step].any(axis=(1, 2)))]
     stacked = sum(z + 1 < n and bool(arr[z + 1].any()) for z in labelled)
     return not stacked, (f"{labels.name}: labels on {len(labelled)} of {len(zs)} sampled sections, {stacked} with "
                          f"labels on the next section, so {'3D' if stacked else '2D'} labels")
@@ -132,7 +139,16 @@ def parse_labelling(text, d):
 
 
 def parse_mask(text, d):
-    return replace(d, keys=d.keys | {"training_mask": _array(text, d)[0]})
+    path, mask = _array(text, d)
+    if not _overlap(mask, d.labels):
+        fits = [a.name for a in _candidates(d, "mask") if _overlap(a, d.labels)]
+        raise click.ClickException(f"{text} does not overlap the labels {d.labels.name}, so training would find no labels in it. "
+                                   f"Give the mask of {d.labels.name}" + (f", such as {fits[0]}" if fits else ""))
+    return replace(d, keys=d.keys | {"training_mask": path})
+
+
+def _overlap(a, b):
+    return all(lo < b_hi and b_lo < hi for (lo, hi), (b_lo, b_hi) in zip(a.roi, b.roi))
 
 
 def parse_untraced(text, d):
@@ -396,7 +412,7 @@ def write_round(path, answers):
                       {"predict": {model.name: defaults("predict.*")}}))
     files.append(("segment", f"Segment the 3D affinities of {chain[-1].name} into objects.",
                   {"segment": defaults("segment") | {"params": defaults("segment.params")}}))
-    masked = {"mask": {}} if all("target_mask" in v for v in volumes.values()) else {}
+    masked = {"mask": {}} if any("target_mask" in v for v in volumes.values()) else {}
     files.append(("refine", "Refine the segmentation. The ops run in file order; each output feeds the next.",
                   {"refine": {"fill-holes": defaults("refine.fill-holes")} | masked}))
     if any("gt" in v for v in volumes.values()):
@@ -452,6 +468,19 @@ def add_steps(path):
     return [out]
 
 
+def add_mask_op(path):
+    """Add the mask op to the refine step of the round folder at path, which lacks it until a
+    volume brings a target mask: mws leaves objects outside the mask. Returns the file changed."""
+    for f, steps in load_round(path, tail=False):
+        if any(s.kind == "refine" and "mask" not in s.keys.get("ops", {}) for s in steps):
+            with open(f) as fh:
+                head = splice(fh.read(), "")
+            with open(f, "w") as fh:
+                fh.write(head + "\n[refine.mask]\n")
+            return [f]
+    return []
+
+
 def stale(path):
     """(file, its text, its new run tail, {table: {key: (old, new)}}) for each file of the round
     at path whose run tail differs from the one derived from the volumes and the keys above it."""
@@ -503,15 +532,37 @@ def refresh(path):
         with open(f, "w") as fh:
             fh.write(splice(text, tail_text(path, run) if run else ""))
     files = load_round(path)
+    volumes = load_volumes(files[0][0])
     for _, steps in files:
         for s in steps:
             if s.kind == "train" and not os.path.exists(os.path.join(s.keys["setup_dir"], "train.py")):
                 copy_model_scripts(s.name, s.keys["setup_dir"], cli_edit=False)
-    for name, v in load_volumes(files[0][0]).items():
+            if s.kind == "train":
+                set_in_channels(s.keys["setup_dir"], volumes)
+    for name, v in volumes.items():
         out = os.path.join(root, "training_mask.zarr", name)
         if "labels" in v.keys and training_mask(v.keys, out) == out:
             write_training_mask(v.keys, out)
     return [(f, keys) for f, _, _, keys in changed]
+
+
+def set_in_channels(setup_dir, volumes):
+    """Write the channel count of the raws, a c z y x array or 1, as in_channels in the
+    net_config.json of a setup that reads raw."""
+    config = os.path.join(setup_dir, "net_config.json")
+    with open(config) as f:
+        net = json.load(f)
+    counts = {}
+    for name, v in volumes.items():
+        raw = zarr.open_array(v.keys["raw"], mode="r")
+        counts.setdefault(raw.shape[0] if raw.ndim == 4 else 1, []).append(name)
+    if len(counts) > 1:
+        raise click.ClickException("the raws of one round need one channel count; "
+                                   + ", ".join(f"{', '.join(names)}: {n}" for n, names in counts.items()))
+    if "in_channels" in net and net["in_channels"] != (n := next(iter(counts))):
+        net["in_channels"] = n
+        with open(config, "w") as f:
+            json.dump(net, f, indent=2)
 
 
 def _changed(old, new, table="run"):
@@ -561,6 +612,8 @@ def prepare(path, extra, **given):
             raise click.ClickException(f"--models: {path} is a round already. Edit its files, then run: bs prepare {path}")
         if flags:
             add_volume(path, flags, _terminal())
+            for f in add_mask_op(path) if "--target-mask" in flags else []:
+                cli_echo(f"added [refine.mask] to {f}", STYLE)
         added = add_steps(path)
         for f in added:
             cli_echo(f"wrote {f}", STYLE)
@@ -579,6 +632,9 @@ def prepare(path, extra, **given):
         if flags.keys() & VOLUME_FLAGS:
             raise click.ClickException(f"{beside} holds the volumes; edit it, or give a new round folder")
         volumes = {name: v.keys for name, v in load_volumes(beside).items()}
+        with open(beside, "rb") as f:
+            flags.setdefault("--models", tomllib.load(f).get("models"))
+        flags = {k: v for k, v in flags.items() if v is not None}
     else:
         if not terminal and not flags:
             raise click.ClickException("stdin is not a terminal, so bs prepare asks nothing. Give the facts as flags, "

@@ -5,6 +5,7 @@ your keys above a run tail of derived keys, which bs prepare PATH writes again f
 bs run refuses a stale tail, checks every path before any step, and keeps a receipt."""
 
 import glob
+import json
 import os
 import re
 import sys
@@ -242,6 +243,21 @@ def test_a_glob_or_your_own_volumes_toml_makes_several_volumes(tmp_path):
     for name in ("round_01", "round_02"):
         samples = load(f"{name}/01_train_3d_mtlsd.toml")[0].keys["samples"]
         assert [(s["volume"], s["labels"]) for s in samples] == [("a-zarr", f"{tmp_path}/a.zarr/labels"), ("b-zarr", f"{tmp_path}/b.zarr/labels")]
+
+
+def test_the_models_key_of_your_own_volumes_toml_picks_the_chain(tmp_path):
+    """bs prepare --tui and the line dialogue write volumes.toml with a models key; bs prepare
+    on that folder writes the steps of those models, not the default chain."""
+    run_prepare(tmp_path)
+    own = 'models = "2M 3Af2A"\n' + (tmp_path / "round_01" / "volumes.toml").read_text()
+    (tmp_path / "round_02").mkdir()
+    (tmp_path / "round_02" / "volumes.toml").write_text(own)
+
+    result = CliRunner().invoke(prepare, [f"{tmp_path}/round_02"], catch_exceptions=False)
+
+    assert result.exit_code == 0, result.output
+    assert sorted(os.path.basename(p) for p in glob.glob(f"{tmp_path}/round_02/0*.toml"))[:3] == [
+        "01_train_2d_mtlsd.toml", "02_predict_2d_mtlsd.toml", "03_predict_3d_affs_from_2d_affs.toml"]
 
 
 def test_your_keys_sit_above_the_run_tail(tmp_path, prepared):
@@ -591,3 +607,40 @@ def test_a_glob_that_matches_two_labels_names_the_fix(tmp_path):
     assert f"{matches[1]}: one argument too many" in result.output
     assert "give one array in full" in result.output
     assert not (tmp_path / "round_02").exists()
+
+
+def test_a_training_mask_that_misses_the_labels_stops_prepare_and_names_the_one_that_fits(tmp_path):
+    """As in harris15: three label arrays on different sections, each with its own mask. A mask on
+    other sections gives training no labels, and the 2d_mtlsd pipeline crashes in Pad."""
+    labels = np.zeros((1, 64, 64), np.uint64)
+    labels[0, 10:30, 10:30] = 1
+    write(tmp_path / "v.zarr" / "raw", np.full((16, 64, 64), 100, np.uint8))
+    write(tmp_path / "v.zarr" / "dense2d_labels", labels, offset=(600, 0, 0))
+    write(tmp_path / "v.zarr" / "dense2d_mask", np.ones((1, 64, 64), np.uint8), offset=(600, 0, 0))
+    write(tmp_path / "v.zarr" / "sparse_labels_mask", np.ones((1, 64, 64), np.uint8), offset=(200, 0, 0))
+    flags = ["--raw", f"{tmp_path}/v.zarr/raw", "--labels", "dense2d_labels"]
+
+    result = CliRunner().invoke(prepare, ["round_01", *flags, "--labelled", "sparse_labels_mask"])
+    assert result.exit_code == 1
+    assert "sparse_labels_mask does not overlap the labels dense2d_labels" in result.output
+    assert "such as dense2d_mask" in result.output
+    assert not (tmp_path / "round_01").exists()
+
+    result = CliRunner().invoke(prepare, ["round_01", *flags, "--labelled", "dense2d_mask"], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+
+
+def test_prepare_writes_the_raws_channel_count_as_in_channels(tmp_path):
+    """As in prism: a c z y x raw, such as 18 light microscopy channels, trains on all of them."""
+    labels = np.zeros((8, 64, 64), np.uint64)
+    labels[2, 10:30, 10:30] = 1
+    raw = prepare_ds(str(tmp_path / "prism.zarr" / "raw"), shape=(2, *labels.shape), offset=(0, 0, 0),
+                     voxel_size=(50, 8, 8), axis_names=["c^", "z", "y", "x"], units=["nm"] * 3, dtype=np.uint8)
+    raw[raw.roi] = 100
+    write(tmp_path / "prism.zarr" / "labels", labels)
+    result = CliRunner().invoke(prepare, [f"{tmp_path}/round_01", "--raw", f"{tmp_path}/prism.zarr/raw", "--labels", "labels",
+                                          "--labelled", "sparsely"], catch_exceptions=False)
+
+    assert result.exit_code == 0, result.output
+    net_config = json.loads((tmp_path / "round_01" / "2d_mtlsd" / "net_config.json").read_text())
+    assert net_config["in_channels"] == 2
